@@ -1,1 +1,1 @@
-# yagwip_package
+# Yet Another GROMACS Wrapper In Python
