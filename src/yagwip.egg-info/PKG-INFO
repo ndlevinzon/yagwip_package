@@ -1,0 +1,13 @@
+Metadata-Version: 1.2
+Name: yagwip
+Version: 0.1
+Summary: Yet Another Gromacs Wrapper In Python
+Home-page: UNKNOWN
+Author: Gregor Patof
+License: UNKNOWN
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
