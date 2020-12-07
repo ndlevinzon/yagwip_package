@@ -5,7 +5,7 @@ setuptools.setup(
     version="0.1",
     author="Gregor Patof",
     description="Yet Another Gromacs Wrapper In Python",
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages('src'),
     package_dir={'':'src'},
     classifiers=[
         "Programming Language :: Python :: 3",

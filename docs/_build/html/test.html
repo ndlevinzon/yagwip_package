@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>This is a test &#8212; YAGWIP  documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Welcome to YAGWIP’s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="module-yagwip.experiment">
+<span id="this-is-a-test"></span><h1>This is a test<a class="headerlink" href="#module-yagwip.experiment" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt id="yagwip.experiment.Experiment">
+<em class="property">class </em><code class="sig-prename descclassname">yagwip.experiment.</code><code class="sig-name descname">Experiment</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">pdb_file_list</span></em>, <em class="sig-param"><span class="n">maindir</span></em>, <em class="sig-param"><span class="n">basefilesdir</span></em>, <em class="sig-param"><span class="n">jobdir</span></em>, <em class="sig-param"><span class="n">n_replicas</span></em>, <em class="sig-param"><span class="n">ffcode</span></em>, <em class="sig-param"><span class="n">solcode</span></em>, <em class="sig-param"><span class="n">water</span></em>, <em class="sig-param"><span class="n">job_header_script</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">job_header_run</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">mode</span><span class="o">=</span><span class="default_value">'default'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#yagwip.experiment.Experiment" title="Permalink to this definition">¶</a></dt>
+<dd><p>An Experiment is a group of GROMACS simulations run with identical conditions.</p>
+</dd></dl>
+
+<span class="target" id="module-yagwip.gromacs_sim"></span><dl class="py class">
+<dt id="yagwip.gromacs_sim.GromacsSim">
+<em class="property">class </em><code class="sig-prename descclassname">yagwip.gromacs_sim.</code><code class="sig-name descname">GromacsSim</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">basedir</span></em>, <em class="sig-param"><span class="n">basename</span></em>, <em class="sig-param"><span class="n">gmx_path</span></em>, <em class="sig-param"><span class="n">debug_mode</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#yagwip.gromacs_sim.GromacsSim" title="Permalink to this definition">¶</a></dt>
+<dd><p>Represents one gromacs simulation, starting with a directory containing the initial PDB file. All the necessary
+steps (solvation, box definition, equilibration etc. can be automated. The debug mode allows the user to go
+through all the steps once, and then all the interactive commands are automated according to what was entered.</p>
+<dl class="py method">
+<dt id="yagwip.gromacs_sim.GromacsSim.clean_all_except">
+<code class="sig-name descname">clean_all_except</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">files_list</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#yagwip.gromacs_sim.GromacsSim.clean_all_except" title="Permalink to this definition">¶</a></dt>
+<dd><p>Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
+.mdp, .py and .ff files.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="yagwip.gromacs_sim.GromacsSim.execute">
+<code class="sig-name descname">execute</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">cmds_list</span></em>, <em class="sig-param"><span class="n">pipe_codes</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">workdir</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#yagwip.gromacs_sim.GromacsSim.execute" title="Permalink to this definition">¶</a></dt>
+<dd><p>Executes a list of commands in the simulation directory.
+- cmds_list is a list of full string commands.
+- pipecodes are the STDIN inputs to give to each command, as a corresponding list to cmds_list (if no inputs
+are needed, pipecodes can be left as None.
+- workdir will be the simulation directory if left to None</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">YAGWIP</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">This is a test</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to YAGWIP’s documentation!</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2020, Olivier Mailhot.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.2.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/test.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
