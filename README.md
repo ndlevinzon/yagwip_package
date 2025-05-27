@@ -90,14 +90,14 @@ Also included are helper functions for:
 3. Run setup scripts or launch SLURM jobs via generated bash scripts
 
 ### Folder Structure Example
-
+```
 project/
 ├── templates/              # Contains .mdp and .ff files
 ├── ligands/                # Input .pdb files
 ├── jobs/                   # Output job scripts
 ├── md_runs/                # Output simulation directories
 ├── run_experiment.py       # Your driver script using Experiment or Remd
-
+```
 ## Dependencies
 - Python 3.x
 - GROMACS installed and available on PATH
