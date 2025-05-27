@@ -1,12 +1,10 @@
 # Yet Another GROMACS Wrapper In Python
 
-# 🧪 GROMACS Simulation Automation Library
-
 This Python library automates the setup and execution of GROMACS molecular dynamics (MD) simulations, including support for both standard MD and Replica Exchange Molecular Dynamics (REMD). It provides tools to generate system files, manage directories, chain jobs on HPC clusters, and extract simulation results.
 
 ---
 
-## 📦 Modules Overview
+## Modules Overview
 
 ### `gromacs_sim.py`
 
@@ -30,4 +28,79 @@ sim.em()
 sim.nvt()
 sim.npt()
 sim.prepare_run()
+```
+
+### 'experiment.py'
+
+Defines the 'Experiment' class, which organizes and initializes multiple replicas of a simulation using the same inputs (PDBs, force fields, MDPs). It automates:
+
+- Directory creation and file setup
+- Copying base simulation files to all replicas
+- Creation of setup and mdrun job scripts (with chaining)
+- Launchable bash starter scripts for SLURM environments
+
+**Usage Example:**
+```python
+exp = Experiment(
+    pdb_file_list=["ligA.pdb", "ligB.pdb"],
+    maindir="md_runs",
+    basefilesdir="templates",
+    jobdir="jobs",
+    n_replicas=3,
+    ffcode="15\n",
+    solcode="13\n",
+    water="spce"
+)
+exp.initialize_dirs_copy_basefiles()
+exp.create_all_scripts()
+```
+### 'remd.py'
+
+Defines the Remd class, which automates Replica Exchange Molecular Dynamics across a temperature range.
+
+Key features:
+
+- Initializes a GROMACSSim for each temperature
+- Copies and modifies .mdp files for each replica with specific ref_t
+- Runs a standard equilibration pipeline (pdb2gmx → solvate → genion → em → nvt → npt → prepare_run)
+
+Usage Example:
+```python
+temps = [280, 290, 300, 310, 320]
+remd = Remd(
+    base_name="vp35",
+    main_dir="remd_output",
+    base_dirname="vp35",
+    temperature_list=temps,
+    basefiles_dir="templates",
+    gmx_path="gmx"
+)
+```
+### Utilities
+
+Also included are helper functions for:
+- Writing SLURM job headers and bash scripts
+- Managing file paths and shell command arguments
+- Debug mode for dry-run execution
+
+## Quick Start
+
+1. Prepare your .pdb, .mdp, and .ff files
+2. Define your experiment or REMD run in Python
+3. Run setup scripts or launch SLURM jobs via generated bash scripts
+
+### Folder Structure Example
+
+project/
+├── templates/              # Contains .mdp and .ff files
+├── ligands/                # Input .pdb files
+├── jobs/                   # Output job scripts
+├── md_runs/                # Output simulation directories
+├── run_experiment.py       # Your driver script using Experiment or Remd
+
+## Dependencies
+- Python 3.x
+- GROMACS installed and available on PATH
+- SLURM scheduler (for job scripts)
+- Bash
 
