@@ -4,29 +4,34 @@ import glob
 import os
 import re
 
-
 class GromacsSim:
-    """ Represents one gromacs simulation, starting with a directory containing the initial PDB file. All the necessary
-        steps (solvation, box definition, equilibration etc. can be automated. The debug mode allows the user to go
-        through all the steps once, and then all the interactive commands are automated according to what was entered.
+    """
+    Represents one gromacs simulation, starting with a directory containing the initial PDB file. All the necessary
+    steps (solvation, box definition, equilibration etc. can be automated. The debug mode allows the user to go
+    through all the steps once, and then all the interactive commands are automated according to what was entered.
     """
 
     def __init__(self, basedir, basename, gmx_path, debug_mode=False):
-        self.basedir = correct_folder(basedir)
-        self.basename = basename
-        self.gmx_path = gmx_path
-        self.debug_mode = debug_mode
+        # Initialize simulation parameters
+        self.basedir = correct_folder(basedir)  # Path to the simulation directory
+        self.basename = basename                # Base name for input/output files
+        self.gmx_path = gmx_path                # Path to GROMACS executable
+        self.debug_mode = debug_mode            # Whether to run in debug/dry-run mode
 
     def debug_on(self):
+        # Enable debug mode (commands are printed, not executed)
         self.debug_mode = True
 
     def debug_off(self):
+        # Disable debug mode
         self.debug_mode = False
 
     def print_alloc(self):
+        # Print a sample SLURM allocation command (for interactive job testing)
         print("salloc --nodes=1 --ntasks-per-node=8 --cpus-per-task=5 --exclusive --mem=0 --time=3:00:00 --account=rrg-najmanov")
 
     def print_modules(self):
+        # Print the modules to load for a GROMACS environment
         print("""module purge
 module load gcc/7.3.0 openmpi/3.1.2 gromacs/2019.3
 module load python/3""")
@@ -40,33 +45,44 @@ module load python/3""")
         """
         pipename = "pipefile.pipe"
         shname = "shcommand.sh"
+
         if workdir is None:
             workdir = self.basedir
         workdir = correct_folder(workdir)
+
         if not isinstance(cmds_list[0], str):
             raise TypeError("GromacsSim.execute() being called on object other than list of strings (commands), " +
                             "directory {0}".format(self.basedir))
         if pipe_codes is None:
             pipe_codes = [None] * len(cmds_list)
+
         if len(cmds_list) != len(pipe_codes):
             raise ValueError("GromacsSim.execute() called with len(pipecodes) != len(cmds_list), directory {0}".format(
                 self.basedir))
+
+        # If in debug mode, print commands instead of executing
         if self.debug_mode:
             return self.execute_debug(cmds_list, pipe_codes, workdir)
+
         result = None
         for (cmd, pc) in zip(cmds_list, pipe_codes):
             cmd_l = shlex.split(cmd) # list of strings instead of single string command
+
             if pc is None:
                 result = subprocess.run(cmd_l, cwd=workdir, capture_output=True)
+
             else:
+                # Pipe input required — write to temporary file and wrap in shell script
                 write_pipefile(workdir, pc, pipename)
                 cmd_l = cmd_l + ["<", pipename]
                 write_sh(workdir, cmd_l, shname)
                 cmd_l = ["sh", shname]
                 result = subprocess.run(cmd_l, cwd=workdir, capture_output=True)
+
         return result
 
     def execute_debug(self, cmds_list, pipecodes, workdir):
+        # Debug mode: print each command instead of running
         for cmd in cmds_list:
             print(cmd)
 
@@ -79,6 +95,7 @@ module load python/3""")
             files_list += glob.glob("{0}/*.mdp".format(self.basedir))
             files_list += glob.glob("{0}/*.py".format(self.basedir))
             files_list += glob.glob("{0}/*.ff".format(self.basedir))
+
         files_set = set(files_list)
         cur_files = glob.glob("{0}/*".format(self.basedir))
         for f in cur_files:
@@ -87,6 +104,7 @@ module load python/3""")
                 self.execute([s])
 
     def pdb2gmx(self, pc, water="spce", opt_args=" -ignh", pdb_fn=None):
+        # Run GROMACS pdb2gmx to generate topology and .gro file from .pdb
         if pdb_fn is None:
             self.format = "{0}.pdb".format(self.basename)
             pdb_fn = self.format
@@ -96,15 +114,18 @@ module load python/3""")
         return self.execute([s], pipe_codes=[pc])
 
     def solvate(self, box_options=" -c -d 1.0 -bt cubic", water_model="spc216.gro"):
+        # Define simulation box and add water molecules
         box_options = correct_opt_arg(box_options)
         n1 = "{0}.gro".format(self.basename)
         n2 = "{0}.newbox.gro".format(self.basename)
         n3 = "{0}.solv.gro".format(self.basename)
+
         s = "{0} editconf -f {1} -o {2}{3}".format(self.gmx_path, n1, n2, box_options)
         s2 = "{0} solvate -cp {1} -cs {2} -o {3} -p topol.top".format(self.gmx_path, n2, water_model, n3)
         return self.execute([s, s2])
 
     def genion(self, sol_code, ion_options=" -pname NA -nname CL -conc 0.100 -neutral", grompp_options=""):
+        # Replace solvent molecules with ions to neutralize system
         ion_options = correct_opt_arg(ion_options)
         grompp_options = correct_opt_arg(grompp_options)
         n1 = "{0}.solv.gro".format(self.basename)
@@ -113,9 +134,11 @@ module load python/3""")
             .format(self.gmx_path, n1, grompp_options)
         s2 = "{0} genion -s ions.tpr -o {1} -p topol.top{2}".format(self.gmx_path, n2, ion_options)
         pipe_codes = [None, sol_code]
+
         return self.execute([s, s2], pipe_codes=pipe_codes)
 
     def em(self, mdpfile="minim.mdp", suffix=".solv.ions", tprname="em", prefix = "mpirun ", mdrun_suffix=""):
+        # Run energy minimization
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
         s = "{0} grompp -f {1} -c {2}{3}.gro -r {2}{3}.gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, suffix, tprname)
@@ -123,14 +146,17 @@ module load python/3""")
         return self.execute([s, s2])
 
     def nvt(self, mdpfile="nvt.mdp", suffix=".em", tprname="nvt", mdrun_suffix=""):
+        # NVT equilibration step (constant volume)
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
         return self.em(mdpfile, suffix, tprname, mdrun_suffix=mdrun_suffix)
 
     def npt(self, mdpfile="npt.mdp", suffix=".nvt", tprname="npt", mdrun_suffix=""):
+        # NPT equilibration step (constant pressure)
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
         return self.em(mdpfile, suffix, tprname, mdrun_suffix=mdrun_suffix)
 
     def production(self, mdpfile="md1ns.mdp", inputname="npt.", outname="md1ns", prefix="mpirun ", mdrun_suffix=""):
+        # Run production simulation
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
         s = "{0} grompp -f {1} -c {2}.{3}gro -r {2}.{3}gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, inputname, outname)
@@ -138,6 +164,7 @@ module load python/3""")
         return self.execute([s, s2])
 
     def production_finished(self, mdname="md1ns"):
+        # Check if the production run finished successfully by reading the log file
         logfile = "{0}/{1}.{2}.log".format(self.basedir, self.basename, mdname)
         if os.path.isfile(logfile):
             with open(logfile) as f:
@@ -147,11 +174,13 @@ module load python/3""")
         return False
 
     def prepare_run(self, mdpfile="md1ns.mdp", inputname="npt.", outname="md1ns"):
+        # Generate TPR file for production run
         s = "{0} grompp -f {1} -c {2}.{3}gro -r {2}.{3}gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, inputname, outname)
         return self.execute([s])
 
     def convert_production(self, mdname, pbc_code, pdb_code):
+        # Postprocess trajectory: remove jumps and convert to PDB
         s = "{0} trjconv -s {1}.{2}.tpr -f {1}.{2}.xtc -o {1}.{2}.pbc1.xtc -pbc nojump -ur compact"\
             .format(self.gmx_path, self.basename, mdname)
         s2 = "{0} trjconv -s {1}.{2}.tpr -f {1}.{2}.pbc1.xtc -o {1}.{2}.noPBC.xtc -pbc mol -ur compact"\
@@ -162,6 +191,7 @@ module load python/3""")
         self.execute([s, s2, s3], pipe_codes=pipe_codes)
 
     def rmsd_rmsf(self, mdname, rmsdcode="4 4\n", rmsfcode="3\n"):
+        # Calculate RMSD and RMSF from trajectory
         s = "{0} rms -s {1}.{2}.tpr -f {1}.{2}.noPBC.xtc -o rmsd_{1}.{2}.xvg"\
             .format(self.gmx_path, self.basename, mdname)
         s2 = "{0} rmsf -s {1}.{2}.tpr -f {1}.{2}.noPBC.xtc -o rmsf_{1}.{2}.xvg"\
@@ -170,11 +200,13 @@ module load python/3""")
         self.execute([s, s2], pipe_codes=pipe_codes)
 
     def energy(self, mdname, energycode="10\n0\n", prefix="potential_"):
+        # Extract energy terms from trajectory
         s = "{0} energy -s {1}.{2}.tpr -f {1}.{2}.edr -o {3}{1}.{2}.xvg".format(self.gmx_path, self.basename,
                                                                                 mdname, prefix)
         self.execute([s], pipe_codes=[energycode])
 
     def get_n_atoms_solvated(self):
+        # Read number of atoms from the solvated structure to verify correctness
         filename = "{0}/{1}.solv.ions.gro".format(self.basedir, self.basename)
         with open(filename) as f:
             lines = f.readlines()
@@ -186,19 +218,47 @@ module load python/3""")
             ))
         return n_atoms
 
+# --- Helper Functions ---
 
 def write_pipefile(workdir, pc, filename):
+    """
+    Write a string to a file to be used as STDIN (piped input) for a GROMACS command.
+
+    Parameters:
+    - workdir (str): Path to the working directory.
+    - pc (str): The piped content (typically menu selections like '1\n4\n').
+    - filename (str): The name of the pipe file to write.
+    """
     with open("{0}/{1}".format(workdir, filename), "w") as f:
         f.write(pc)
 
 
 def write_sh(workdir, l, filename):
+    """
+    Write a shell script that runs a command (or a command with redirection).
+
+    Parameters:
+    - workdir (str): Path to the working directory.
+    - l (list of str): Command broken into tokens, e.g., ['gmx', 'trjconv', '<', 'input.txt'].
+    - filename (str): The name of the shell script to write.
+    """
     with open("{0}/{1}".format(workdir, filename), "w") as f:
-        f.write(" ".join(l))
+        f.write(" ".join(l))        # Join command tokens with spaces
         f.write("\n")
 
 
 def correct_opt_arg(opt_arg):
+    """
+    Ensure that optional command-line arguments are prefixed with a space (if not empty).
+
+    This is useful to cleanly append options to GROMACS commands.
+
+    Parameters:
+    - opt_arg (str): Optional arguments string, e.g., "-pname NA -nname CL".
+
+    Returns:
+    - str: A string with a space prepended unless it is already present or empty.
+    """
     if len(opt_arg) == 0:
         return ""
     elif opt_arg[0] != ' ':
@@ -208,6 +268,17 @@ def correct_opt_arg(opt_arg):
 
 
 def correct_folder(folder):
+    """
+    Normalize folder path by removing a trailing slash if present.
+
+    This ensures consistent behavior in file path formatting.
+
+    Parameters:
+    - folder (str): Input folder path.
+
+    Returns:
+    - str: Folder path without a trailing slash.
+    """
     if folder[-1] == "/":
         return folder[:-1]
     return folder
