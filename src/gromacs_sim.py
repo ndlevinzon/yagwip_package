@@ -23,9 +23,15 @@ class GromacsSim:
         self.logfile = os.path.join(self.basedir, f"yagwip_{timestamp}.log")
 
         if debug_mode:
-            print("[INIT] Debug_Mode =", self.debug_mode)
-            print("[INIT] Base directory path will be:", self.basedir)
-            print("[INIT] Logfile path will be:", self.logfile)
+            print("[DEBUG] Base directory path will be:", self.basedir)
+            print("[DEBUG] Logfile path will be:", self.logfile)
+
+    def debug_on(self):
+        print("[DEBUG] Debug_Mode =", self.debug_mode)
+        self.debug_mode = True
+
+    def debug_off(self):
+        self.debug_mode = False
 
     def log_command(self, cmds_list, pipe_codes):
         # Prints .log file to working directory
@@ -38,16 +44,6 @@ class GromacsSim:
                     f.write("\n")
         except Exception as e:
             print(f"[ERROR] Failed to write to log file: {e}")
-
-    def print_alloc(self):
-        # Print a sample SLURM allocation command (for interactive job testing)
-        print("salloc --nodes=1 --ntasks-per-node=8 --cpus-per-task=5 --exclusive --mem=0 --time=3:00:00 --account=rrg-najmanov")
-
-    def print_modules(self):
-        # Print the modules to load for a GROMACS environment
-        print("""module purge
-module load gcc/7.3.0 openmpi/3.1.2 gromacs/2019.3
-module load python/3""")
 
     def execute(self, cmds_list, pipe_codes=None, workdir=None):
         if not isinstance(cmds_list, list) or not all(isinstance(c, str) for c in cmds_list):
@@ -83,8 +79,9 @@ module load python/3""")
             print("  ", cmd)
 
     def clean_all_except(self, files_list=None):
-        """ Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
-            .mdp, .py and .ff files.
+        """
+        Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
+        .mdp, .py and .ff files.
         """
         if files_list is None:
             files_list = ["{0}/{1}.pdb".format(self.basedir, self.basename)]
@@ -220,7 +217,9 @@ module load python/3""")
             ))
         return n_atoms
 
+
 # --- Helper Functions ---
+
 
 def write_pipefile(workdir, pc, filename):
     """
@@ -233,6 +232,7 @@ def write_pipefile(workdir, pc, filename):
     """
     with open("{0}/{1}".format(workdir, filename), "w") as f:
         f.write(pc)
+
 
 def write_sh(workdir, l, filename):
     """
@@ -267,6 +267,7 @@ def correct_opt_arg(opt_arg):
     else:
         return opt_arg
 
+
 def normalize_path(path):
     """
     Normalize folder path by removing a trailing slash if present.
@@ -280,6 +281,18 @@ def normalize_path(path):
     - str: Folder path without a trailing slash.
     """
     return os.path.normpath(path)
+
+
+def print_alloc(self):
+    # Print a sample SLURM allocation command (for interactive job testing)
+    print("salloc --nodes=1 --ntasks-per-node=8 --cpus-per-task=5 --exclusive --mem=0 --time=3:00:00 --account=rrg-najmanov")
+
+
+def print_modules(self):
+    # Print the modules to load for a GROMACS environment
+    print("""module purge
+module load gcc/7.3.0 openmpi/3.1.2 gromacs/2019.3
+module load python/3""")
 
 
 

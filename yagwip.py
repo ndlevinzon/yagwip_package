@@ -81,7 +81,9 @@ class GromacsCLI(cmd.Cmd):
             print(f"Error: '{filename}' not found.")
 
     def do_pdb2gmx(self, arg):
-        "Run pdb2gmx with optional extra args: pdb2gmx [extra_args]"
+        """
+        Run pdb2gmx with optional extra args: pdb2gmx [extra_args]
+        """
         if not self.sim:
             print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
