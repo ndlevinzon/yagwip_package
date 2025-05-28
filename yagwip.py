@@ -5,6 +5,7 @@ import cmd
 import os
 import argparse
 import sys
+import random
 
 class GromacsCLI(cmd.Cmd):
     intro = "Welcome to YAGWIP. Type help or ? to list commands."
@@ -19,9 +20,11 @@ class GromacsCLI(cmd.Cmd):
         self.basename = None
         self.sim = None
 
+        self.print_banner("src/assets/banner.txt")  # Show ASCII art at startup
+
     def init_sim(self):
         if self.current_pdb_path:
-            basedir = os.path.dirname(self.current_pdb_path)
+            basedir = os.getcwd()
             self.basename = os.path.splitext(os.path.basename(self.current_pdb_path))[0]
             self.sim = GromacsSim(basedir, self.basename, self.gmx_path, debug_mode=self.debug)
         else:
@@ -132,6 +135,72 @@ class GromacsCLI(cmd.Cmd):
         print(
             f"Running genion with index code: '{sol_code}', ion_options: '{ion_options}', grompp_options: '{grompp_options}'")
         self.sim.genion(sol_code, ion_options=ion_options, grompp_options=grompp_options)
+
+    def do_em(self, arg):
+        """
+        Run energy minimization step.
+        Usage:
+            em [mdpfile] [suffix] [tprname] [mdrun_suffix]
+
+        Example:
+            em minim.mdp .solv.ions em ""
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=3)
+        mdpfile = parts[0] if len(parts) > 0 else "minim.mdp"
+        suffix = parts[1] if len(parts) > 1 else ".solv.ions"
+        tprname = parts[2] if len(parts) > 2 else "em"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        print(f"Running EM with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
+        self.sim.em(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+
+    def do_nvt(self, arg):
+        """
+        Run NVT equilibration step.
+        Usage:
+            nvt [mdpfile] [suffix] [tprname] [mdrun_suffix]
+
+        Example:
+            nvt nvt.mdp .em nvt ""
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=3)
+        mdpfile = parts[0] if len(parts) > 0 else "nvt.mdp"
+        suffix = parts[1] if len(parts) > 1 else ".em"
+        tprname = parts[2] if len(parts) > 2 else "nvt"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        print(f"Running NVT with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
+        self.sim.nvt(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+
+    def do_npt(self, arg):
+        """
+        Run NPT equilibration step.
+        Usage:
+            npt [mdpfile] [suffix] [tprname] [mdrun_suffix]
+
+        Example:
+            npt npt.mdp .nvt npt ""
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=3)
+        mdpfile = parts[0] if len(parts) > 0 else "npt.mdp"
+        suffix = parts[1] if len(parts) > 1 else ".nvt"
+        tprname = parts[2] if len(parts) > 2 else "npt"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        print(f"Running NPT with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
+        self.sim.npt(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
 
     def do_production(self, arg):
         """
@@ -256,8 +325,25 @@ class GromacsCLI(cmd.Cmd):
         """
         Quit the CLI
         """
+        self.print_random_quote("src/assets/quotes.txt")
         print("Quitting YAGWIP.")
         return True
+
+    def print_random_quote(self, filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                quotes = [line.strip() for line in f if line.strip()]
+            if quotes:
+                print(f"YAGWIP Reminds You...\n{random.choice(quotes)}")
+        except FileNotFoundError:
+            print("\n(No quotes file found. Exiting quietly.)")
+
+    def print_banner(self, banner_filepath):
+        try:
+            with open(banner_filepath, "r", encoding="utf-8") as f:
+                print(f.read())
+        except FileNotFoundError:
+            print("Welcome to GROLEAP (ASCII banner not found)")
 
     def default(self, line):
         print(f"Unknown command: {line}")
