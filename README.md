@@ -63,14 +63,14 @@ default(self, line)
     Running the CLI
 
 ## To start the CLI:
-
+```
 python yagwip.py
-
+```
 You will see:
-
+```
 Welcome to YAGWIP. Type help or ? to list commands.
 YAGWIP>
-
+```
 ## Future Development Ideas
 Add More GROMACS Commands
 
