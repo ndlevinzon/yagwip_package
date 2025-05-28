@@ -1,0 +1,288 @@
+from src.gromacs_sim import GromacsSim
+from logger import setup_logger
+import logging
+import cmd
+import os
+import argparse
+import sys
+
+class GromacsCLI(cmd.Cmd):
+    intro = "Welcome to YAGWIP. Type help or ? to list commands."
+    prompt = "YAGWIP> "
+
+    def __init__(self, gmx_path):
+        super().__init__()
+        self.debug = False
+        self.gmx_path = gmx_path
+        self.logger = setup_logger(debug_mode=self.debug)
+        self.current_pdb_path = None
+        self.basename = None
+        self.sim = None
+
+    def init_sim(self):
+        if self.current_pdb_path:
+            basedir = os.path.dirname(self.current_pdb_path)
+            self.basename = os.path.splitext(os.path.basename(self.current_pdb_path))[0]
+            self.sim = GromacsSim(basedir, self.basename, self.gmx_path, debug_mode=self.debug)
+        else:
+            print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+
+    def do_debug(self, arg):
+        """
+        Debug Mode: Simply prints commands to the command line that
+        would have otherwise be executed.
+
+        Usage: Toggle with 'debug', 'debug on', or 'debug off'"
+        """
+
+        arg = arg.lower().strip()
+
+        if arg == "on":
+            self.debug = True
+        elif arg == "off":
+            self.debug = False
+        else:
+            self.debug = not self.debug
+
+        self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+
+        if self.sim:
+            if self.debug:
+                self.sim.debug_on()
+                print("[DEBUG] Debug Mode ON")
+            else:
+                self.sim.debug_off()
+                print("[DEBUG] Debug Mode OFF")
+        else:
+            print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
+
+    def do_loadpdb(self, arg):
+        """
+        Search for a PDB file in the current directory and use it in the
+        YAGWIP building pipeline:
+
+        Usage: loadPDB <filename.pdb>
+        """
+        filename = arg.strip().lower()
+        if not filename:
+            print("Usage: loadPDB <filename.pdb>")
+            return
+
+        full_path = os.path.abspath(filename)
+
+        if os.path.isfile(full_path):
+            self.current_pdb_path = full_path
+            print(f"PDB file loaded: {full_path}")
+            self.init_sim()
+        else:
+            print(f"Error: '{filename}' not found.")
+
+    def do_pdb2gmx(self, arg):
+        "Run pdb2gmx with optional extra args: pdb2gmx [extra_args]"
+        if not self.sim:
+            print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        extra_args = arg.strip().lower()
+        print(f"Running pdb2gmx on {self.basename}.pdb...")
+        self.sim.pdb2gmx("15\n", opt_args=extra_args)
+
+    def do_solvate(self, arg):
+        """
+        Run solvate step after pdb2gmx. Usage:
+        solvate [box_options] [water_model]
+
+        Example:
+        solvate "-c -d 1.2 -bt dodecahedron" tip3p.gro
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split()
+        box_options = parts[0] if len(parts) > 0 else " -c -d 1.0 -bt cubic"
+        water_model = parts[1] if len(parts) > 1 else "spc216.gro"
+
+        print(f"Running solvate with box options: '{box_options}' and water model: '{water_model}'")
+        self.sim.solvate(box_options=box_options, water_model=water_model)
+
+    def do_genion(self, arg):
+        """
+        Run genion step to neutralize system.
+        Usage:
+            genion <index_code> [ion_options] [grompp_options]
+
+        Example:
+            genion 13 "\\-pname NA -nname CL -conc 0.150 -neutral" ""
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=2)
+
+        if len(parts) == 0:
+            print("Usage: genion <index_code> [ion_options] [grompp_options]")
+            return
+
+        sol_code = parts[0]
+        ion_options = parts[1] if len(parts) > 1 else " -pname NA -nname CL -conc 0.100 -neutral"
+        grompp_options = parts[2] if len(parts) > 2 else ""
+
+        print(
+            f"Running genion with index code: '{sol_code}', ion_options: '{ion_options}', grompp_options: '{grompp_options}'")
+        self.sim.genion(sol_code, ion_options=ion_options, grompp_options=grompp_options)
+
+    def do_production(self, arg):
+        """
+        Run production simulation.
+        Usage:
+            production [mdpfile] [inputname] [outname] [mdrun_suffix]
+        Example:
+            production md1ns.mdp npt. md1ns ""
+        """
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=3)
+        mdpfile = parts[0] if len(parts) > 0 else "md1ns.mdp"
+        inputname = parts[1] if len(parts) > 1 else "npt."
+        outname = parts[2] if len(parts) > 2 else "md1ns"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        self.sim.production(mdpfile, inputname, outname, mdrun_suffix=mdrun_suffix)
+
+    def do_production_finished(self, arg):
+        """
+        Check whether the production run finished successfully.
+        Usage:
+            production_finished [mdname]
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        mdname = arg.strip() if arg.strip() else "md1ns"
+        result = self.sim.production_finished(mdname)
+        print(f"Production run {'finished' if result else 'not finished'}.")
+
+    def do_prepare_run(self, arg):
+        """
+        Prepare TPR file for production run.
+        Usage:
+            prepare_run [mdpfile] [inputname] [outname]
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        parts = arg.strip().split()
+        mdpfile = parts[0] if len(parts) > 0 else "md1ns.mdp"
+        inputname = parts[1] if len(parts) > 1 else "npt."
+        outname = parts[2] if len(parts) > 2 else "md1ns"
+
+        self.sim.prepare_run(mdpfile, inputname, outname)
+
+    def do_convert_production(self, arg):
+        """
+        Convert trajectory: remove PBC jumps and convert to PDB.
+        Usage:
+            convert_production <mdname> <pbc_code> <pdb_code>
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        parts = arg.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            print("Usage: convert_production <mdname> <pbc_code> <pdb_code>")
+            return
+
+        mdname, pbc_code, pdb_code = parts
+        self.sim.convert_production(mdname, pbc_code, pdb_code)
+
+    def do_rmsd_rmsf(self, arg):
+        """
+        Compute RMSD and RMSF from trajectory.
+        Usage:
+            rmsd_rmsf <mdname> [rmsd_code] [rmsf_code]
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        parts = arg.strip().split(maxsplit=2)
+        mdname = parts[0] if len(parts) > 0 else "md1ns"
+        rmsdcode = parts[1] if len(parts) > 1 else "4 4\n"
+        rmsfcode = parts[2] if len(parts) > 2 else "3\n"
+
+        self.sim.rmsd_rmsf(mdname, rmsdcode, rmsfcode)
+
+    def do_energy(self, arg):
+        """
+        Extract energy terms.
+        Usage:
+            energy <mdname> [energycode] [prefix]
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        parts = arg.strip().split(maxsplit=2)
+        mdname = parts[0] if len(parts) > 0 else "md1ns"
+        energycode = parts[1] if len(parts) > 1 else "10\n0\n"
+        prefix = parts[2] if len(parts) > 2 else "potential_"
+
+        self.sim.energy(mdname, energycode, prefix)
+
+    def do_count_atoms(self, _):
+        """
+        Get number of atoms in the solvated system.
+        Usage:
+            count_atoms
+        """
+        if not self.sim:
+            print("No simulation initialized.")
+            return
+
+        try:
+            n_atoms = self.sim.get_n_atoms_solvated()
+            print(f"Number of atoms: {n_atoms}")
+        except Exception as e:
+            print(f"Error reading atoms: {e}")
+
+    def do_quit(self, _):
+        """
+        Quit the CLI
+        """
+        print("Quitting YAGWIP.")
+        return True
+
+    def default(self, line):
+        print(f"Unknown command: {line}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="GROLEAP - GROMACS CLI interface")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive CLI")
+    parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
+
+    args = parser.parse_args()
+    cli = GromacsCLI("gmx")
+
+    if args.file:
+        # Batch mode: read and execute commands from file
+        try:
+            with open(args.file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):  # skip empty lines and comments
+                        print(f"groLEAP> {line}")
+                        cli.onecmd(line)
+        except FileNotFoundError:
+            print(f"Error: File '{args.file}' not found.")
+            sys.exit(1)
+    else:
+        # Interactive mode
+        cli.cmdloop()
+
