@@ -107,7 +107,8 @@ Dependencies
 
     logger.py providing setup_logger(debug_mode)
 
-Example:
+Example: python yagwip.py -f input.pdb
+```
 # Turn on debug mode for verbose output
 debug on
 
@@ -139,3 +140,4 @@ prepare_run
 production
 
 python yagwip.py -f run_pipeline.groleap
+```
