@@ -7,7 +7,7 @@ import datetime
 class GromacsSim:
     """
     Represents one gromacs simulation, starting with a directory containing the initial PDB file. All the necessary
-    steps (solvation, box definition, equilibration etc. can be automated. The debug mode allows the user to go
+    steps (solvation, box definition, equilibration etc.) can be automated. The debug mode allows the user to go
     through all the steps once, and then all the interactive commands are automated according to what was entered.
     """
 
