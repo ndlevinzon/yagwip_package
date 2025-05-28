@@ -12,7 +12,7 @@ YAGWIP automates the setup and execution of GROMACS molecular dynamics (MD) simu
 - Logging and debug-aware execution of commands.
 
 ## CLI Code Structure
-###__init__(self, gmx_path)
+### __init__(self, gmx_path)
 
 Initializes the CLI instance with:
 
