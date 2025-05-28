@@ -19,6 +19,8 @@ Defines the `GromacsSim` class, which encapsulates all major GROMACS operations 
 
 **Usage Example:**
 ```python
+from yagwip.gromacs_sim import GromacsSim
+
 sim = GromacsSim("simdir", "ligand", "gmx")
 sim.clean_all_except()
 sim.pdb2gmx("15\n")
