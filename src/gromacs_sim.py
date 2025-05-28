@@ -2,7 +2,7 @@ import subprocess
 import shlex
 import glob
 import os
-import re
+import datetime
 
 class GromacsSim:
     """
@@ -13,18 +13,31 @@ class GromacsSim:
 
     def __init__(self, basedir, basename, gmx_path, debug_mode=False):
         # Initialize simulation parameters
-        self.basedir = correct_folder(basedir)  # Path to the simulation directory
-        self.basename = basename                # Base name for input/output files
-        self.gmx_path = gmx_path                # Path to GROMACS executable
-        self.debug_mode = debug_mode            # Whether to run in debug/dry-run mode
+        self.basedir = normalize_path(basedir)        # Path to the simulation directory
+        self.basename = basename                      # Base name for input/output files
+        self.gmx_path = gmx_path                      # Path to GROMACS executable
+        self.debug_mode = debug_mode                  # Whether to run in debug/dry-run mode
 
-    def debug_on(self):
-        # Enable debug mode (commands are printed, not executed)
-        self.debug_mode = True
 
-    def debug_off(self):
-        # Disable debug mode
-        self.debug_mode = False
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.logfile = os.path.join(self.basedir, f"yagwip_{timestamp}.log")
+
+        if debug_mode:
+            print("[INIT] Debug_Mode =", self.debug_mode)
+            print("[INIT] Base directory path will be:", self.basedir)
+            print("[INIT] Logfile path will be:", self.logfile)
+
+    def log_command(self, cmds_list, pipe_codes):
+        # Prints .log file to working directory
+        try:
+            with open(self.logfile, "a") as f:
+                for i, cmd in enumerate(cmds_list):
+                    f.write(f"COMMAND: {cmd}\n")
+                    if pipe_codes and i < len(pipe_codes) and pipe_codes[i]:
+                        f.write(f"PIPE INPUT:\n{pipe_codes[i]}\n")
+                    f.write("\n")
+        except Exception as e:
+            print(f"[ERROR] Failed to write to log file: {e}")
 
     def print_alloc(self):
         # Print a sample SLURM allocation command (for interactive job testing)
@@ -37,54 +50,37 @@ module load gcc/7.3.0 openmpi/3.1.2 gromacs/2019.3
 module load python/3""")
 
     def execute(self, cmds_list, pipe_codes=None, workdir=None):
-        """ Executes a list of commands in the simulation directory.
-            - cmds_list is a list of full string commands.
-            - pipecodes are the STDIN inputs to give to each command, as a corresponding list to cmds_list (if no inputs
-            are needed, pipecodes can be left as None.
-            - workdir will be the simulation directory if left to None
-        """
-        pipename = "pipefile.pipe"
-        shname = "shcommand.sh"
+        if not isinstance(cmds_list, list) or not all(isinstance(c, str) for c in cmds_list):
+            raise TypeError("[ERROR] Expected list of strings for cmds_list.")
 
-        if workdir is None:
-            workdir = self.basedir
-        workdir = correct_folder(workdir)
-
-        if not isinstance(cmds_list[0], str):
-            raise TypeError("GromacsSim.execute() being called on object other than list of strings (commands), " +
-                            "directory {0}".format(self.basedir))
-        if pipe_codes is None:
-            pipe_codes = [None] * len(cmds_list)
-
+        pipe_codes = pipe_codes or [None] * len(cmds_list)
         if len(cmds_list) != len(pipe_codes):
-            raise ValueError("GromacsSim.execute() called with len(pipecodes) != len(cmds_list), directory {0}".format(
-                self.basedir))
+            raise ValueError("[ERROR] Length of cmds_list and pipe_codes must match.")
 
-        # If in debug mode, print commands instead of executing
+        workdir = normalize_path(workdir or self.basedir)
+
         if self.debug_mode:
             return self.execute_debug(cmds_list, pipe_codes, workdir)
 
+        pipename = os.path.join(workdir, "pipefile.pipe")
+        shname = os.path.join(workdir, "shcommand.sh")
         result = None
-        for (cmd, pc) in zip(cmds_list, pipe_codes):
-            cmd_l = shlex.split(cmd) # list of strings instead of single string command
 
-            if pc is None:
-                result = subprocess.run(cmd_l, cwd=workdir, capture_output=True)
-
+        for cmd, pc in zip(cmds_list, pipe_codes):
+            if pc:
+                write_pipefile(workdir, pc, os.path.basename(pipename))
+                write_sh(workdir, shlex.split(cmd) + ["<", os.path.basename(pipename)], os.path.basename(shname))
+                result = subprocess.run(["sh", os.path.basename(shname)], cwd=workdir, capture_output=True)
             else:
-                # Pipe input required — write to temporary file and wrap in shell script
-                write_pipefile(workdir, pc, pipename)
-                cmd_l = cmd_l + ["<", pipename]
-                write_sh(workdir, cmd_l, shname)
-                cmd_l = ["sh", shname]
-                result = subprocess.run(cmd_l, cwd=workdir, capture_output=True)
+                result = subprocess.run(shlex.split(cmd), cwd=workdir, capture_output=True)
 
         return result
 
-    def execute_debug(self, cmds_list, pipecodes, workdir):
-        # Debug mode: print each command instead of running
+    def execute_debug(self, cmds_list, pipe_codes, workdir):
+        self.log_command(cmds_list, pipe_codes)
+        print("[DEBUG MODE] The following commands would be run:")
         for cmd in cmds_list:
-            print(cmd)
+            print("  ", cmd)
 
     def clean_all_except(self, files_list=None):
         """ Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
@@ -143,16 +139,19 @@ module load python/3""")
         s = "{0} grompp -f {1} -c {2}{3}.gro -r {2}{3}.gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, suffix, tprname)
         s2 = prefix + "{0}_mpi mdrun -deffnm {1}.{2}{3}".format(self.gmx_path, self.basename, tprname, mdrun_suffix)
+
         return self.execute([s, s2])
 
     def nvt(self, mdpfile="nvt.mdp", suffix=".em", tprname="nvt", mdrun_suffix=""):
         # NVT equilibration step (constant volume)
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
+
         return self.em(mdpfile, suffix, tprname, mdrun_suffix=mdrun_suffix)
 
     def npt(self, mdpfile="npt.mdp", suffix=".nvt", tprname="npt", mdrun_suffix=""):
         # NPT equilibration step (constant pressure)
         mdrun_suffix = correct_opt_arg(mdrun_suffix)
+
         return self.em(mdpfile, suffix, tprname, mdrun_suffix=mdrun_suffix)
 
     def production(self, mdpfile="md1ns.mdp", inputname="npt.", outname="md1ns", prefix="mpirun ", mdrun_suffix=""):
@@ -161,6 +160,7 @@ module load python/3""")
         s = "{0} grompp -f {1} -c {2}.{3}gro -r {2}.{3}gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, inputname, outname)
         s2 = prefix + "{0}_mpi mdrun -deffnm {1}.{2}{3}".format(self.gmx_path, self.basename, outname, mdrun_suffix)
+
         return self.execute([s, s2])
 
     def production_finished(self, mdname="md1ns"):
@@ -171,12 +171,14 @@ module load python/3""")
                 lines = f.readlines()
             if lines[-2].startswith("Finished mdrun"):
                 return True
+
         return False
 
     def prepare_run(self, mdpfile="md1ns.mdp", inputname="npt.", outname="md1ns"):
         # Generate TPR file for production run
         s = "{0} grompp -f {1} -c {2}.{3}gro -r {2}.{3}gro -p topol.top -o {2}.{4}.tpr"\
             .format(self.gmx_path, mdpfile, self.basename, inputname, outname)
+
         return self.execute([s])
 
     def convert_production(self, mdname, pbc_code, pdb_code):
@@ -232,7 +234,6 @@ def write_pipefile(workdir, pc, filename):
     with open("{0}/{1}".format(workdir, filename), "w") as f:
         f.write(pc)
 
-
 def write_sh(workdir, l, filename):
     """
     Write a shell script that runs a command (or a command with redirection).
@@ -266,8 +267,7 @@ def correct_opt_arg(opt_arg):
     else:
         return opt_arg
 
-
-def correct_folder(folder):
+def normalize_path(path):
     """
     Normalize folder path by removing a trailing slash if present.
 
@@ -279,6 +279,7 @@ def correct_folder(folder):
     Returns:
     - str: Folder path without a trailing slash.
     """
-    if folder[-1] == "/":
-        return folder[:-1]
-    return folder
+    return os.path.normpath(path)
+
+
+
