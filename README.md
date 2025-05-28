@@ -1,6 +1,7 @@
-# YAGWIP: Yet Another GROMACS Wrapper In Python
+# YAGWIP: Yet Another GROMACS Wrapper In Python #
 
 YAGWIP automates the setup and execution of GROMACS molecular dynamics (MD) simulations, including support for both standard MD and Replica Exchange Molecular Dynamics (REMD). It provides tools to generate system files, manage directories, chain jobs on HPC clusters, and extract simulation results. It was originally developed by the talented Dr. Olivier Mailhot.
+
 ---
  
 ## Features
