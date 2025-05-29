@@ -1,5 +1,6 @@
 from .gromacs_sim import GromacsSim
 from .logger import setup_logger
+from importlib.resources import files
 import logging
 import cmd
 import os
@@ -20,7 +21,7 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = None
         self.basename = None
         self.sim = None
-        self.print_banner("src/assets/banner.txt")  # Show ASCII art at startup
+        self.print_banner()  # Show ASCII art at startup
 
         # Save user modifications to default commands
         self.custom_commands = {
@@ -350,25 +351,27 @@ class GromacsCLI(cmd.Cmd):
         """
         Quit the CLI
         """
-        self.print_random_quote("src/assets/quotes.txt")
+        self.print_random_quote()
         print("Quitting YAGWIP.")
         return True
 
-    def print_random_quote(self, filepath):
+    def print_banner(self):
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            banner_path = files("yagwip.assets").joinpath("banner.txt")
+            with open(banner_path, "r") as f:
+                print(f.read())
+        except Exception as e:
+            print("[!] Could not load banner:", e)
+
+    def print_random_quote(self):
+        try:
+            quote_path = files("yagwip.assets").joinpath("quotes.txt")
+            with open(quote_path, "r", encoding="utf-8") as f:
                 quotes = [line.strip() for line in f if line.strip()]
             if quotes:
-                print(f"YAGWIP Reminds You...\n{random.choice(quotes)}")
-        except FileNotFoundError:
-            print("\n(No quotes file found. Exiting quietly.)")
-
-    def print_banner(self, banner_filepath):
-        try:
-            with open(banner_filepath, "r", encoding="utf-8") as f:
-                print(f.read())
-        except FileNotFoundError:
-            print("Welcome to GROLEAP (ASCII banner not found)")
+                print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
+        except Exception as e:
+            print(f"(Unable to load quotes: {e})")
 
     def default(self, line):
         print(f"Unknown command: {line}")
