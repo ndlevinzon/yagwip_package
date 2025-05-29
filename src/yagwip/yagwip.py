@@ -8,6 +8,27 @@ import argparse
 import sys
 import random
 import readline
+import subprocess
+import shlex
+
+
+def run_gromacs_command(command, pipe_input=None, debug=False):
+    print(f"[RUNNING] {command}")
+    if debug:
+        print("[DEBUG MODE] Command not executed.")
+        return
+
+    if pipe_input:
+        proc = subprocess.run(shlex.split(command), input=pipe_input.encode(), capture_output=True)
+    else:
+        proc = subprocess.run(shlex.split(command), capture_output=True)
+
+    if proc.returncode != 0:
+        print("[ERROR] Command failed:")
+        print(proc.stderr.decode())
+    else:
+        print(proc.stdout.decode())
+
 
 class GromacsCLI(cmd.Cmd):
     intro = "Welcome to YAGWIP V0.3. Type help or ? to list commands."
@@ -20,10 +41,9 @@ class GromacsCLI(cmd.Cmd):
         self.logger = setup_logger(debug_mode=self.debug)
         self.current_pdb_path = None
         self.basename = None
+        self.print_banner()
         self.sim = None
-        self.print_banner()  # Show ASCII art at startup
 
-        # Save user modifications to default commands
         self.custom_commands = {
             "pdb2gmx": None,
             "solvate": None,
@@ -36,7 +56,7 @@ class GromacsCLI(cmd.Cmd):
             self.basename = os.path.splitext(os.path.basename(self.current_pdb_path))[0]
             self.sim = GromacsSim(basedir, self.basename, self.gmx_path, debug_mode=self.debug)
         else:
-            print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] Issue with gromacs_sim.py!")
 
     def do_debug(self, arg):
         """
@@ -70,11 +90,11 @@ class GromacsCLI(cmd.Cmd):
     def do_set(self, arg):
         cmd_name = arg.strip().lower()
         if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
-            print("Command not supported for override. Choose from: pdb2gmx, solvate, genion")
+            print("[!] Command not supported for override. Choose from: pdb2gmx, solvate, genion")
             return
 
         if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
         # Default GROMACS commands from sim
@@ -125,23 +145,16 @@ class GromacsCLI(cmd.Cmd):
             readline.set_completer(None)
 
     def do_loadpdb(self, arg):
-        """
-        Search for a PDB file in the current directory and use it in the
-        YAGWIP building pipeline:
-
-        Usage: loadPDB <filename.pdb>
-        """
         filename = arg.strip()
         if not filename:
             print("Usage: loadPDB <filename.pdb>")
             return
 
         full_path = os.path.abspath(filename)
-
         if os.path.isfile(full_path):
             self.current_pdb_path = full_path
+            self.basename = os.path.splitext(os.path.basename(full_path))[0]
             print(f"PDB file loaded: {full_path}")
-            self.init_sim()
         else:
             print(f"Error: '{filename}' not found.")
 
@@ -155,77 +168,75 @@ class GromacsCLI(cmd.Cmd):
 
     def do_pdb2gmx(self, arg):
         """
-         Run pdb2gmx with optional "set" modifications
-         """
-        if not self.sim:
-            print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+        Run pdb2gmx with optional custom command set via 'set'.
+        """
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
-        if self.custom_commands["pdb2gmx"]:
-            print("[CUSTOM] Using custom pdb2gmx command")
-            self.sim.execute([self.custom_commands["pdb2gmx"]])
-        else:
-            print(f"Running pdb2gmx on {self.basename}.pdb...")
-            self.sim.pdb2gmx("15\n")
+        base = self.basename if self.basename else "PLACEHOLDER"
+
+        default_cmd = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+        command = self.custom_commands.get("pdb2gmx") or default_cmd
+
+        print(f"Running pdb2gmx for {self.basename}.pdb...")
+        run_gromacs_command(command, pipe_input="15\n", debug=self.debug)
 
     def do_solvate(self, arg):
-        """
-        Run solvate step after pdb2gmx. Usage:
-        solvate [box_options] [water_model]
-
-        Example:
-        solvate "-c -d 1.2 -bt dodecahedron" tip3p.gro
-        """
-        if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
-        # If there's a custom solvate command set
-        if hasattr(self, "custom_commands") and self.custom_commands.get("solvate"):
-            print("[CUSTOM] Using custom solvate command")
-            self.sim.execute([self.custom_commands["solvate"]])
-            return
+        base = self.basename if self.basename else "PLACEHOLDER"
 
+        default_box = " -c -d 1.0 -bt cubic"
+        default_water = "spc216.gro"
         parts = arg.strip().split()
-        box_options = parts[0] if len(parts) > 0 else " -c -d 1.0 -bt cubic"
-        water_model = parts[1] if len(parts) > 1 else "spc216.gro"
+        box_options = parts[0] if len(parts) > 0 else default_box
+        water_model = parts[1] if len(parts) > 1 else default_water
 
-        print(f"Running solvate with box options: '{box_options}' and water model: '{water_model}'")
-        self.sim.solvate(box_options=box_options, water_model=water_model)
+        default_cmds = [
+            f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{box_options}",
+            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top"
+        ]
 
+        if self.custom_commands.get("solvate"):
+            print("[CUSTOM] Using custom solvate command")
+            run_gromacs_command(self.custom_commands["solvate"], debug=self.debug)
+        else:
+            for cmd in default_cmds:
+                run_gromacs_command(cmd, debug=self.debug)
 
     def do_genion(self, arg):
         """
         Run genion step to neutralize system.
         Usage:
-            genion <index_code> [ion_options] [grompp_options]
-
-        Example:
-            genion 13 "\-pname NA -nname CL -conc 0.150 -neutral" ""
+            genion
+            (runs with default index = 13 and standard options unless overridden with `set`)
         """
-        if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
-        # If there's a custom genion command set
-        if hasattr(self, "custom_commands") and self.custom_commands.get("genion"):
+        base = self.basename if self.basename else "PLACEHOLDER"
+
+        if self.custom_commands.get("genion"):
             print("[CUSTOM] Using custom genion command")
-            self.sim.execute([self.custom_commands["genion"]])
+            run_gromacs_command(self.custom_commands["genion"], pipe_input="13\n", debug=self.debug)
             return
 
-        parts = arg.strip().split(maxsplit=2)
+        input_gro = f"{base}.solv.gro"
+        output_gro = f"{base}.solv.ions.gro"
+        tpr_out = "ions.tpr"
+        ion_options = "-pname NA -nname CL -conc 0.100 -neutral"
+        grompp_opts = ""
 
-        if len(parts) == 0:
-            print("Usage: genion <index_code> [ion_options] [grompp_options]")
-            return
+        grompp_cmd = f"{self.gmx_path} grompp -f ions.mdp -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
+        genion_cmd = f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
-        sol_code = parts[0]
-        ion_options = parts[1] if len(parts) > 1 else " -pname NA -nname CL -conc 0.100 -neutral"
-        grompp_options = parts[2] if len(parts) > 2 else ""
-
-        print(
-            f"Running genion with index code: '{sol_code}', ion_options: '{ion_options}', grompp_options: '{grompp_options}'")
-        self.sim.genion(sol_code, ion_options=ion_options, grompp_options=grompp_options)
+        print(f"Running genion for {base}...")
+        run_gromacs_command(grompp_cmd, debug=self.debug)
+        run_gromacs_command(genion_cmd, pipe_input="13\n", debug=self.debug)
 
     def do_em(self, arg):
         """
@@ -237,7 +248,7 @@ class GromacsCLI(cmd.Cmd):
             em minim.mdp .solv.ions em ""
         """
         if not self.sim:
-            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
@@ -367,7 +378,7 @@ class GromacsCLI(cmd.Cmd):
         Quit the CLI
         """
         self.print_random_quote()
-        print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
+        print("\nCopyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
         return True
 
     def print_banner(self):
