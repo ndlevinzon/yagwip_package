@@ -6,9 +6,10 @@ import os
 import argparse
 import sys
 import random
+import readline
 
 class GromacsCLI(cmd.Cmd):
-    intro = "Welcome to YAGWIP. Type help or ? to list commands."
+    intro = "Welcome to YAGWIP V0.2. Type help or ? to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
@@ -19,8 +20,14 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = None
         self.basename = None
         self.sim = None
-
         self.print_banner("src/assets/banner.txt")  # Show ASCII art at startup
+
+        # Save user modifications to default commands
+        self.custom_commands = {
+            "pdb2gmx": None,
+            "solvate": None,
+            "genion": None,
+        }
 
     def init_sim(self):
         if self.current_pdb_path:
@@ -59,6 +66,56 @@ class GromacsCLI(cmd.Cmd):
         else:
             print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
+    def do_set(self, arg):
+        """
+        Interactively set a custom command to override default GROMACS behavior.
+        Usage: set <command_name>
+        Example: set solvate
+        """
+        cmd_name = arg.strip().lower()
+        if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
+            print("Command not supported for override. Choose from: pdb2gmx, solvate, genion")
+            return
+
+        if not self.sim:
+            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        # Construct the default command dynamically
+        if cmd_name == "pdb2gmx":
+            default = self.sim.pdb2gmx("15\n")
+        elif cmd_name == "solvate":
+            default = self.sim.solvate()
+        elif cmd_name == "genion":
+            default = self.sim.genion()
+        else:
+            default = ""
+
+        current = self.custom_commands.get(cmd_name, default)
+
+        # Pre-fill the line using readline
+        def prefill():
+            readline.insert_text(current)
+            readline.redisplay()
+
+        try:
+            readline.set_startup_hook(prefill)
+            try:
+                new_command = input(f"{cmd_name}> ").strip()
+            finally:
+                readline.set_startup_hook(None)
+
+            if new_command.lower() == "quit":
+                print(f"[{cmd_name.upper()}] Command edit canceled.")
+                return
+            if new_command and new_command != current:
+                self.custom_commands[cmd_name] = new_command
+                print(f"[{cmd_name.upper()}] Custom command updated.")
+            else:
+                print(f"[{cmd_name.upper()}] No changes made.")
+        except KeyboardInterrupt:
+            print("\nCommand entry canceled.")
+
     def do_loadpdb(self, arg):
         """
         Search for a PDB file in the current directory and use it in the
@@ -82,15 +139,18 @@ class GromacsCLI(cmd.Cmd):
 
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx with optional extra args: pdb2gmx [extra_args]
-        """
+         Run pdb2gmx with optional "set" modifications
+         """
         if not self.sim:
             print("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
-        extra_args = arg.strip().lower()
-        print(f"Running pdb2gmx on {self.basename}.pdb...")
-        self.sim.pdb2gmx("15\n", opt_args=extra_args)
+        if self.custom_commands["pdb2gmx"]:
+            print("[CUSTOM] Using custom pdb2gmx command")
+            self.sim.execute([self.custom_commands["pdb2gmx"]])
+        else:
+            print(f"Running pdb2gmx on {self.basename}.pdb...")
+            self.sim.pdb2gmx("15\n")
 
     def do_solvate(self, arg):
         """
@@ -104,12 +164,19 @@ class GromacsCLI(cmd.Cmd):
             print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
+        # If there's a custom solvate command set
+        if hasattr(self, "custom_commands") and self.custom_commands.get("solvate"):
+            print("[CUSTOM] Using custom solvate command")
+            self.sim.execute([self.custom_commands["solvate"]])
+            return
+
         parts = arg.strip().split()
         box_options = parts[0] if len(parts) > 0 else " -c -d 1.0 -bt cubic"
         water_model = parts[1] if len(parts) > 1 else "spc216.gro"
 
         print(f"Running solvate with box options: '{box_options}' and water model: '{water_model}'")
         self.sim.solvate(box_options=box_options, water_model=water_model)
+
 
     def do_genion(self, arg):
         """
@@ -118,10 +185,16 @@ class GromacsCLI(cmd.Cmd):
             genion <index_code> [ion_options] [grompp_options]
 
         Example:
-            genion 13 "\\-pname NA -nname CL -conc 0.150 -neutral" ""
+            genion 13 "\-pname NA -nname CL -conc 0.150 -neutral" ""
         """
         if not self.sim:
             print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        # If there's a custom genion command set
+        if hasattr(self, "custom_commands") and self.custom_commands.get("genion"):
+            print("[CUSTOM] Using custom genion command")
+            self.sim.execute([self.custom_commands["genion"]])
             return
 
         parts = arg.strip().split(maxsplit=2)
@@ -272,56 +345,6 @@ class GromacsCLI(cmd.Cmd):
 
         mdname, pbc_code, pdb_code = parts
         self.sim.convert_production(mdname, pbc_code, pdb_code)
-
-    def do_rmsd_rmsf(self, arg):
-        """
-        Compute RMSD and RMSF from trajectory.
-        Usage:
-            rmsd_rmsf <mdname> [rmsd_code] [rmsf_code]
-        """
-        if not self.sim:
-            print("No simulation initialized.")
-            return
-
-        parts = arg.strip().split(maxsplit=2)
-        mdname = parts[0] if len(parts) > 0 else "md1ns"
-        rmsdcode = parts[1] if len(parts) > 1 else "4 4\n"
-        rmsfcode = parts[2] if len(parts) > 2 else "3\n"
-
-        self.sim.rmsd_rmsf(mdname, rmsdcode, rmsfcode)
-
-    def do_energy(self, arg):
-        """
-        Extract energy terms.
-        Usage:
-            energy <mdname> [energycode] [prefix]
-        """
-        if not self.sim:
-            print("No simulation initialized.")
-            return
-
-        parts = arg.strip().split(maxsplit=2)
-        mdname = parts[0] if len(parts) > 0 else "md1ns"
-        energycode = parts[1] if len(parts) > 1 else "10\n0\n"
-        prefix = parts[2] if len(parts) > 2 else "potential_"
-
-        self.sim.energy(mdname, energycode, prefix)
-
-    def do_count_atoms(self, _):
-        """
-        Get number of atoms in the solvated system.
-        Usage:
-            count_atoms
-        """
-        if not self.sim:
-            print("No simulation initialized.")
-            return
-
-        try:
-            n_atoms = self.sim.get_n_atoms_solvated()
-            print(f"Number of atoms: {n_atoms}")
-        except Exception as e:
-            print(f"Error reading atoms: {e}")
 
     def do_quit(self, _):
         """
