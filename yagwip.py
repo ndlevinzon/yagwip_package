@@ -373,7 +373,7 @@ class GromacsCLI(cmd.Cmd):
     def default(self, line):
         print(f"Unknown command: {line}")
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="GROLEAP - GROMACS CLI interface")
     parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive CLI")
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
@@ -397,3 +397,5 @@ if __name__ == "__main__":
         # Interactive mode
         cli.cmdloop()
 
+if __name__ == "__main__":
+    main()
