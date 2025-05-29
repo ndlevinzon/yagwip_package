@@ -15,7 +15,7 @@ setuptools.setup(
     python_requires='>=3.6',
     entry_points={
         "console_scripts": [
-            "yagwip = yagwip.yagwip:main",  # command → module:function
+            "yagwip = yagwip:main",  # command → module:function
         ],
     },
 )
