@@ -20,21 +20,16 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
         return
 
     try:
-        if pipe_input:
-            result = subprocess.run(
-                command,
-                input=pipe_input.encode(),
-                shell=True,
-                capture_output=True,
-                text=True
-            )
-        else:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True
-            )
+        # Encode pipe input only if it's a string
+        input_bytes = pipe_input.encode() if isinstance(pipe_input, str) else pipe_input
+
+        result = subprocess.run(
+            command,
+            input=input_bytes,
+            shell=True,
+            capture_output=True,
+            text=True
+        )
 
         if result.returncode != 0:
             print(f"[ERROR] Command failed with return code {result.returncode}")
@@ -45,6 +40,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
 
     except Exception as e:
         print(f"[EXCEPTION] Failed to run command: {e}")
+
 
 
 class GromacsCLI(cmd.Cmd):
