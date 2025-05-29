@@ -1,4 +1,4 @@
-from gromacs_sim import GromacsSim
+from .gromacs_sim import GromacsSim
 from logger import setup_logger
 import logging
 import cmd
