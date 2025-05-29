@@ -68,11 +68,6 @@ class GromacsCLI(cmd.Cmd):
             print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def do_set(self, arg):
-        """
-        Interactively set a custom command to override default GROMACS behavior.
-        Usage: set <command_name>
-        Example: set solvate
-        """
         cmd_name = arg.strip().lower()
         if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
             print("Command not supported for override. Choose from: pdb2gmx, solvate, genion")
@@ -82,6 +77,7 @@ class GromacsCLI(cmd.Cmd):
             print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
+        # Default GROMACS commands from sim
         default_cmds = {
             "pdb2gmx": self.sim.get_pdb2gmx_cmd(),
             "solvate": self.sim.get_solvate_cmd(),
@@ -90,43 +86,33 @@ class GromacsCLI(cmd.Cmd):
 
         current = self.custom_commands.get(cmd_name, default_cmds[cmd_name])
 
-        # Define tab completer for file paths and GROMACS flags
+        # TAB completion (for file path / flags)
         def completer(text, state):
-            line = readline.get_line_buffer()
-            if not line:
-                return None
-
-            # Split the line and get the last word
-            split_line = line.split()
-            if len(split_line) == 0:
-                return None
-
-            last = split_line[-1]
-            matches = [f for f in os.listdir('.') if f.startswith(last)]
-            if state < len(matches):
-                return matches[state]
+            options = [f for f in os.listdir('.') if f.startswith(text)]
+            if state < len(options):
+                return options[state]
             return None
 
         readline.set_completer_delims(' \t\n=')
-        readline.parse_and_bind("tab: complete")
         readline.set_completer(completer)
+        readline.parse_and_bind("tab: complete")
 
-        # Pre-fill the line with current/default command
+        # Pre-fill
         def prefill():
             readline.insert_text(current)
             readline.redisplay()
 
+        readline.set_startup_hook(prefill)
+
         try:
-            readline.set_startup_hook(prefill)
-            try:
-                new_command = input(f"{cmd_name}> ").strip()
-            finally:
-                readline.set_startup_hook(None)
-                readline.set_completer(None)
+            # This should now show:  pdb2gmx> [editable text here]
+            new_command = input(f"{cmd_name}> ")
+            new_command = new_command.strip()
 
             if new_command.lower() == "quit":
                 print(f"[{cmd_name.upper()}] Command edit canceled.")
                 return
+
             if new_command and new_command != current:
                 self.custom_commands[cmd_name] = new_command
                 print(f"[{cmd_name.upper()}] Custom command updated.")
@@ -134,6 +120,9 @@ class GromacsCLI(cmd.Cmd):
                 print(f"[{cmd_name.upper()}] No changes made.")
         except KeyboardInterrupt:
             print("\nCommand entry canceled.")
+        finally:
+            readline.set_startup_hook(None)
+            readline.set_completer(None)
 
     def do_loadpdb(self, arg):
         """
