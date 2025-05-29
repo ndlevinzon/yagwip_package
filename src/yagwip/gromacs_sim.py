@@ -27,7 +27,6 @@ class GromacsSim:
             print("[DEBUG] Logfile path will be:", self.logfile)
 
     def debug_on(self):
-        print("[DEBUG] Debug_Mode =", self.debug_mode)
         self.debug_mode = True
 
     def debug_off(self):
