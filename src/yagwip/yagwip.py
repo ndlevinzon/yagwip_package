@@ -352,13 +352,13 @@ class GromacsCLI(cmd.Cmd):
         Quit the CLI
         """
         self.print_random_quote()
-        print("Quitting YAGWIP.")
+        print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
         return True
 
     def print_banner(self):
         try:
             banner_path = files("yagwip.assets").joinpath("banner.txt")
-            with open(banner_path, "r") as f:
+            with open(banner_path, "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
             print("[!] Could not load banner:", e)
