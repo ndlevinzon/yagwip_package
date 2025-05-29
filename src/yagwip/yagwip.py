@@ -10,7 +10,7 @@ import random
 import readline
 
 class GromacsCLI(cmd.Cmd):
-    intro = "Welcome to YAGWIP V0.2. Type help or ? to list commands."
+    intro = "Welcome to YAGWIP V0.3. Type help or ? to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
