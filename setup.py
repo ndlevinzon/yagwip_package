@@ -18,5 +18,8 @@ setuptools.setup(
             "yagwip = yagwip.yagwip:main",
         ],
     },
+    include_package_data=True,
+    package_data={
+        "yagwip": ["assets/*.txt"],
 )
 
