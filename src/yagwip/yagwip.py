@@ -20,15 +20,12 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
         return
 
     try:
-        # Encode pipe input only if it's a string
-        input_bytes = pipe_input.encode() if isinstance(pipe_input, str) else pipe_input
-
         result = subprocess.run(
             command,
-            input=input_bytes,
+            input=pipe_input,  # Pass as-is; must be str if text=True
             shell=True,
             capture_output=True,
-            text=True
+            text=True  # Ensures input/output are handled as str, not bytes
         )
 
         if result.returncode != 0:
@@ -40,7 +37,6 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
 
     except Exception as e:
         print(f"[EXCEPTION] Failed to run command: {e}")
-
 
 
 class GromacsCLI(cmd.Cmd):
@@ -192,7 +188,7 @@ class GromacsCLI(cmd.Cmd):
         default_cmd = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         command = self.custom_commands.get("pdb2gmx") or default_cmd
 
-        print(f"Running pdb2gmx for {self.basename}.pdb...")
+        print(f"Running pdb2gmx for {self.basename or 'PLACEHOLDER'}.pdb...")
         run_gromacs_command(command, pipe_input="15\n", debug=self.debug)
 
     def do_solvate(self, arg):
