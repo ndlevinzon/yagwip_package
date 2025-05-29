@@ -131,6 +131,7 @@ class GromacsCLI(cmd.Cmd):
 
         Usage: loadPDB <filename.pdb>
         """
+        filename = arg.strip()
         if not filename:
             print("Usage: loadPDB <filename.pdb>")
             return
