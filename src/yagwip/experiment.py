@@ -1,5 +1,5 @@
 # Imports core GROMACS simulation tools and utilities
-from src.gromacs_sim import GromacsSim, correct_folder
+from gromacs_sim import GromacsSim
 import os
 from shutil import copyfile, copytree, rmtree
 import glob
