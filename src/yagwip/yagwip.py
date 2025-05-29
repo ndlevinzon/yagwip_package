@@ -14,20 +14,37 @@ import shlex
 
 def run_gromacs_command(command, pipe_input=None, debug=False):
     print(f"[RUNNING] {command}")
+
     if debug:
         print("[DEBUG MODE] Command not executed.")
         return
 
-    if pipe_input:
-        proc = subprocess.run(shlex.split(command), input=pipe_input.encode(), capture_output=True)
-    else:
-        proc = subprocess.run(shlex.split(command), capture_output=True)
+    try:
+        if pipe_input:
+            result = subprocess.run(
+                command,
+                input=pipe_input.encode(),
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+        else:
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True
+            )
 
-    if proc.returncode != 0:
-        print("[ERROR] Command failed:")
-        print(proc.stderr.decode())
-    else:
-        print(proc.stdout.decode())
+        if result.returncode != 0:
+            print(f"[ERROR] Command failed with return code {result.returncode}")
+            print("[STDERR]", result.stderr.strip())
+            print("[STDOUT]", result.stdout.strip())
+        else:
+            print(result.stdout.strip())
+
+    except Exception as e:
+        print(f"[EXCEPTION] Failed to run command: {e}")
 
 
 class GromacsCLI(cmd.Cmd):
