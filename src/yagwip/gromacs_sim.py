@@ -77,23 +77,23 @@ class GromacsSim:
         for cmd in cmds_list:
             print("  ", cmd)
 
-    def clean_all_except(self, files_list=None):
-        """
-        Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
-        .mdp, .py and .ff files.
-        """
-        if files_list is None:
-            files_list = ["{0}/{1}.pdb".format(self.basedir, self.basename)]
-            files_list += glob.glob("{0}/*.mdp".format(self.basedir))
-            files_list += glob.glob("{0}/*.py".format(self.basedir))
-            files_list += glob.glob("{0}/*.ff".format(self.basedir))
-
-        files_set = set(files_list)
-        cur_files = glob.glob("{0}/*".format(self.basedir))
-        for f in cur_files:
-            if f not in files_set:
-                s = "rm -r {0}".format(f)
-                self.execute([s])
+    # def clean_all_except(self, files_list=None):
+    #     """
+    #     Used to clean the simulation directory. By default, will remove everything except the initial .pdb,
+    #     .mdp, .py and .ff files.
+    #     """
+    #     if files_list is None:
+    #         files_list = ["{0}/{1}.pdb".format(self.basedir, self.basename)]
+    #         files_list += glob.glob("{0}/*.mdp".format(self.basedir))
+    #         files_list += glob.glob("{0}/*.py".format(self.basedir))
+    #         files_list += glob.glob("{0}/*.ff".format(self.basedir))
+    #
+    #     files_set = set(files_list)
+    #     cur_files = glob.glob("{0}/*".format(self.basedir))
+    #     for f in cur_files:
+    #         if f not in files_set:
+    #             s = "rm -r {0}".format(f)
+    #             self.execute([s])
 
     def pdb2gmx(self, pc, water="spce", opt_args=" -ignh", pdb_fn=None):
         # Run GROMACS pdb2gmx to generate topology and .gro file from .pdb
@@ -105,6 +105,13 @@ class GromacsSim:
         s = "{0} pdb2gmx -f {1} -o {2} -water {3}{4}".format(self.gmx_path, pdb_fn, gro_fn, water, opt_args)
         return self.execute([s], pipe_codes=[pc])
 
+    def get_pdb2gmx_cmd(self, water="spce", opt_args=" -ignh", pdb_fn=None):
+        if pdb_fn is None:
+            pdb_fn = f"{self.basename}.pdb"
+        opt_args = correct_opt_arg(opt_args)
+        gro_fn = f"{self.basename}.gro"
+        return f"{self.gmx_path} pdb2gmx -f {pdb_fn} -o {gro_fn} -water {water}{opt_args}"
+
     def solvate(self, box_options=" -c -d 1.0 -bt cubic", water_model="spc216.gro"):
         # Define simulation box and add water molecules
         box_options = correct_opt_arg(box_options)
@@ -115,6 +122,11 @@ class GromacsSim:
         s = "{0} editconf -f {1} -o {2}{3}".format(self.gmx_path, n1, n2, box_options)
         s2 = "{0} solvate -cp {1} -cs {2} -o {3} -p topol.top".format(self.gmx_path, n2, water_model, n3)
         return self.execute([s, s2])
+
+    def get_solvate_cmd(self, box_options=" -c -d 1.0 -bt cubic", water_model="spc216.gro"):
+        box_options = correct_opt_arg(box_options)
+        newbox = f"{self.basename}.newbox.gro"
+        return f"{self.gmx_path} solvate -cp {newbox} -cs {water_model} -o {self.basename}.solv.gro -p topol.top"
 
     def genion(self, sol_code, ion_options=" -pname NA -nname CL -conc 0.100 -neutral", grompp_options=""):
         # Replace solvent molecules with ions to neutralize system
@@ -128,6 +140,10 @@ class GromacsSim:
         pipe_codes = [None, sol_code]
 
         return self.execute([s, s2], pipe_codes=pipe_codes)
+
+    def get_genion_cmd(self, ion_options=" -pname NA -nname CL -conc 0.100 -neutral"):
+        ion_options = correct_opt_arg(ion_options)
+        return f"{self.gmx_path} genion -s ions.tpr -o {self.basename}.solv.ions.gro -p topol.top{ion_options}"
 
     def em(self, mdpfile="minim.mdp", suffix=".solv.ions", tprname="em", prefix = "mpirun ", mdrun_suffix=""):
         # Run energy minimization

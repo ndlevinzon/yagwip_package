@@ -82,19 +82,36 @@ class GromacsCLI(cmd.Cmd):
             print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
-        # Construct the default command dynamically
-        if cmd_name == "pdb2gmx":
-            default = self.sim.pdb2gmx("15\n")
-        elif cmd_name == "solvate":
-            default = self.sim.solvate()
-        elif cmd_name == "genion":
-            default = self.sim.genion()
-        else:
-            default = ""
+        default_cmds = {
+            "pdb2gmx": self.sim.get_pdb2gmx_cmd(),
+            "solvate": self.sim.get_solvate_cmd(),
+            "genion": self.sim.get_genion_cmd(),
+        }
 
-        current = self.custom_commands.get(cmd_name, default)
+        current = self.custom_commands.get(cmd_name, default_cmds[cmd_name])
 
-        # Pre-fill the line using readline
+        # Define tab completer for file paths and GROMACS flags
+        def completer(text, state):
+            line = readline.get_line_buffer()
+            if not line:
+                return None
+
+            # Split the line and get the last word
+            split_line = line.split()
+            if len(split_line) == 0:
+                return None
+
+            last = split_line[-1]
+            matches = [f for f in os.listdir('.') if f.startswith(last)]
+            if state < len(matches):
+                return matches[state]
+            return None
+
+        readline.set_completer_delims(' \t\n=')
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer(completer)
+
+        # Pre-fill the line with current/default command
         def prefill():
             readline.insert_text(current)
             readline.redisplay()
@@ -105,6 +122,7 @@ class GromacsCLI(cmd.Cmd):
                 new_command = input(f"{cmd_name}> ").strip()
             finally:
                 readline.set_startup_hook(None)
+                readline.set_completer(None)
 
             if new_command.lower() == "quit":
                 print(f"[{cmd_name.upper()}] Command edit canceled.")
@@ -137,6 +155,14 @@ class GromacsCLI(cmd.Cmd):
             self.init_sim()
         else:
             print(f"Error: '{filename}' not found.")
+
+    def complete_loadpdb(self, text, line, begidx, endidx):
+        """Autocomplete PDB filenames in current directory"""
+        if not text:
+            completions = [f for f in os.listdir() if f.endswith(".pdb")]
+        else:
+            completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
+        return completions
 
     def do_pdb2gmx(self, arg):
         """
@@ -222,7 +248,7 @@ class GromacsCLI(cmd.Cmd):
             em minim.mdp .solv.ions em ""
         """
         if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
@@ -244,7 +270,7 @@ class GromacsCLI(cmd.Cmd):
             nvt nvt.mdp .em nvt ""
         """
         if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
@@ -266,7 +292,7 @@ class GromacsCLI(cmd.Cmd):
             npt npt.mdp .nvt npt ""
         """
         if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
@@ -319,7 +345,7 @@ class GromacsCLI(cmd.Cmd):
             prepare_run [mdpfile] [inputname] [outname]
         """
         if not self.sim:
-            print("No simulation initialized.")
+            print("[!] No simulation initialized.")
             return
 
         parts = arg.strip().split()
@@ -371,13 +397,13 @@ class GromacsCLI(cmd.Cmd):
             if quotes:
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
-            print(f"(Unable to load quotes: {e})")
+            print(f"([!] Unable to load quotes: {e})")
 
     def default(self, line):
-        print(f"Unknown command: {line}")
+        print(f"[!] Unknown command: {line}")
 
 def main():
-    parser = argparse.ArgumentParser(description="GROLEAP - GROMACS CLI interface")
+    parser = argparse.ArgumentParser(description="YAGWIP - GROMACS CLI interface")
     parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive CLI")
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
 
@@ -391,7 +417,7 @@ def main():
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#"):  # skip empty lines and comments
-                        print(f"groLEAP> {line}")
+                        print(f"YAGWIP> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:
             print(f"Error: File '{args.file}' not found.")
@@ -399,6 +425,7 @@ def main():
     else:
         # Interactive mode
         cli.cmdloop()
+
 
 if __name__ == "__main__":
     main()
