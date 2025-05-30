@@ -7,11 +7,12 @@ Because YAGWIP is written entirely in Python3 with minimal dependencies, we have
 ## Project Directory Structure
 ```
 yagwip_package/
-├── templates/
-├── ligands/
-├── jobs/
-├── md_runs/
-├── run_experiment.py
+├── src/
+    ├── ligands/
+    ├── jobs/
+    ├── md_runs/
+├── docs/
+
 ```
 
 ## Modules Overview
