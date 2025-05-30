@@ -4,7 +4,7 @@ YAGWIP automates the setup and execution of GROMACS molecular dynamics (MD) simu
 
 ---
 
-![Alt Text](docs/yagwip1.0build_sim.png)
+![Alt Text](docs/yagwip1.0_build_sim.png)
  
 ## Features
 - Interactive command loop using Python’s built-in cmd module.
