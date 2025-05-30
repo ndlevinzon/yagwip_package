@@ -40,7 +40,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
 
 
 class GromacsCLI(cmd.Cmd):
-    intro = "Welcome to YAGWIP V0.3. Type help or ? to list commands."
+    intro = "Welcome to YAGWIP V0.4. Type help or ? to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
@@ -234,13 +234,14 @@ class GromacsCLI(cmd.Cmd):
             run_gromacs_command(self.custom_commands["genion"], pipe_input="13\n", debug=self.debug)
             return
 
+        default_ions = files("yagwip.templates").joinpath("ions.mdp")
         input_gro = f"{base}.solv.gro"
         output_gro = f"{base}.solv.ions.gro"
         tpr_out = "ions.tpr"
         ion_options = "-pname NA -nname CL -conc 0.100 -neutral"
         grompp_opts = ""
 
-        grompp_cmd = f"{self.gmx_path} grompp -f ions.mdp -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
+        grompp_cmd = f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
         genion_cmd = f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
         print(f"Running genion for {base}...")
@@ -410,6 +411,7 @@ class GromacsCLI(cmd.Cmd):
 
     def default(self, line):
         print(f"[!] Unknown command: {line}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="YAGWIP - GROMACS CLI interface")
