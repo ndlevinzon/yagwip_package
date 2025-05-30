@@ -24,5 +24,5 @@ pip install git+https://github.com/ndlevinzon/yagwip_package.git
 Once installed, YAGWIP can be run either interactively or via input file for easy high-throughput functionality:
 ```python
 yagwip or yagwip -i : launches CLI
-yagwip -f input.yag : launches input script
+yagwip -f files.in  : launches input script
 ```
