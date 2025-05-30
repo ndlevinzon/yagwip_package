@@ -7,14 +7,15 @@ Because YAGWIP is written entirely in Python3 with minimal dependencies, we have
 ## Project Directory Structure
 ```
 yagwip_package/
-├── src/
-    ├── yagwip/
-        ├── templates/
-        ├── assets/
-        ├── yagwip.py
-        ├── tremd_calc.py
-        ├── parser.py
-├── docs/
+    ├── src/
+        ├── yagwip/
+            ├── templates/
+            ├── assets/
+            ├── yagwip.py
+            ├── tremd_calc.py
+            ├── parser.py
+        ├── examples/
+    ├── docs/
 
 ```
 
