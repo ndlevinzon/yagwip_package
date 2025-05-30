@@ -23,6 +23,9 @@ setuptools.setup(
     },
     include_package_data=True,
     package_data={
-        "yagwip": ["assets/*.txt"],
+        "yagwip": [
+            "assets/*.txt",
+            "templates/*.mdp"
+        ],
     }
 )
