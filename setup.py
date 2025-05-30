@@ -13,6 +13,9 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
+    install_requires=[
+        "numpy",
+    ],
     entry_points={
         "console_scripts": [
             "yagwip = yagwip.yagwip:main",
@@ -23,4 +26,3 @@ setuptools.setup(
         "yagwip": ["assets/*.txt"],
     }
 )
-

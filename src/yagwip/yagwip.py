@@ -1,5 +1,6 @@
-from .gromacs_sim import GromacsSim
+from .parser import count_residues_in_gro
 from .logger import setup_logger
+from .tremd_calc import tremd_temperature_ladder
 from importlib.resources import files
 import logging
 import cmd
@@ -40,7 +41,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False):
 
 
 class GromacsCLI(cmd.Cmd):
-    intro = "Welcome to YAGWIP V0.4. Type help or ? to list commands."
+    intro = "Welcome to YAGWIP V0.4.5. Type help or ? to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
@@ -58,14 +59,6 @@ class GromacsCLI(cmd.Cmd):
             "solvate": None,
             "genion": None,
         }
-
-    def init_sim(self):
-        if self.current_pdb_path:
-            basedir = os.getcwd()
-            self.basename = os.path.splitext(os.path.basename(self.current_pdb_path))[0]
-            self.sim = GromacsSim(basedir, self.basename, self.gmx_path, debug_mode=self.debug)
-        else:
-            print("[!] Issue with gromacs_sim.py!")
 
     def do_debug(self, arg):
         """
@@ -313,6 +306,74 @@ class GromacsCLI(cmd.Cmd):
 
         print(f"Running NPT with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
         self.sim.npt(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+
+    def do_tremd(self, arg):
+        """
+        Usage:
+            TREMD calc <filename.gro>
+
+        This command calculates a temperature ladder for Temperature Replica Exchange MD.
+        It parses the .gro file to determine number of protein and water residues, then prompts
+        the user for Initial Temperature, Final Temperature, and Exchange Probability.
+        Output is written to 'temps.txt' as a comma-separated list.
+        """
+        args = arg.strip().split()
+        if len(args) != 2 or args[0].lower() != "calc":
+            print("Usage: TREMD calc <filename.gro>")
+            return
+
+        gro_path = os.path.abspath(args[1])
+        gro_basename = os.path.splitext(os.path.basename(gro_path))[0]
+        gro_dir = os.path.dirname(gro_path)
+
+        if not os.path.isfile(gro_path):
+            print(f"[ERROR] File not found: {gro_path}")
+            return
+
+        try:
+            protein_residues, water_residues = count_residues_in_gro(gro_path)
+            print(f"[INFO] Found {protein_residues} protein residues and {water_residues} water residues.")
+        except Exception as e:
+            print(f"[ERROR] Failed to parse .gro file: {e}")
+            return
+
+        try:
+            Tlow = float(input("Initial Temperature (K): "))
+            Thigh = float(input("Final Temperature (K): "))
+            Pdes = float(input("Exchange Probability (0 < P < 1): "))
+        except ValueError:
+            print("[ERROR] Invalid numeric input.")
+            return
+
+        if not (0 < Pdes < 1):
+            print("[ERROR] Exchange probability must be between 0 and 1.")
+            return
+        if Thigh <= Tlow:
+            print("[ERROR] Final temperature must be greater than initial temperature.")
+            return
+
+        try:
+            temperatures = tremd_temperature_ladder(
+                Tlow=Tlow,
+                Thigh=Thigh,
+                Pdes=Pdes,
+                Nw=water_residues,
+                Np=protein_residues,
+                Hff=0,
+                Vs=0,
+                PC=1,
+                WC=0,
+                Tol=0.0005
+            )
+            output = ", ".join(f"{t:.2f}" for t in temperatures)
+            output_file = os.path.join(gro_dir, f"{gro_basename}_temps.txt")
+
+            with open(output_file, "w") as f:
+                f.write(output + "\n")
+
+            print(f"[SUCCESS] Temperature ladder written to {output_file}:\n{output}")
+        except Exception as e:
+            print(f"[ERROR] Temperature calculation failed: {e}")
 
     def do_production(self, arg):
         """
