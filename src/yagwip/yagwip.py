@@ -189,7 +189,7 @@ class GromacsCLI(cmd.Cmd):
         command = self.custom_commands.get("pdb2gmx") or default_cmd
 
         print(f"Running pdb2gmx for {self.basename or 'PLACEHOLDER'}.pdb...")
-        run_gromacs_command(command, pipe_input="15\n", debug=self.debug)
+        run_gromacs_command(command, pipe_input="7\n", debug=self.debug)
 
     def do_solvate(self, arg):
         if not self.current_pdb_path and not self.debug:
@@ -387,13 +387,13 @@ class GromacsCLI(cmd.Cmd):
         Quit the CLI
         """
         self.print_random_quote()
-        print("\nCopyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
+        print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
         return True
 
     def print_banner(self):
         try:
             banner_path = files("yagwip.assets").joinpath("banner.txt")
-            with open(banner_path, "r", encoding="utf-8") as f:
+            with open(banner_path, 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
             print("[!] Could not load banner:", e)
