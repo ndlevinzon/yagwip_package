@@ -3,6 +3,8 @@
 YAGWIP automates the setup and execution of GROMACS molecular dynamics (MD) simulations, including support for both standard MD and Replica Exchange Molecular Dynamics (REMD). It provides tools to generate system files, manage directories, chain jobs on HPC clusters, and extract simulation results. It was originally developed by the talented Dr. Olivier Mailhot.
 
 ---
+
+![Alt Text](docs/yagwip1.0build_sim.png)
  
 ## Features
 - Interactive command loop using Python’s built-in cmd module.
