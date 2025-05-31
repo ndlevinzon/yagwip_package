@@ -74,4 +74,7 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 
         temps.append(round(T2, 2))
 
+    print("Please Cite: Alexandra Patriksson and David van der Spoel, A temperature predictor for parallel tempering \n"
+          "simulations Phys. Chem. Chem. Phys., 10 pp. 2073-2077 (2008)")
+
     return temps

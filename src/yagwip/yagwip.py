@@ -67,6 +67,9 @@ class GromacsCLI(cmd.Cmd):
             "genion": None,
         }
 
+    def default(self, line):
+        print(f"[!] Unknown command: {line}")
+
     def do_debug(self, arg):
         """
         Debug Mode: Simply prints commands to the command line that
@@ -97,6 +100,14 @@ class GromacsCLI(cmd.Cmd):
                 print("[DEBUG] Debug Mode OFF")
         else:
             print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
+
+    def print_banner(self):
+        try:
+            banner_path = files("yagwip.assets").joinpath("banner.txt")
+            with open(banner_path, 'r', encoding='utf-8') as f:
+                print(f.read())
+        except Exception as e:
+            print("[!] Could not load banner:", e)
 
     def do_set(self, arg):
         cmd_name = arg.strip().lower()
@@ -218,7 +229,7 @@ class GromacsCLI(cmd.Cmd):
             for cmd in default_cmds:
                 run_gromacs_command(cmd, debug=self.debug)
 
-    def do_genion(self, arg):
+    def do_genions(self, arg):
         """
         Run genion step to neutralize system.
         Usage:
@@ -252,69 +263,153 @@ class GromacsCLI(cmd.Cmd):
 
     def do_em(self, arg):
         """
-        Run energy minimization step.
-        Usage:
-            em [mdpfile] [suffix] [tprname] [mdrun_suffix]
-
-        Example:
-            em minim.mdp .solv.ions em ""
+        Run mdrun energy minimization with optional custom command set via 'set'.
         """
-        if not self.sim:
-            print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
-        mdpfile = parts[0] if len(parts) > 0 else "minim.mdp"
+
+        # Default values
+        default_mdp = files("yagwip.templates").joinpath("em.mdp")
+        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
         suffix = parts[1] if len(parts) > 1 else ".solv.ions"
         tprname = parts[2] if len(parts) > 2 else "em"
         mdrun_suffix = parts[3] if len(parts) > 3 else ""
 
-        print(f"Running EM with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
-        self.sim.em(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+        base = self.basename if self.basename else "PLACEHOLDER"
+        input_gro = f"{base}{suffix}.gro"
+        output_gro = f"{tprname}.gro"
+        topol = "topol.top"
+        tpr_file = f"{tprname}.tpr"
+
+        # Construct GROMACS commands
+        grompp_cmd = (
+            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
+            f"-p {topol} -o {tpr_file}"
+        )
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
+
+        print(f"Running energy minimization for {base}...")
+        run_gromacs_command(grompp_cmd, debug=self.debug)
+        run_gromacs_command(mdrun_cmd, debug=self.debug)
 
     def do_nvt(self, arg):
         """
-        Run NVT equilibration step.
+        Run NVT equilibration step using GROMACS.
         Usage:
             nvt [mdpfile] [suffix] [tprname] [mdrun_suffix]
 
         Example:
             nvt nvt.mdp .em nvt ""
         """
-        if not self.sim:
-            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
-        mdpfile = parts[0] if len(parts) > 0 else "nvt.mdp"
+
+        # Defaults
+        default_mdp = files("yagwip.templates").joinpath("nvt.mdp")
+        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
         suffix = parts[1] if len(parts) > 1 else ".em"
         tprname = parts[2] if len(parts) > 2 else "nvt"
         mdrun_suffix = parts[3] if len(parts) > 3 else ""
 
-        print(f"Running NVT with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
-        self.sim.nvt(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+        base = self.basename if self.basename else "PLACEHOLDER"
+        input_gro = f"{base}{suffix}.gro"
+        output_gro = f"{tprname}.gro"
+        topol = "topol.top"
+        tpr_file = f"{tprname}.tpr"
+
+        # Construct GROMACS commands
+        grompp_cmd = (
+            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
+            f"-p {topol} -o {tpr_file}"
+        )
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
+
+        print(f"Running NVT equilibration for {base}...")
+        run_gromacs_command(grompp_cmd, debug=self.debug)
+        run_gromacs_command(mdrun_cmd, debug=self.debug)
 
     def do_npt(self, arg):
         """
-        Run NPT equilibration step.
+        Run NPT equilibration step using GROMACS.
         Usage:
             npt [mdpfile] [suffix] [tprname] [mdrun_suffix]
 
         Example:
             npt npt.mdp .nvt npt ""
         """
-        if not self.sim:
-            print("[!] No simulation initialized. Use `loadPDB <filename.pdb>` first.")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return
 
         parts = arg.strip().split(maxsplit=3)
-        mdpfile = parts[0] if len(parts) > 0 else "npt.mdp"
+
+        # Defaults
+        default_mdp = files("yagwip.templates").joinpath("npt.mdp")
+        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
         suffix = parts[1] if len(parts) > 1 else ".nvt"
         tprname = parts[2] if len(parts) > 2 else "npt"
         mdrun_suffix = parts[3] if len(parts) > 3 else ""
 
-        print(f"Running NPT with: mdpfile={mdpfile}, suffix={suffix}, tprname={tprname}")
-        self.sim.npt(mdpfile=mdpfile, suffix=suffix, tprname=tprname, mdrun_suffix=mdrun_suffix)
+        base = self.basename if self.basename else "PLACEHOLDER"
+        input_gro = f"{base}{suffix}.gro"
+        output_gro = f"{tprname}.gro"
+        topol = "topol.top"
+        tpr_file = f"{tprname}.tpr"
+
+        # Construct GROMACS commands
+        grompp_cmd = (
+            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
+            f"-p {topol} -o {tpr_file}"
+        )
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
+
+        print(f"Running NPT equilibration for {base}...")
+        run_gromacs_command(grompp_cmd, debug=self.debug)
+        run_gromacs_command(mdrun_cmd, debug=self.debug)
+
+    def do_production(self, arg):
+        """
+        Run production simulation using GROMACS.
+        Usage:
+            production [mdpfile] [inputname] [outname] [mdrun_suffix]
+
+        Example:
+            production md1ns.mdp npt. md1ns ""
+        """
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            return
+
+        parts = arg.strip().split(maxsplit=3)
+
+        # Default values
+        default_mdp = files("yagwip.templates").joinpath("production.mdp")
+        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
+        inputname = parts[1] if len(parts) > 1 else "npt."
+        outname = parts[2] if len(parts) > 2 else "md1ns"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        base = self.basename if self.basename else "PLACEHOLDER"
+        input_gro = f"{inputname}gro"
+        topol = "topol.top"
+        tpr_file = f"{outname}.tpr"
+
+        # Construct GROMACS commands
+        grompp_cmd = (
+            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
+            f"-p {topol} -o {tpr_file}"
+        )
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {outname} {mdrun_suffix}"
+
+        print(f"Running production MD for {base}...")
+        run_gromacs_command(grompp_cmd, debug=self.debug)
+        run_gromacs_command(mdrun_cmd, debug=self.debug)
 
     def do_tremd(self, arg):
         """
@@ -384,27 +479,6 @@ class GromacsCLI(cmd.Cmd):
         except Exception as e:
             print(f"[ERROR] Temperature calculation failed: {e}")
 
-    def do_production(self, arg):
-        """
-        Run production simulation.
-        Usage:
-            production [mdpfile] [inputname] [outname] [mdrun_suffix]
-        Example:
-            production md1ns.mdp npt. md1ns ""
-        """
-        if not self.sim:
-            print("No simulation initialized. Use `loadPDB <filename.pdb>` first.")
-            return
-
-        parts = arg.strip().split(maxsplit=3)
-        mdpfile = parts[0] if len(parts) > 0 else "md1ns.mdp"
-        inputname = parts[1] if len(parts) > 1 else "npt."
-        outname = parts[2] if len(parts) > 2 else "md1ns"
-        mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-        self.sim.production(mdpfile, inputname, outname, mdrun_suffix=mdrun_suffix)
-
-
     def do_quit(self, _):
         """
         Quit the CLI
@@ -412,14 +486,6 @@ class GromacsCLI(cmd.Cmd):
         self.print_random_quote()
         print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
         return True
-
-    def print_banner(self):
-        try:
-            banner_path = files("yagwip.assets").joinpath("banner.txt")
-            with open(banner_path, 'r', encoding='utf-8') as f:
-                print(f.read())
-        except Exception as e:
-            print("[!] Could not load banner:", e)
 
     def print_random_quote(self):
         try:
@@ -430,9 +496,6 @@ class GromacsCLI(cmd.Cmd):
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
             print(f"([!] Unable to load quotes: {e})")
-
-    def default(self, line):
-        print(f"[!] Unknown command: {line}")
 
 
 def main():
