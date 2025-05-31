@@ -1,6 +1,7 @@
 import numpy as np
 import math
 
+
 # Based on http://dx.doi.org/10.1039/b716554d
 def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Alg=0, Tol=0.001):
     # Constants
@@ -23,9 +24,6 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
     NC = Nh if PC == 1 else Np if PC == 2 else 0
     Ndf = (9 - WC) * Nw + 3 * Np - NC - VC
     FlexEner = 0.5 * kB * (NC + VC + WC * Nw)
-
-    def calc_mu(Nw, Np, T, FEner):
-        return ((A0 + A1 * T) * Nw + (B0 + B1 * T) * Np - T * FEner)
 
     def myeval(m12, s12, CC, u):
         arg = -CC * u - (u - m12) ** 2 / (2 * s12 ** 2)
@@ -52,7 +50,7 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
             iter_count += 1
             mu12 = (T2 - T1) * ((A1 * Nw) + (B1 * Nprot) - FlexEner)
             CC = (1 / kB) * ((1 / T1) - (1 / T2))
-            var = Ndf * (D1**2 * (T1**2 + T2**2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0**2)
+            var = Ndf * (D1 ** 2 * (T1 ** 2 + T2 ** 2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0 ** 2)
             sig12 = np.sqrt(var)
 
             I1 = 0.5 * math.erfc(mu12 / (sig12 * np.sqrt(2)))

@@ -14,46 +14,53 @@ import shlex
 
 
 def run_gromacs_command(command, pipe_input=None, debug=False):
+    # Print the command to be executed, regardless of mode
     print(f"[RUNNING] {command}")
 
+    # In debug mode, do not execute the command—just return after printing
     if debug:
         print("[DEBUG MODE] Command not executed.")
         return
 
+    # Execute the shell command with optional piped input
     try:
         result = subprocess.run(
             command,
-            input=pipe_input,  # Pass as-is; must be str if text=True
-            shell=True,
-            capture_output=True,
-            text=True  # Ensures input/output are handled as str, not bytes
+            input=pipe_input,       # Piped input to the command (e.g., "13\n" for genion). Must be a str if text=True
+            shell=True,             # Run command through the shell; required for command string parsing
+            capture_output=True,    # Capture stdout and stderr for logging
+            text=True               # Treat input/output as text (str) instead of bytes
         )
 
+        # Check the return code to determine if the command failed
         if result.returncode != 0:
             print(f"[ERROR] Command failed with return code {result.returncode}")
-            print("[STDERR]", result.stderr.strip())
-            print("[STDOUT]", result.stdout.strip())
+            print("[STDERR]", result.stderr.strip())    # Print error output from the command
+            print("[STDOUT]", result.stdout.strip())    # Sometimes commands print info to stdout even on failure
         else:
-            print(result.stdout.strip())
+            print(result.stdout.strip())                # Print standard output on success
 
+    # Catch and log any Python-side execution errors (e.g., bad shell syntax, missing command)
     except Exception as e:
         print(f"[EXCEPTION] Failed to run command: {e}")
 
 
 class GromacsCLI(cmd.Cmd):
+    # Intro message and prompt for the interactive CLI
     intro = "Welcome to YAGWIP V0.4.5. Type help or ? to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
         super().__init__()
-        self.debug = False
-        self.gmx_path = gmx_path
-        self.logger = setup_logger(debug_mode=self.debug)
-        self.current_pdb_path = None
-        self.basename = None
-        self.print_banner()
-        self.sim = None
+        self.debug = False                                  # Toggle debug mode
+        self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
+        self.logger = setup_logger(debug_mode=self.debug)   # Full path to the loaded PDB file
+        self.current_pdb_path = None                        # Full path to the loaded PDB file
+        self.basename = None                                # Base filename (without extension)
+        self.print_banner()                                 # Prints intro banner to command line
+        self.sim = None                                     # Placeholder for GromacsSim instance
 
+        # Dictionary of custom command overrides set by the user
         self.custom_commands = {
             "pdb2gmx": None,
             "solvate": None,
@@ -70,13 +77,15 @@ class GromacsCLI(cmd.Cmd):
 
         arg = arg.lower().strip()
 
+        # Parse input to determine new debug state
         if arg == "on":
             self.debug = True
         elif arg == "off":
-            self.debug = False
+            self.debug = False          # Toggle if no explicit argument
         else:
             self.debug = not self.debug
 
+        # Update logger and simulation mode
         self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
 
         if self.sim:
@@ -395,54 +404,6 @@ class GromacsCLI(cmd.Cmd):
 
         self.sim.production(mdpfile, inputname, outname, mdrun_suffix=mdrun_suffix)
 
-    def do_production_finished(self, arg):
-        """
-        Check whether the production run finished successfully.
-        Usage:
-            production_finished [mdname]
-        """
-        if not self.sim:
-            print("No simulation initialized.")
-            return
-
-        mdname = arg.strip() if arg.strip() else "md1ns"
-        result = self.sim.production_finished(mdname)
-        print(f"Production run {'finished' if result else 'not finished'}.")
-
-    def do_prepare_run(self, arg):
-        """
-        Prepare TPR file for production run.
-        Usage:
-            prepare_run [mdpfile] [inputname] [outname]
-        """
-        if not self.sim:
-            print("[!] No simulation initialized.")
-            return
-
-        parts = arg.strip().split()
-        mdpfile = parts[0] if len(parts) > 0 else "md1ns.mdp"
-        inputname = parts[1] if len(parts) > 1 else "npt."
-        outname = parts[2] if len(parts) > 2 else "md1ns"
-
-        self.sim.prepare_run(mdpfile, inputname, outname)
-
-    def do_convert_production(self, arg):
-        """
-        Convert trajectory: remove PBC jumps and convert to PDB.
-        Usage:
-            convert_production <mdname> <pbc_code> <pdb_code>
-        """
-        if not self.sim:
-            print("No simulation initialized.")
-            return
-
-        parts = arg.strip().split(maxsplit=2)
-        if len(parts) < 3:
-            print("Usage: convert_production <mdname> <pbc_code> <pdb_code>")
-            return
-
-        mdname, pbc_code, pdb_code = parts
-        self.sim.convert_production(mdname, pbc_code, pdb_code)
 
     def do_quit(self, _):
         """
