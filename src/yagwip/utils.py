@@ -1,5 +1,50 @@
+import subprocess
 import numpy as np
 import math
+
+
+def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
+    if logger:
+        logger.info(f"[RUNNING] {command}")
+    else:
+        print(f"[RUNNING] {command}")
+
+    if debug:
+        if logger:
+            logger.debug("[DEBUG MODE] Command not executed.")
+        else:
+            print("[DEBUG MODE] Command not executed.")
+        return
+
+    try:
+        result = subprocess.run(
+            command,
+            input=pipe_input,
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            if logger:
+                logger.error(f"Command failed with return code {result.returncode}")
+                logger.error(result.stderr.strip())
+                logger.info(result.stdout.strip())
+            else:
+                print(f"[ERROR] Command failed with return code {result.returncode}")
+                print("[STDERR]", result.stderr.strip())
+                print("[STDOUT]", result.stdout.strip())
+        else:
+            if logger:
+                logger.info(result.stdout.strip())
+            else:
+                print(result.stdout.strip())
+
+    except Exception as e:
+        if logger:
+            logger.exception(f"Failed to run command: {e}")
+        else:
+            print(f"[EXCEPTION] Failed to run command: {e}")
 
 
 # Based on http://dx.doi.org/10.1039/b716554d

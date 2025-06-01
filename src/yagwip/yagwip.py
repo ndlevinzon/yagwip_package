@@ -1,7 +1,7 @@
-from .parser import count_residues_in_gro
-from .logger import setup_logger
-from .tremd_calc import tremd_temperature_ladder
+from .build import run_pdb2gmx, run_solvate, run_genions
+from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
 from importlib.resources import files
+import importlib.metadata
 import logging
 import cmd
 import os
@@ -9,45 +9,41 @@ import argparse
 import sys
 import random
 import readline
-import subprocess
-import shlex
 
 
-def run_gromacs_command(command, pipe_input=None, debug=False):
-    # Print the command to be executed, regardless of mode
-    print(f"[RUNNING] {command}")
+# TODO: Still need to test logging functionality
+def setup_logger(debug_mode=False, basename=None, output_dir=None):
+    logger = logging.getLogger("yagwip")
+    logger.setLevel(logging.DEBUG)  # Capture everything; handlers will filter
 
-    # In debug mode, do not execute the command—just return after printing
-    if debug:
-        print("[DEBUG MODE] Command not executed.")
-        return
+    # Clear previous handlers to avoid duplicates
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
-    # Execute the shell command with optional piped input
-    try:
-        result = subprocess.run(
-            command,
-            input=pipe_input,       # Piped input to the command (e.g., "13\n" for genion). Must be a str if text=True
-            shell=True,             # Run command through the shell; required for command string parsing
-            capture_output=True,    # Capture stdout and stderr for logging
-            text=True               # Treat input/output as text (str) instead of bytes
-        )
+    # Console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
-        # Check the return code to determine if the command failed
-        if result.returncode != 0:
-            print(f"[ERROR] Command failed with return code {result.returncode}")
-            print("[STDERR]", result.stderr.strip())    # Print error output from the command
-            print("[STDOUT]", result.stdout.strip())    # Sometimes commands print info to stdout even on failure
-        else:
-            print(result.stdout.strip())                # Print standard output on success
+    # File handler only if debug is off
+    if not debug_mode and basename and output_dir:
+        log_file = os.path.join(output_dir, f"{basename}.log")
+        fh = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        logger.debug(f"[LOGGING] Logging to {log_file}")
 
-    # Catch and log any Python-side execution errors (e.g., bad shell syntax, missing command)
-    except Exception as e:
-        print(f"[EXCEPTION] Failed to run command: {e}")
+    return logger
 
 
 class GromacsCLI(cmd.Cmd):
+    __version__ = importlib.metadata.version("yagwip")
+
     # Intro message and prompt for the interactive CLI
-    intro = "Welcome to YAGWIP V0.4.5. Type help or ? to list commands."
+    intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
@@ -109,6 +105,7 @@ class GromacsCLI(cmd.Cmd):
         except Exception as e:
             print("[!] Could not load banner:", e)
 
+# TODO: Still need to find a way to implement user customizations elegantly
     def do_set(self, arg):
         cmd_name = arg.strip().lower()
         if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
@@ -147,7 +144,6 @@ class GromacsCLI(cmd.Cmd):
         readline.set_startup_hook(prefill)
 
         try:
-            # This should now show:  pdb2gmx> [editable text here]
             new_command = input(f"{cmd_name}> ")
             new_command = new_command.strip()
 
@@ -180,7 +176,7 @@ class GromacsCLI(cmd.Cmd):
         else:
             print(f"Error: '{filename}' not found.")
 
-    def complete_loadpdb(self, text, line, begidx, endidx):
+    def complete_loadpdb(self, text):
         """Autocomplete PDB filenames in current directory"""
         if not text:
             completions = [f for f in os.listdir() if f.endswith(".pdb")]
@@ -188,296 +184,68 @@ class GromacsCLI(cmd.Cmd):
             completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
         return completions
 
-    def do_pdb2gmx(self, arg):
+    def do_pdb2gmx(self):
         """
-        Run pdb2gmx with optional custom command set via 'set'.
-        """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
-            return
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-
-        default_cmd = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
-        command = self.custom_commands.get("pdb2gmx") or default_cmd
-
-        print(f"Running pdb2gmx for {self.basename or 'PLACEHOLDER'}.pdb...")
-        run_gromacs_command(command, pipe_input="7\n", debug=self.debug)
-
-    def do_solvate(self, arg):
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
-            return
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-
-        default_box = " -c -d 1.0 -bt cubic"
-        default_water = "spc216.gro"
-        parts = arg.strip().split()
-        box_options = parts[0] if len(parts) > 0 else default_box
-        water_model = parts[1] if len(parts) > 1 else default_water
-
-        default_cmds = [
-            f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{box_options}",
-            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top"
-        ]
-
-        if self.custom_commands.get("solvate"):
-            print("[CUSTOM] Using custom solvate command")
-            run_gromacs_command(self.custom_commands["solvate"], debug=self.debug)
-        else:
-            for cmd in default_cmds:
-                run_gromacs_command(cmd, debug=self.debug)
-
-    def do_genions(self, arg):
-        """
-        Run genion step to neutralize system.
-        Usage:
-            genion
-            (runs with default index = 13 and standard options unless overridden with `set`)
+        Run pdb2gmx with optional custom command override. This command should be run after loadpdb.
+        Usage: "pdb2gmx"
+        Other Options: use "set pdb2gmx" to override defaults
         """
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB loaded.")
             return
+        run_pdb2gmx(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), self.debug)
 
-        base = self.basename if self.basename else "PLACEHOLDER"
-
-        if self.custom_commands.get("genion"):
-            print("[CUSTOM] Using custom genion command")
-            run_gromacs_command(self.custom_commands["genion"], pipe_input="13\n", debug=self.debug)
+    def do_solvate(self):
+        """
+        Run solvate with optional custom command override. This command should be run after pdb2gmx.
+        Usage: "solvate"
+        Other Options: use "set solvate" to override defaults
+        """
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded.")
             return
+        run_solvate(self.gmx_path, self.basename, self.custom_commands.get("solvate"), self.debug)
 
-        default_ions = files("yagwip.templates").joinpath("ions.mdp")
-        input_gro = f"{base}.solv.gro"
-        output_gro = f"{base}.solv.ions.gro"
-        tpr_out = "ions.tpr"
-        ion_options = "-pname NA -nname CL -conc 0.100 -neutral"
-        grompp_opts = ""
-
-        grompp_cmd = f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
-        genion_cmd = f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
-
-        print(f"Running genion for {base}...")
-        run_gromacs_command(grompp_cmd, debug=self.debug)
-        run_gromacs_command(genion_cmd, pipe_input="13\n", debug=self.debug)
+    def do_genions(self):
+        """
+        Run genions with optional custom command override. This command should be run after solvate.
+        Usage: "genions"
+        Other Options: use "set genions" to override defaults
+        """
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded.")
+            return
+        run_genions(self.gmx_path, self.basename, self.custom_commands.get("genions"), self.debug)
 
     def do_em(self, arg):
-        """
-        Run mdrun energy minimization with optional custom command set via 'set'.
-        """
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB loaded.")
             return
-
-        parts = arg.strip().split(maxsplit=3)
-
-        # Default values
-        default_mdp = files("yagwip.templates").joinpath("em.mdp")
-        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-        suffix = parts[1] if len(parts) > 1 else ".solv.ions"
-        tprname = parts[2] if len(parts) > 2 else "em"
-        mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-        input_gro = f"{base}{suffix}.gro"
-        output_gro = f"{tprname}.gro"
-        topol = "topol.top"
-        tpr_file = f"{tprname}.tpr"
-
-        # Construct GROMACS commands
-        grompp_cmd = (
-            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
-            f"-p {topol} -o {tpr_file}"
-        )
-        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
-
-        print(f"Running energy minimization for {base}...")
-        run_gromacs_command(grompp_cmd, debug=self.debug)
-        run_gromacs_command(mdrun_cmd, debug=self.debug)
+        run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
     def do_nvt(self, arg):
-        """
-        Run NVT equilibration step using GROMACS.
-        Usage:
-            nvt [mdpfile] [suffix] [tprname] [mdrun_suffix]
-
-        Example:
-            nvt nvt.mdp .em nvt ""
-        """
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB loaded.")
             return
-
-        parts = arg.strip().split(maxsplit=3)
-
-        # Defaults
-        default_mdp = files("yagwip.templates").joinpath("nvt.mdp")
-        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-        suffix = parts[1] if len(parts) > 1 else ".em"
-        tprname = parts[2] if len(parts) > 2 else "nvt"
-        mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-        input_gro = f"{base}{suffix}.gro"
-        output_gro = f"{tprname}.gro"
-        topol = "topol.top"
-        tpr_file = f"{tprname}.tpr"
-
-        # Construct GROMACS commands
-        grompp_cmd = (
-            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
-            f"-p {topol} -o {tpr_file}"
-        )
-        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
-
-        print(f"Running NVT equilibration for {base}...")
-        run_gromacs_command(grompp_cmd, debug=self.debug)
-        run_gromacs_command(mdrun_cmd, debug=self.debug)
+        run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
     def do_npt(self, arg):
-        """
-        Run NPT equilibration step using GROMACS.
-        Usage:
-            npt [mdpfile] [suffix] [tprname] [mdrun_suffix]
-
-        Example:
-            npt npt.mdp .nvt npt ""
-        """
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB loaded.")
             return
-
-        parts = arg.strip().split(maxsplit=3)
-
-        # Defaults
-        default_mdp = files("yagwip.templates").joinpath("npt.mdp")
-        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-        suffix = parts[1] if len(parts) > 1 else ".nvt"
-        tprname = parts[2] if len(parts) > 2 else "npt"
-        mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-        input_gro = f"{base}{suffix}.gro"
-        output_gro = f"{tprname}.gro"
-        topol = "topol.top"
-        tpr_file = f"{tprname}.tpr"
-
-        # Construct GROMACS commands
-        grompp_cmd = (
-            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
-            f"-p {topol} -o {tpr_file}"
-        )
-        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
-
-        print(f"Running NPT equilibration for {base}...")
-        run_gromacs_command(grompp_cmd, debug=self.debug)
-        run_gromacs_command(mdrun_cmd, debug=self.debug)
+        run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
     def do_production(self, arg):
-        """
-        Run production simulation using GROMACS.
-        Usage:
-            production [mdpfile] [inputname] [outname] [mdrun_suffix]
-
-        Example:
-            production md1ns.mdp npt. md1ns ""
-        """
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+            print("[!] No PDB loaded.")
             return
-
-        parts = arg.strip().split(maxsplit=3)
-
-        # Default values
-        default_mdp = files("yagwip.templates").joinpath("production.mdp")
-        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-        inputname = parts[1] if len(parts) > 1 else "npt."
-        outname = parts[2] if len(parts) > 2 else "md1ns"
-        mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-        base = self.basename if self.basename else "PLACEHOLDER"
-        input_gro = f"{inputname}gro"
-        topol = "topol.top"
-        tpr_file = f"{outname}.tpr"
-
-        # Construct GROMACS commands
-        grompp_cmd = (
-            f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} "
-            f"-p {topol} -o {tpr_file}"
-        )
-        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {outname} {mdrun_suffix}"
-
-        print(f"Running production MD for {base}...")
-        run_gromacs_command(grompp_cmd, debug=self.debug)
-        run_gromacs_command(mdrun_cmd, debug=self.debug)
+        run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
     def do_tremd(self, arg):
-        """
-        Usage:
-            TREMD calc <filename.gro>
-
-        This command calculates a temperature ladder for Temperature Replica Exchange MD.
-        It parses the .gro file to determine number of protein and water residues, then prompts
-        the user for Initial Temperature, Final Temperature, and Exchange Probability.
-        Output is written to 'temps.txt' as a comma-separated list.
-        """
-        args = arg.strip().split()
-        if len(args) != 2 or args[0].lower() != "calc":
-            print("Usage: TREMD calc <filename.gro>")
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded.")
             return
-
-        gro_path = os.path.abspath(args[1])
-        gro_basename = os.path.splitext(os.path.basename(gro_path))[0]
-        gro_dir = os.path.dirname(gro_path)
-
-        if not os.path.isfile(gro_path):
-            print(f"[ERROR] File not found: {gro_path}")
-            return
-
-        try:
-            protein_residues, water_residues = count_residues_in_gro(gro_path)
-            print(f"[INFO] Found {protein_residues} protein residues and {water_residues} water residues.")
-        except Exception as e:
-            print(f"[ERROR] Failed to parse .gro file: {e}")
-            return
-
-        try:
-            Tlow = float(input("Initial Temperature (K): "))
-            Thigh = float(input("Final Temperature (K): "))
-            Pdes = float(input("Exchange Probability (0 < P < 1): "))
-        except ValueError:
-            print("[ERROR] Invalid numeric input.")
-            return
-
-        if not (0 < Pdes < 1):
-            print("[ERROR] Exchange probability must be between 0 and 1.")
-            return
-        if Thigh <= Tlow:
-            print("[ERROR] Final temperature must be greater than initial temperature.")
-            return
-
-        try:
-            temperatures = tremd_temperature_ladder(
-                Tlow=Tlow,
-                Thigh=Thigh,
-                Pdes=Pdes,
-                Nw=water_residues,
-                Np=protein_residues,
-                Hff=0,
-                Vs=0,
-                PC=1,
-                WC=0,
-                Tol=0.0005
-            )
-            output = ", ".join(f"{t:.2f}" for t in temperatures)
-            output_file = os.path.join(gro_dir, f"{gro_basename}_temps.txt")
-
-            with open(output_file, "w") as f:
-                f.write(output + "\n")
-
-            print(f"[SUCCESS] Temperature ladder written to {output_file}:\n{output}")
-        except Exception as e:
-            print(f"[ERROR] Temperature calculation failed: {e}")
+        run_tremd(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), self.debug)
 
     def do_quit(self, _):
         """
