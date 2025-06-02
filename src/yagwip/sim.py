@@ -1,6 +1,5 @@
 import os
-from .utils import run_gromacs_command, tremd_temperature_ladder
-from .parser import count_residues_in_gro
+from .utils import run_gromacs_command, tremd_temperature_ladder, count_residues_in_gro
 from importlib.resources import files
 
 
