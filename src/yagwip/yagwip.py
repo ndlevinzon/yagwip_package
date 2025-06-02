@@ -216,7 +216,7 @@ class GromacsCLI(cmd.Cmd):
 
         Usage: tremd
         """
-        run_tremd(self.gmx_path, self.basename, debug=self.debug)
+        run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
     def do_quit(self, _):
         """

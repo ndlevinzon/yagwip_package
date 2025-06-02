@@ -120,16 +120,13 @@ def run_production(gmx_path, basename, arg="", debug=False, logger=None):
         run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
 
 
-def run_tremd(arg):
+def run_tremd(gmx_path, basename, arg="", debug=False):
     args = arg.strip().split()
     if len(args) != 2 or args[0].lower() != "calc":
-        print("Usage: TREMD calc <filename.gro>")
+        print("Usage: tremd calc <filename.gro>")
         return
 
     gro_path = os.path.abspath(args[1])
-    gro_basename = os.path.splitext(os.path.basename(gro_path))[0]
-    gro_dir = os.path.dirname(gro_path)
-
     if not os.path.isfile(gro_path):
         print(f"[ERROR] File not found: {gro_path}")
         return
@@ -169,12 +166,18 @@ def run_tremd(arg):
             WC=0,
             Tol=0.0005
         )
-        output = ", ".join(f"{t:.2f}" for t in temperatures)
-        output_file = os.path.join(gro_dir, f"{gro_basename}_temps.txt")
 
-        with open(output_file, "w") as f:
-            f.write(output + "\n")
+        if debug:
+            print("[DEBUG MODE] TREMD temperature ladder:")
+            for i, temp in enumerate(temperatures):
+                print(f"Replica {i + 1}: {temp:.2f} K")
+        else:
+            out_file = "TREMD_temp_ranges.txt"
+            with open(out_file, 'w') as f:
+                f.write("# TREMD Temperature Ladder\n")
+                for i, temp in enumerate(temperatures):
+                    f.write(f"Replica {i + 1}: {temp:.2f} K\n")
+            print(f"[TREMD] Temperature ladder saved to {out_file}")
 
-        print(f"[SUCCESS] Temperature ladder written to {output_file}:\n{output}")
     except Exception as e:
         print(f"[ERROR] Temperature calculation failed: {e}")
