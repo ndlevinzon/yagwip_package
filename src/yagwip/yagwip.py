@@ -1,5 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
+from .utils import setup_logger
 from importlib.resources import files
 import importlib.metadata
 import logging
@@ -9,34 +10,6 @@ import argparse
 import sys
 import random
 import readline
-
-
-# TODO: Still need to test logging functionality
-def setup_logger(debug_mode=False, basename=None, output_dir=None):
-    logger = logging.getLogger("yagwip")
-    logger.setLevel(logging.DEBUG)  # Capture everything; handlers will filter
-
-    # Clear previous handlers to avoid duplicates
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    # Console handler
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG if debug_mode else logging.INFO)
-    formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s', datefmt='%H:%M:%S')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-    # File handler only if debug is off
-    if not debug_mode and basename and output_dir:
-        log_file = os.path.join(output_dir, f"{basename}.log")
-        fh = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(formatter)
-        logger.addHandler(fh)
-        logger.debug(f"[LOGGING] Logging to {log_file}")
-
-    return logger
 
 
 class GromacsCLI(cmd.Cmd):
@@ -50,7 +23,7 @@ class GromacsCLI(cmd.Cmd):
         super().__init__()
         self.debug = False                                  # Toggle debug mode
         self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)   # Full path to the loaded PDB file
+        self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
         self.current_pdb_path = None                        # Full path to the loaded PDB file
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
@@ -85,7 +58,7 @@ class GromacsCLI(cmd.Cmd):
             self.debug = not self.debug
 
         # Update logger and simulation mode
-        self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
+        self.logger = setup_logger(debug_mode=self.debug)
 
         if self.sim:
             if self.debug:

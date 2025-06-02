@@ -1,6 +1,8 @@
 import subprocess
 import numpy as np
 import math
+import logging
+import time
 
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
@@ -10,10 +12,11 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         print(f"[RUNNING] {command}")
 
     if debug:
+        msg = "[DEBUG MODE] Command not executed."
         if logger:
-            logger.debug("[DEBUG MODE] Command not executed.")
+            logger.debug(msg)
         else:
-            print("[DEBUG MODE] Command not executed.")
+            print(msg)
         return
 
     try:
@@ -26,25 +29,61 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         )
 
         if result.returncode != 0:
+            err_msg = f"[ERROR] Command failed with return code {result.returncode}"
             if logger:
-                logger.error(f"Command failed with return code {result.returncode}")
-                logger.error(result.stderr.strip())
-                logger.info(result.stdout.strip())
+                logger.error(err_msg)
+                if result.stderr.strip():
+                    logger.error(f"[STDERR] {result.stderr.strip()}")
+                if result.stdout.strip():
+                    logger.info(f"[STDOUT] {result.stdout.strip()}")
             else:
-                print(f"[ERROR] Command failed with return code {result.returncode}")
+                print(err_msg)
                 print("[STDERR]", result.stderr.strip())
                 print("[STDOUT]", result.stdout.strip())
         else:
-            if logger:
-                logger.info(result.stdout.strip())
-            else:
-                print(result.stdout.strip())
+            if result.stdout.strip():
+                if logger:
+                    logger.info(f"[STDOUT] {result.stdout.strip()}")
+                else:
+                    print(result.stdout.strip())
 
     except Exception as e:
         if logger:
-            logger.exception(f"Failed to run command: {e}")
+            logger.exception(f"[EXCEPTION] Failed to run command: {e}")
         else:
             print(f"[EXCEPTION] Failed to run command: {e}")
+
+
+def setup_logger(debug_mode=False):
+    logger = logging.getLogger("yagwip")
+    logger.setLevel(logging.DEBUG)  # Capture everything
+
+    # Clear previous handlers
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # Console handler
+    ch = logging.StreamHandler()
+    ch_level = logging.DEBUG if debug_mode else logging.INFO
+    ch.setLevel(ch_level)
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+    # File handler
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    logfile = f"yagwip_{timestamp}.log"
+    fh = logging.FileHandler(logfile, mode='a', encoding='utf-8')
+    fh.setLevel(logging.DEBUG)  # Capture all details regardless of debug mode
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+    if not debug_mode:
+        logger.info(f"[LOGGING] Output logged to {logfile}")
+    else:
+        logger.debug(f"[LOGGING] Debug logging active; also writing to {logfile}")
+
+    return logger
 
 
 # Based on http://dx.doi.org/10.1039/b716554d

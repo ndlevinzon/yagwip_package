@@ -4,7 +4,7 @@ from .parser import count_residues_in_gro
 from importlib.resources import files
 
 
-def run_em(gmx_path, basename, arg="", debug=False):
+def run_em(gmx_path, basename, arg="", debug=False, logger=None):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running energy minimization for {base}...")
 
@@ -29,11 +29,11 @@ def run_em(gmx_path, basename, arg="", debug=False):
         print(f"[RUNNING] {mdrun_cmd}")
         print(f"[DEBUG MODE] Command not executed.")
     else:
-        run_gromacs_command(grompp_cmd)
-        run_gromacs_command(mdrun_cmd)
+        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
+        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
 
 
-def run_nvt(gmx_path, basename, arg="", debug=False):
+def run_nvt(gmx_path, basename, arg="", debug=False, logger=None):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running NVT equilibration for {base}...")
 
@@ -58,11 +58,11 @@ def run_nvt(gmx_path, basename, arg="", debug=False):
         print(f"[RUNNING] {mdrun_cmd}")
         print(f"[DEBUG MODE] Command not executed.")
     else:
-        run_gromacs_command(grompp_cmd)
-        run_gromacs_command(mdrun_cmd)
+        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
+        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
 
 
-def run_npt(gmx_path, basename, arg="", debug=False):
+def run_npt(gmx_path, basename, arg="", debug=False, logger=None):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running NPT equilibration for {base}...")
 
@@ -87,11 +87,11 @@ def run_npt(gmx_path, basename, arg="", debug=False):
         print(f"[RUNNING] {mdrun_cmd}")
         print(f"[DEBUG MODE] Command not executed.")
     else:
-        run_gromacs_command(grompp_cmd)
-        run_gromacs_command(mdrun_cmd)
+        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
+        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
 
 
-def run_production(gmx_path, basename, arg="", debug=False):
+def run_production(gmx_path, basename, arg="", debug=False, logger=None):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running production MD for {base}...")
 
@@ -116,8 +116,8 @@ def run_production(gmx_path, basename, arg="", debug=False):
         print(f"[RUNNING] {mdrun_cmd}")
         print(f"[DEBUG MODE] Command not executed.")
     else:
-        run_gromacs_command(grompp_cmd)
-        run_gromacs_command(mdrun_cmd)
+        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
+        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
 
 
 def run_tremd(arg):

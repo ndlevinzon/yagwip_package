@@ -2,7 +2,7 @@ from .utils import run_gromacs_command
 from importlib.resources import files
 
 
-def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False):
+def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=None):
     if not basename and not debug:
         print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
         return
@@ -13,10 +13,10 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False):
     command = custom_command or default_cmd
 
     print(f"Running pdb2gmx for {base}.pdb...")
-    run_gromacs_command(command, pipe_input="7\n", debug=debug)
+    run_gromacs_command(command, pipe_input="7\n", debug=debug, logger=logger)
 
 
-def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg=""):
+def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", logger=None):
     if not basename and not debug:
         print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
         return
@@ -36,13 +36,13 @@ def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg=""):
 
     if custom_command:
         print("[CUSTOM] Using custom solvate command")
-        run_gromacs_command(custom_command, debug=debug)
+        run_gromacs_command(custom_command, debug=debug, logger=logger)
     else:
         for cmd in default_cmds:
-            run_gromacs_command(cmd, debug=debug)
+            run_gromacs_command(cmd, debug=debug, logger=logger)
 
 
-def run_genions(gmx_path, basename, custom_command=None, debug=False):
+def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=None):
     if not basename and not debug:
         print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
         return
@@ -51,7 +51,7 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False):
 
     if custom_command:
         print("[CUSTOM] Using custom genion command")
-        run_gromacs_command(custom_command, pipe_input="13\n", debug=debug)
+        run_gromacs_command(custom_command, pipe_input="13\n", debug=debug, logger=logger)
         return
 
     default_ions = files("yagwip.templates").joinpath("ions.mdp")
@@ -65,6 +65,6 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False):
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
     print(f"Running genion for {base}...")
-    run_gromacs_command(grompp_cmd, debug=debug)
-    run_gromacs_command(genion_cmd, pipe_input="13\n", debug=debug)
+    run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
+    run_gromacs_command(genion_cmd, pipe_input="13\n", debug=debug, logger=logger)
 
