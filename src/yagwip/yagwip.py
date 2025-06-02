@@ -209,8 +209,13 @@ class GromacsCLI(cmd.Cmd):
             return
         run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
-    def complete_loadgro(self, text, line, begidx, endidx):
-        return complete_loadgro(text)
+    def complete_tremd(self, text, line, begidx, endidx):
+        args = line.strip().split()
+
+        # Only complete the filename after 'tremd calc'
+        if len(args) >= 2 and args[1] == "calc":
+            return complete_loadgro(text)
+        return []
 
     def do_tremd(self, arg):
         """
