@@ -9,6 +9,7 @@ import argparse
 import sys
 import random
 import shutil
+import re
 
 
 class GromacsCLI(cmd.Cmd):
@@ -244,31 +245,43 @@ class GromacsCLI(cmd.Cmd):
             return
 
         sim_type, hardware = args
-
-        # Copy all .mdp templates
         template_dir = files("yagwip.templates")
-        try:
-            for file in template_dir.iterdir():
-                if file.name.endswith(".mdp"):
-                    shutil.copy(file, os.getcwd())
-            print("[SLURM] All .mdp templates copied.")
-        except Exception as e:
-            print(f"[ERROR] Failed to copy .mdp files: {e}")
+
+        # Copy all .mdp files
+        for f in template_dir.iterdir():
+            if f.name.endswith(".mdp"):
+                shutil.copy(f, os.getcwd())
+        print("[SLURM] Copied .mdp templates.")
+
+        # Determine input SLURM template
+        slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
+        slurm_tpl_path = template_dir / slurm_tpl_name
+
+        if not slurm_tpl_path.is_file():
+            print(f"[ERROR] SLURM template not found: {slurm_tpl_name}")
             return
 
-        # Determine the SLURM filename
-        slurm_filename = f"run_gmx_{sim_type}_{hardware}.slurm"
-        slurm_file_path = template_dir / slurm_filename
-
-        if not slurm_file_path.is_file():
-            print(f"[ERROR] Template file not found: {slurm_filename}")
+        # Define dynamic variable replacement
+        if not self.basename:
+            print("[ERROR] No structure loaded. Run `loadpdb <file>` and `genion` first.")
             return
 
+        init_gro = f"{self.basename}_solv_ions"  # Expected prefix of the final .gro after genion
         try:
-            shutil.copy(slurm_file_path, os.getcwd())
-            print(f"[SLURM] SLURM script '{slurm_filename}' copied to current directory.")
+            with open(slurm_tpl_path, "r") as f:
+                slurm_content = f.read()
+
+            # Replace placeholder or static string
+            slurm_content = re.sub(r'init="[^"]+"', f'init="{init_gro}"', slurm_content)
+
+            # Output SLURM script
+            out_slurm = f"{slurm_tpl_name}"
+            with open(out_slurm, "w") as f:
+                f.write(slurm_content)
+
+            print(f"[SLURM] Customized SLURM script written: {out_slurm}")
         except Exception as e:
-            print(f"[ERROR] Failed to copy SLURM script: {e}")
+            print(f"[ERROR] Failed to configure SLURM script: {e}")
 
     def do_quit(self, _):
         """

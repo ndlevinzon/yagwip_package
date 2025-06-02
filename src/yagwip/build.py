@@ -63,8 +63,10 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
 
     grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
+    genindex_cmd = f"{gmx_path} make_ndx -f {output_gro}"
 
     print(f"Running genion for {base}...")
     run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
     run_gromacs_command(genion_cmd, pipe_input="13\n", debug=debug, logger=logger)
+    run_gromacs_command(genindex_cmd, debug=debug, logger=logger)
 

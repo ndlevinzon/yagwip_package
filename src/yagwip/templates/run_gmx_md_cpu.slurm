@@ -14,11 +14,12 @@ module purge
 module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 
 # Variables
-init="step3_input"
-mini_prefix="step4.0_minimization"
-equi_prefix="step4.1_equilibration"
-prod_prefix="step5_production"
-prod_step="step5"
+init="__INIT_GRO__"
+mini_prefix="em"
+nvt_prefix="nvt"
+npt_prefix="npt"
+prod_prefix="prod"
+prod_step="step"
 
 # ------------------------
 # Step 1: Minimization
@@ -32,18 +33,29 @@ else
 fi
 
 # ------------------------
-# Step 2: Equilibration
+# Step 2: NVT
 # ------------------------
-if [ ! -f "${equi_prefix}.gro" ]; then
+if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    gmx grompp -f ${equi_prefix}.mdp -o ${equi_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${equi_prefix}
+    gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
+    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
 else
-    echo "Equilibration output ${equi_prefix}.gro already exists. Skipping equilibration."
+    echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
 fi
 
 # ------------------------
-# Step 3: Production (10 segments)
+# Step 3: NPT
+# ------------------------
+if [ ! -f "${npt_prefix}.gro" ]; then
+    echo "Starting equilibration..."
+    gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
+    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${npt_prefix}
+else
+    echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
+fi
+
+# ------------------------
+# Step 4: Production (10 segments)
 # ------------------------
 echo "Starting production MD..."
 
@@ -73,7 +85,7 @@ while [ $cnt -le $cntmax ]; do
     fi
 
     if [ $cnt -eq 1 ]; then
-        pstep=$equi_prefix
+        pstep=$npt_prefix
         mpirun -np 36 gmx_mpi grompp -f "${prod_prefix}.mdp" -o "${istep}.tpr" -c "${pstep}.gro" -p topol.top -n index.ndx
     else
         pstep="${prod_step}_${pcnt}"
