@@ -210,10 +210,13 @@ class GromacsCLI(cmd.Cmd):
         run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_tremd(self, arg):
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
-        run_tremd(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), self.debug)
+        """
+        Generate a TREMD temperature ladder based on a user-specified .gro file.
+        This computes replica exchange temperature ranges using the van der Spoel predictor.
+
+        Usage: tremd
+        """
+        run_tremd(self.gmx_path, self.basename, debug=self.debug)
 
     def do_quit(self, _):
         """
