@@ -86,6 +86,15 @@ def setup_logger(debug_mode=False):
     return logger
 
 
+def complete_loadpdb(text, line, begidx, endidx):
+    """Autocomplete PDB filenames in current directory"""
+    if not text:
+        completions = [f for f in os.listdir() if f.endswith(".pdb")]
+    else:
+        completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
+    return completions
+
+
 # Based on http://dx.doi.org/10.1039/b716554d
 def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Alg=0, Tol=0.001):
     # Constants

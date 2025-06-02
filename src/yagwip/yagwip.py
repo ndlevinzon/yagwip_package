@@ -1,9 +1,8 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger
+from .utils import setup_logger, complete_loadpdb
 from importlib.resources import files
 import importlib.metadata
-import logging
 import cmd
 import os
 import argparse
@@ -145,17 +144,10 @@ class GromacsCLI(cmd.Cmd):
         if os.path.isfile(full_path):
             self.current_pdb_path = full_path
             self.basename = os.path.splitext(os.path.basename(full_path))[0]
+            self.logger.info(f"Loaded PDB: {full_path}")
             print(f"PDB file loaded: {full_path}")
         else:
-            print(f"Error: '{filename}' not found.")
-
-    def complete_loadpdb(self, text, line, begidx, endidx):
-        """Autocomplete PDB filenames in current directory"""
-        if not text:
-            completions = [f for f in os.listdir() if f.endswith(".pdb")]
-        else:
-            completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
-        return completions
+            print(f"[!] '{filename}' not found.")
 
     def do_pdb2gmx(self, arg):
         """
