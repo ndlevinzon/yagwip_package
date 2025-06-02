@@ -68,5 +68,5 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     print(f"Running genion for {base}...")
     run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
     run_gromacs_command(genion_cmd, pipe_input="13\n", debug=debug, logger=logger)
-    run_gromacs_command(genindex_cmd, debug=debug, logger=logger)
+    #run_gromacs_command(genindex_cmd, debug=debug, logger=logger)
 
