@@ -27,9 +27,8 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = None                        # Full path to the loaded PDB file
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
-        self.sim = None                                     # Placeholder for GromacsSim instance
 
-        # Dictionary of custom command overrides set by the user
+        # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_commands = {
             "pdb2gmx": None,
             "solvate": None,
@@ -37,12 +36,13 @@ class GromacsCLI(cmd.Cmd):
         }
 
     def default(self, line):
+        """Throws error when command is not recognized"""
         print(f"[!] Unknown command: {line}")
 
     def do_debug(self, arg):
         """
         Debug Mode: Simply prints commands to the command line that
-        would have otherwise be executed.
+        would have otherwise be executed. Prints to console instead of log
 
         Usage: Toggle with 'debug', 'debug on', or 'debug off'"
         """
@@ -60,17 +60,13 @@ class GromacsCLI(cmd.Cmd):
         # Update logger and simulation mode
         self.logger = setup_logger(debug_mode=self.debug)
 
-        if self.sim:
-            if self.debug:
-                self.sim.debug_on()
-                print("[DEBUG] Debug Mode ON")
-            else:
-                self.sim.debug_off()
-                print("[DEBUG] Debug Mode OFF")
-        else:
-            print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
+        print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
+        """
+        Prints YAGWIP Banner Logo on Start
+        Banner: src/yagwip/assets/banner.txt
+        """
         try:
             banner_path = files("yagwip.assets").joinpath("banner.txt")
             with open(banner_path, 'r', encoding='utf-8') as f:
@@ -136,9 +132,14 @@ class GromacsCLI(cmd.Cmd):
 #             readline.set_completer(None)
 
     def complete_loadpdb(self, text, line, begidx, endidx):
+        """Adds tab completion for .pdb files for use in loadpdb"""
         return complete_loadpdb(text)
 
     def do_loadpdb(self, arg):
+        """
+        Loads .pdb path for further building steps. This command should be run first.
+        Usage: "loadpdb X.pdb"
+        """
         filename = arg.strip()
         if not filename:
             print("Usage: loadPDB <filename.pdb>")
@@ -187,30 +188,47 @@ class GromacsCLI(cmd.Cmd):
         run_genions(self.gmx_path, self.basename, self.custom_commands.get("genions"), debug=self.debug, logger=self.logger)
 
     def do_em(self, arg):
+        """
+        Runs default energy minimization on the command line
+        Usage: "em"
+        """
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
         run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_nvt(self, arg):
+        """
+        Runs default NVT equilibration on the command line
+        Usage: "em"
+        """
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
         run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_npt(self, arg):
+        """
+        Runs default NPT equilibration on the command line
+        Usage: "npt"
+        """
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
         run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_production(self, arg):
+        """
+        Runs default production-phase MD on the command line
+        Usage: "production"
+        """
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
         run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def complete_tremd(self, text, line, begidx, endidx):
+        """Adds tab completion for .solv.ions.gro for use in TREMD replica calculations"""
         args = line.strip().split()
 
         # Only complete the filename after 'tremd calc'
@@ -285,13 +303,18 @@ class GromacsCLI(cmd.Cmd):
 
     def do_quit(self, _):
         """
-        Quit the CLI
+        Quit the CLI.
+        Usage: "quit"
         """
         self.print_random_quote()
         print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
         return True
 
     def print_random_quote(self):
+        """
+        Prints random quote on exit.
+        Quotes: scr/yagwip/assets/quotes.txt
+        """
         try:
             quote_path = files("yagwip.assets").joinpath("quotes.txt")
             with open(quote_path, "r", encoding="utf-8") as f:

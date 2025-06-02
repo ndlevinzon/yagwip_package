@@ -7,11 +7,23 @@ import os
 
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
+    """
+    Executes a shell command for GROMACS, with optional piping and logging.
+
+    Parameters:
+        command (str): The shell command to execute.
+        pipe_input (str, optional): Optional string input to pipe into the command (e.g., group selection like "13\n").
+        debug (bool): If True, prints the command but does not execute it.
+        logger (Logger, optional): Optional logger to capture stdout, stderr, and execution info.
+    """
+
+    # Log or print the command about to be executed
     if logger:
         logger.info(f"[RUNNING] {command}")
     else:
         print(f"[RUNNING] {command}")
 
+    # In debug mode, do not execute the command
     if debug:
         msg = "[DEBUG MODE] Command not executed."
         if logger:
@@ -21,14 +33,16 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         return
 
     try:
+        # Execute the command in a subprocess, piping input if necessary
         result = subprocess.run(
             command,
-            input=pipe_input,
+            input=pipe_input,            # e.g., group index input for genion
             shell=True,
-            capture_output=True,
-            text=True
+            capture_output=True,         # Capture both stdout and stderr
+            text=True                    # Treat input/output as strings
         )
 
+        # Handle non-zero return code (error)
         if result.returncode != 0:
             err_msg = f"[ERROR] Command failed with return code {result.returncode}"
             if logger:
@@ -42,6 +56,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                 print("[STDERR]", result.stderr.strip())
                 print("[STDOUT]", result.stdout.strip())
         else:
+            # Successful command execution: display or log stdout if present
             if result.stdout.strip():
                 if logger:
                     logger.info(f"[STDOUT] {result.stdout.strip()}")
@@ -49,6 +64,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     print(result.stdout.strip())
 
     except Exception as e:
+        # Handle unexpected exceptions during subprocess execution
         if logger:
             logger.exception(f"[EXCEPTION] Failed to run command: {e}")
         else:
@@ -56,34 +72,58 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
 
 
 def setup_logger(debug_mode=False):
-    logger = logging.getLogger("yagwip")
-    logger.setLevel(logging.DEBUG)  # Capture everything
+    """
+    Sets up a logger for the YAGWIP application.
 
-    # Clear previous handlers
+    Parameters:
+        debug_mode (bool): If True, sets console logging to DEBUG level; otherwise INFO.
+
+    Returns:
+        logging.Logger: Configured logger instance for use throughout the CLI.
+    """
+
+    # Create or retrieve the logger with a fixed name
+    logger = logging.getLogger("yagwip")
+
+    # Set the logger to the most verbose level to ensure all messages are captured
+    logger.setLevel(logging.DEBUG)
+
+    # Remove any existing handlers to prevent duplicate logs if the function is called multiple times
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    # Console handler
-    ch = logging.StreamHandler()
-    ch_level = logging.DEBUG if debug_mode else logging.INFO
+    # --- Console Handler Setup ---
+    ch = logging.StreamHandler()                                # Handler for stdout/stderr
+    ch_level = logging.DEBUG if debug_mode else logging.INFO    # Use DEBUG level in debug mode
     ch.setLevel(ch_level)
+
+    # Define the log message format for console output
     formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s', datefmt='%H:%M:%S')
     ch.setFormatter(formatter)
+
+    # Attach the console handler to the logger
     logger.addHandler(ch)
 
-    # File handler
+    # --- File Handler Setup ---
+    # Generate a timestamped filename for the log file
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     logfile = f"yagwip_{timestamp}.log"
+
+    # Create a file handler to log everything, regardless of debug mode
     fh = logging.FileHandler(logfile, mode='a', encoding='utf-8')
     fh.setLevel(logging.DEBUG)  # Capture all details regardless of debug mode
     fh.setFormatter(formatter)
+
+    # Attach the file handler to the logger
     logger.addHandler(fh)
 
+    # Optional: Notify the user where logs are being written
     if not debug_mode:
         logger.info(f"[LOGGING] Output logged to {logfile}")
     else:
         logger.debug(f"[LOGGING] Debug logging active; also writing to {logfile}")
 
+    # Return the configured logger object
     return logger
 
 
@@ -134,13 +174,34 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
 
 # Based on http://dx.doi.org/10.1039/b716554d
 def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Alg=0, Tol=0.001):
-    # Constants
+    """
+    Generate a temperature ladder for temperature replica exchange molecular dynamics (TREMD).
+
+    Parameters:
+        Nw (int): Number of water molecules
+        Np (int): Number of protein residues
+        Tlow (float): Minimum temperature (K)
+        Thigh (float): Maximum temperature (K)
+        Pdes (float): Desired exchange probability between replicas (0 < P < 1)
+        WC (int): Water constraints (3 = all constraints)
+        PC (int): Protein constraints (1 = H atoms only, 2 = all, 0 = none)
+        Hff (int): Hydrogen force field switch (0 = standard, 1 = different model)
+        Vs (int): Include volume correction (1 = yes)
+        Alg (int): Not used in this version (reserved for algorithm control)
+        Tol (float): Tolerance for exchange probability convergence
+
+    Returns:
+        List[float]: Ladder of temperatures suitable for TREMD simulation
+    """
+
+    # Empirical coefficients from Patriksson and van der Spoel (2008)
     A0, A1 = -59.2194, 0.07594
     B0, B1 = -22.8396, 0.01347
     D0, D1 = 1.1677, 0.002976
-    kB = 0.008314
-    maxiter = 100
+    kB = 0.008314   # Boltzmann constant in kJ/mol/K
+    maxiter = 100   # Maximum number of iterations for convergence
 
+    # Estimate number of hydrogen atoms and virtual sites (VC) based on model
     if Hff == 0:
         Nh = round(Np * 0.5134)
         VC = round(1.91 * Nh) if Vs == 1 else 0
@@ -151,14 +212,17 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
         VC = round(Np + 1.91 * Nh) if Vs == 1 else 0
         Nprot = Npp
 
+    # Degrees of freedom corrections based on constraints
     NC = Nh if PC == 1 else Np if PC == 2 else 0
-    Ndf = (9 - WC) * Nw + 3 * Np - NC - VC
-    FlexEner = 0.5 * kB * (NC + VC + WC * Nw)
+    Ndf = (9 - WC) * Nw + 3 * Np - NC - VC      # Total degrees of freedom
+    FlexEner = 0.5 * kB * (NC + VC + WC * Nw)   # Internal flexibility energy
 
+    # Probability evaluation function for exchange efficiency
     def myeval(m12, s12, CC, u):
         arg = -CC * u - (u - m12) ** 2 / (2 * s12 ** 2)
         return np.exp(arg)
 
+    # Numerical integration using midpoint method for exchange probability contribution
     def myintegral(m12, s12, CC):
         umax = m12 + 5 * s12
         du = umax / 100
@@ -167,15 +231,19 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
         pi = np.pi
         return du * sum(vals) / (s12 * np.sqrt(2 * pi))
 
+    # Initialize list of temperatures with the lowest value
     temps = [Tlow]
+
+    # Iteratively compute the next temperature until reaching Thigh
     while temps[-1] < Thigh:
-        T1 = temps[-1]
-        T2 = T1 + 1 if T1 + 1 < Thigh else Thigh
+        T1 = temps[-1]                              # Last accepted temperature
+        T2 = T1 + 1 if T1 + 1 < Thigh else Thigh    # Initial guess for next temperature
         low, high = T1, Thigh
         iter_count = 0
         piter = 0
-        forward = True
+        forward = True                              # Flag for adjusting search direction
 
+        # Newton-like iteration to find T2 that yields desired exchange probability
         while abs(Pdes - piter) > Tol and iter_count < maxiter:
             iter_count += 1
             mu12 = (T2 - T1) * ((A1 * Nw) + (B1 * Nprot) - FlexEner)
@@ -183,10 +251,12 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
             var = Ndf * (D1 ** 2 * (T1 ** 2 + T2 ** 2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0 ** 2)
             sig12 = np.sqrt(var)
 
+            # Two components of the exchange probability
             I1 = 0.5 * math.erfc(mu12 / (sig12 * np.sqrt(2)))
             I2 = myintegral(mu12, sig12, CC)
             piter = I1 + I2
 
+            # Adjust T2 up or down depending on current probability
             if piter > Pdes:
                 if forward:
                     T2 += 1.0
@@ -202,6 +272,7 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
                 high = T2
                 T2 = low + (high - low) / 2
 
+        # Append rounded temperature to the list
         temps.append(round(T2, 2))
 
     print("Please Cite: 'Alexandra Patriksson and David van der Spoel, A temperature predictor for parallel tempering "
@@ -212,7 +283,7 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 
 
 def complete_loadgro(text, line=None, begidx=None, endidx=None):
-    """Autocomplete PDB filenames in current directory"""
+    """Autocomplete .solv.ions.gro filename in current directory"""
     if not text:
         completions = [f for f in os.listdir() if f.endswith("solv.ions.gro")]
     else:
