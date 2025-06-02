@@ -1,7 +1,7 @@
 import os
 from .utils import run_gromacs_command, tremd_temperature_ladder
-from importlib.resources import files
 from .parser import count_residues_in_gro
+from importlib.resources import files
 
 
 def run_em(gmx_path, basename, arg="", debug=False):
@@ -32,6 +32,7 @@ def run_em(gmx_path, basename, arg="", debug=False):
         run_gromacs_command(grompp_cmd)
         run_gromacs_command(mdrun_cmd)
 
+
 def run_nvt(gmx_path, basename, arg="", debug=False):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running NVT equilibration for {base}...")
@@ -60,6 +61,7 @@ def run_nvt(gmx_path, basename, arg="", debug=False):
         run_gromacs_command(grompp_cmd)
         run_gromacs_command(mdrun_cmd)
 
+
 def run_npt(gmx_path, basename, arg="", debug=False):
     base = basename if basename else "PLACEHOLDER"
     print(f"Running NPT equilibration for {base}...")
@@ -87,6 +89,7 @@ def run_npt(gmx_path, basename, arg="", debug=False):
     else:
         run_gromacs_command(grompp_cmd)
         run_gromacs_command(mdrun_cmd)
+
 
 def run_production(gmx_path, basename, arg="", debug=False):
     base = basename if basename else "PLACEHOLDER"

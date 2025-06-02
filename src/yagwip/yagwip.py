@@ -184,7 +184,7 @@ class GromacsCLI(cmd.Cmd):
             completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
         return completions
 
-    def do_pdb2gmx(self):
+    def do_pdb2gmx(self, arg):
         """
         Run pdb2gmx with optional custom command override. This command should be run after loadpdb.
         Usage: "pdb2gmx"
@@ -195,7 +195,7 @@ class GromacsCLI(cmd.Cmd):
             return
         run_pdb2gmx(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), self.debug)
 
-    def do_solvate(self):
+    def do_solvate(self, arg):
         """
         Run solvate with optional custom command override. This command should be run after pdb2gmx.
         Usage: "solvate"
@@ -206,7 +206,7 @@ class GromacsCLI(cmd.Cmd):
             return
         run_solvate(self.gmx_path, self.basename, self.custom_commands.get("solvate"), self.debug)
 
-    def do_genions(self):
+    def do_genions(self, arg):
         """
         Run genions with optional custom command override. This command should be run after solvate.
         Usage: "genions"
