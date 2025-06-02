@@ -3,6 +3,7 @@ import numpy as np
 import math
 import logging
 import time
+import os
 
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
