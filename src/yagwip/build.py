@@ -58,7 +58,7 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     input_gro = f"{base}.solv.gro"
     output_gro = f"{base}.solv.ions.gro"
     tpr_out = "ions.tpr"
-    ion_options = "-pname NA -nname CL -conc 0.100 -neutral"
+    ion_options = "-pname NA -nname CL -conc 0.150 -neutral"
     grompp_opts = ""
 
     grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
