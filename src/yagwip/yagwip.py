@@ -78,61 +78,64 @@ class GromacsCLI(cmd.Cmd):
             print("[!] Could not load banner:", e)
 
 # TODO: Still need to find a way to implement user customizations elegantly
-    def do_set(self, arg):
-        cmd_name = arg.strip().lower()
-        if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
-            print("[!] Command not supported for override. Choose from: pdb2gmx, solvate, genion")
-            return
+#     def do_set(self, arg):
+#         cmd_name = arg.strip().lower()
+#         if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
+#             print("[!] Command not supported for override. Choose from: pdb2gmx, solvate, genion")
+#             return
+#
+#         if not self.sim:
+#             print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
+#             return
+#
+#         # Default GROMACS commands from sim
+#         default_cmds = {
+#             "pdb2gmx": self.sim.get_pdb2gmx_cmd(),
+#             "solvate": self.sim.get_solvate_cmd(),
+#             "genion": self.sim.get_genion_cmd(),
+#         }
+#
+#         current = self.custom_commands.get(cmd_name, default_cmds[cmd_name])
+#
+#         # TAB completion (for file path / flags)
+#         def completer(text, state):
+#             options = [f for f in os.listdir('.') if f.startswith(text)]
+#             if state < len(options):
+#                 return options[state]
+#             return None
+#
+#         readline.set_completer_delims(' \t\n=')
+#         readline.set_completer(completer)
+#         readline.parse_and_bind("tab: complete")
+#
+#         # Pre-fill
+#         def prefill():
+#             readline.insert_text(current)
+#             readline.redisplay()
+#
+#         readline.set_startup_hook(prefill)
+#
+#         try:
+#             new_command = input(f"{cmd_name}> ")
+#             new_command = new_command.strip()
+#
+#             if new_command.lower() == "quit":
+#                 print(f"[{cmd_name.upper()}] Command edit canceled.")
+#                 return
+#
+#             if new_command and new_command != current:
+#                 self.custom_commands[cmd_name] = new_command
+#                 print(f"[{cmd_name.upper()}] Custom command updated.")
+#             else:
+#                 print(f"[{cmd_name.upper()}] No changes made.")
+#         except KeyboardInterrupt:
+#             print("\nCommand entry canceled.")
+#         finally:
+#             readline.set_startup_hook(None)
+#             readline.set_completer(None)
 
-        if not self.sim:
-            print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
-            return
-
-        # Default GROMACS commands from sim
-        default_cmds = {
-            "pdb2gmx": self.sim.get_pdb2gmx_cmd(),
-            "solvate": self.sim.get_solvate_cmd(),
-            "genion": self.sim.get_genion_cmd(),
-        }
-
-        current = self.custom_commands.get(cmd_name, default_cmds[cmd_name])
-
-        # TAB completion (for file path / flags)
-        def completer(text, state):
-            options = [f for f in os.listdir('.') if f.startswith(text)]
-            if state < len(options):
-                return options[state]
-            return None
-
-        readline.set_completer_delims(' \t\n=')
-        readline.set_completer(completer)
-        readline.parse_and_bind("tab: complete")
-
-        # Pre-fill
-        def prefill():
-            readline.insert_text(current)
-            readline.redisplay()
-
-        readline.set_startup_hook(prefill)
-
-        try:
-            new_command = input(f"{cmd_name}> ")
-            new_command = new_command.strip()
-
-            if new_command.lower() == "quit":
-                print(f"[{cmd_name.upper()}] Command edit canceled.")
-                return
-
-            if new_command and new_command != current:
-                self.custom_commands[cmd_name] = new_command
-                print(f"[{cmd_name.upper()}] Custom command updated.")
-            else:
-                print(f"[{cmd_name.upper()}] No changes made.")
-        except KeyboardInterrupt:
-            print("\nCommand entry canceled.")
-        finally:
-            readline.set_startup_hook(None)
-            readline.set_completer(None)
+    def complete_loadpdb(self, text, line, begidx, endidx):
+        return complete_loadpdb(text)
 
     def do_loadpdb(self, arg):
         filename = arg.strip()
