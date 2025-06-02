@@ -178,5 +178,7 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 def complete_loadgro(text, line=None, begidx=None, endidx=None):
     """Autocomplete PDB filenames in current directory"""
     if not text:
-        return [f for f in os.listdir() if f.endswith(".solv.ions.gro")]
-    return [f for f in os.listdir() if f.startswith(text) and f.endswith(".solv.ions.gro")]
+        completions = [f for f in os.listdir() if f.endswith("solv.ions.gro")]
+    else:
+        completions = [f for f in os.listdir() if f.startswith(text) and f.endswith("solv.ions.gro")]
+    return completions
