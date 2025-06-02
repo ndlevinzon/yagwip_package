@@ -176,7 +176,7 @@ class GromacsCLI(cmd.Cmd):
         else:
             print(f"Error: '{filename}' not found.")
 
-    def complete_loadpdb(self, text):
+    def complete_loadpdb(self, text, line, begidx, endidx):
         """Autocomplete PDB filenames in current directory"""
         if not text:
             completions = [f for f in os.listdir() if f.endswith(".pdb")]
