@@ -25,7 +25,8 @@ setuptools.setup(
     package_data={
         "yagwip": [
             "assets/*.txt",
-            "templates/*.mdp"
+            "templates/*.mdp",
+            "templates/*.slurm",
         ],
     }
 )
