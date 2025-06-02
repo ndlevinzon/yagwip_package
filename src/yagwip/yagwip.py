@@ -8,7 +8,7 @@ import os
 import argparse
 import sys
 import random
-import readline
+import shutil
 
 
 class GromacsCLI(cmd.Cmd):
@@ -225,6 +225,50 @@ class GromacsCLI(cmd.Cmd):
         Usage: tremd
         """
         run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+
+    def do_slurm(self, arg):
+        """
+        Setup SLURM job scripts.
+
+        Usage:
+            slurm md cpu
+            slurm md gpu
+            slurm tremd cpu
+            slurm tremd gpu
+
+        Copies template .mdp files and SLURM script to the current directory based on options.
+        """
+        args = arg.strip().lower().split()
+        if len(args) != 2 or args[0] not in ["md", "tremd"] or args[1] not in ["cpu", "gpu"]:
+            print("[!] Usage: slurm <md|tremd> <cpu|gpu>")
+            return
+
+        sim_type, hardware = args
+
+        # Copy all .mdp templates
+        template_dir = files("yagwip.templates")
+        try:
+            for file in template_dir.iterdir():
+                if file.name.endswith(".mdp"):
+                    shutil.copy(file, os.getcwd())
+            print("[SLURM] All .mdp templates copied.")
+        except Exception as e:
+            print(f"[ERROR] Failed to copy .mdp files: {e}")
+            return
+
+        # Determine the SLURM filename
+        slurm_filename = f"run_gmx_{sim_type}_{hardware}.slurm"
+        slurm_file_path = template_dir / slurm_filename
+
+        if not slurm_file_path.is_file():
+            print(f"[ERROR] Template file not found: {slurm_filename}")
+            return
+
+        try:
+            shutil.copy(slurm_file_path, os.getcwd())
+            print(f"[SLURM] SLURM script '{slurm_filename}' copied to current directory.")
+        except Exception as e:
+            print(f"[ERROR] Failed to copy SLURM script: {e}")
 
     def do_quit(self, _):
         """
