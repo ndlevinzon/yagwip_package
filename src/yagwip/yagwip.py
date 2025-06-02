@@ -166,7 +166,7 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_pdb2gmx(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), self.debug)
+        run_pdb2gmx(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), debug=self.debug, logger=self.logger)
 
     def do_solvate(self, arg):
         """
@@ -177,7 +177,7 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_solvate(self.gmx_path, self.basename, self.custom_commands.get("solvate"), self.debug)
+        run_solvate(self.gmx_path, self.basename, self.custom_commands.get("solvate"), debug=self.debug, logger=self.logger)
 
     def do_genions(self, arg):
         """
@@ -188,31 +188,31 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_genions(self.gmx_path, self.basename, self.custom_commands.get("genions"), self.debug)
+        run_genions(self.gmx_path, self.basename, self.custom_commands.get("genions"), debug=self.debug, logger=self.logger)
 
     def do_em(self, arg):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+        run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_nvt(self, arg):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+        run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_npt(self, arg):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+        run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_production(self, arg):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+        run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_tremd(self, arg):
         if not self.current_pdb_path and not self.debug:
