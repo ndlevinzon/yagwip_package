@@ -87,7 +87,7 @@ def setup_logger(debug_mode=False):
     return logger
 
 
-def complete_loadpdb(text, line, begidx, endidx):
+def complete_loadpdb(text, line=None, begidx=None, endidx=None):
     """Autocomplete PDB filenames in current directory"""
     if not text:
         completions = [f for f in os.listdir() if f.endswith(".pdb")]
