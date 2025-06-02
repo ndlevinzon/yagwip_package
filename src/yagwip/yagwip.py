@@ -134,7 +134,7 @@ class GromacsCLI(cmd.Cmd):
 #             readline.set_startup_hook(None)
 #             readline.set_completer(None)
 
-    def tab_complete_loadpdb(self, text, line, begidx, endidx):
+    def complete_loadpdb(self, text, line, begidx, endidx):
         return complete_loadpdb(text)
 
     def do_loadpdb(self, arg):
