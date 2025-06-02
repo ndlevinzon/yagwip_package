@@ -18,8 +18,10 @@ mini_prefix="step4.0_minimization"
 equi_prefix="step4.1_equilibration"
 topol="topol.top"
 index="index.ndx"
-temperatures=(300.00 301.37 302.74 304.12 305.51 306.89 308.29 309.69 311.10 312.51 313.92 315.34 316.77 318.20 319.63 321.07 322.52 323.97 325.43 326.89 328.36 329.83 331.31 332.79 334.28 335.77 337.27 338.77 340.28 341.80 343.32 344.84 346.39 347.93 349.47 350.00)  # 36 replicas
 
+# Read temperatures from file formatted like: "Replica 1: 300.00 K"
+temperature_file="TREMD_temp_ranges.txt"
+mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 # ------------------------
 # Step 1: Minimization
 # ------------------------

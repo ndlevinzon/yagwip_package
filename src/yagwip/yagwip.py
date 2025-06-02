@@ -1,6 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger, complete_loadpdb
+from .utils import setup_logger, complete_loadpdb, complete_loadgro
 from importlib.resources import files
 import importlib.metadata
 import cmd
@@ -208,6 +208,9 @@ class GromacsCLI(cmd.Cmd):
             print("[!] No PDB loaded.")
             return
         run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
+
+    def complete_loadgro(self, text, line, begidx, endidx):
+        return complete_loadgro(text)
 
     def do_tremd(self, arg):
         """

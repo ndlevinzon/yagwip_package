@@ -168,7 +168,16 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 
         temps.append(round(T2, 2))
 
-    print("Please Cite: Alexandra Patriksson and David van der Spoel, A temperature predictor for parallel tempering \n"
-          "simulations Phys. Chem. Chem. Phys., 10 pp. 2073-2077 (2008)")
+    print("Please Cite: 'Alexandra Patriksson and David van der Spoel, A temperature predictor for parallel tempering "
+          "\n"
+          "simulations Phys. Chem. Chem. Phys., 10 pp. 2073-2077 (2008)'")
 
     return temps
+
+def complete_loadgro(text, line=None, begidx=None, endidx=None):
+    """Autocomplete PDB filenames in current directory"""
+    if not text:
+        completions = [f for f in os.listdir() if f.endswith(".solv.ions.gro")]
+    else:
+        completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".solv.ions.gro")]
+    return completions
