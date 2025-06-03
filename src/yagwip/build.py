@@ -1,4 +1,6 @@
 from .utils import run_gromacs_command
+import shutil
+import os
 from importlib.resources import files
 
 
@@ -23,9 +25,20 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     # Use provided basename or placeholder if in debug mode
     base = basename if basename else "PLACEHOLDER"
 
+    # Copy amber14sb.ff directory from templates to current working directory
+    try:
+        template_ff_dir = files("yagwip.templates").joinpath("amber14sb.ff")
+        dest_ff_dir = os.path.join(os.getcwd(), "amber14sb.ff")
+        if not os.path.exists(dest_ff_dir):
+            shutil.copytree(template_ff_dir, dest_ff_dir)
+            print("[INFO] Copied amber14sb.ff to working directory.")
+        else:
+            print("[INFO] amber14sb.ff already exists in working directory.")
+    except Exception as e:
+        print(f"[ERROR] Failed to copy amber14sb.ff: {e}")
+        return
+
     # Construct the default pdb2gmx command if no custom one is given
-    # -water spce: specifies the SPC/E water model
-    # -ignh: tells GROMACS to ignore hydrogens in the input PDB
     default_cmd = f"{gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
     command = custom_command or default_cmd
 

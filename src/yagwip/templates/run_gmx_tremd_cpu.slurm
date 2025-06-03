@@ -30,7 +30,7 @@ mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
-    gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -n index.ndx -maxwarn 1
+    gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 1
     mpirun -np 40 gmx_mpi mdrun -v -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
@@ -41,7 +41,7 @@ fi
 # ------------------------
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
+    gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top
     mpirun -np 40 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
@@ -52,7 +52,7 @@ fi
 # ------------------------
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
+    gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top
     mpirun -np 40 gmx_mpi mdrun -v -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
@@ -66,14 +66,14 @@ for i in ${!temperatures[@]}; do
     temp=${temperatures[$i]}
     dir=$i
     mkdir -p $dir
-    cp ${topol} ${index} ${npt_prefix}.gro $dir/
+    cp ${topol} ${npt_prefix}.gro $dir/
 
     # Generate MDP for this temperature
     sed "s/XXX/${temp}/g" remd_template.mdp > $dir/remd.mdp
     
     # grompp for each replica
     pushd $dir
-    gmx grompp -f remd.mdp -c ${npt_prefix}.gro -p ${topol} -n ${index} -o remd.tpr -maxwarn 1
+    gmx grompp -f remd.mdp -c ${npt_prefix}.gro -p ${topol} -o remd.tpr -maxwarn 1
     popd
 
 done

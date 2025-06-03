@@ -3,7 +3,7 @@
 #SBATCH --output=slurm/md_job_%j.out
 #SBATCH --error=slurm/md_job_%j.err
 #SBATCH --nodes=1
-#SBATCH --ntasks=36   # One per replica
+#SBATCH --ntasks=40   # Max on Beluga
 #SBATCH --cpus-per-task=1
 #SBATCH --time=01:00:00
 #SBATCH --exclusive 
@@ -27,7 +27,7 @@ prod_step="step"
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
     gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -n index.ndx -maxwarn 1
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${mini_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
 fi
@@ -38,7 +38,7 @@ fi
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -49,7 +49,7 @@ fi
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${npt_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -86,14 +86,14 @@ while [ $cnt -le $cntmax ]; do
 
     if [ $cnt -eq 1 ]; then
         pstep=$npt_prefix
-        mpirun -np 36 gmx_mpi grompp -f "${prod_prefix}.mdp" -o "${istep}.tpr" -c "${pstep}.gro" -p topol.top -n index.ndx
+        mpirun -np 40 gmx_mpi grompp -f "${prod_prefix}.mdp" -o "${istep}.tpr" -c "${pstep}.gro" -p topol.top -n index.ndx
     else
         pstep="${prod_step}_${pcnt}"
-        mpirun -np 36 gmx_mpi grompp -f "${prod_prefix}.mdp" -o "${istep}.tpr" -c "${pstep}.gro" -t "${pstep}.cpt" -p topol.top -n index.ndx
+        mpirun -np 40 gmx_mpi grompp -f "${prod_prefix}.mdp" -o "${istep}.tpr" -c "${pstep}.gro" -t "${pstep}.cpt" -p topol.top -n index.ndx
     fi
 
     echo "Running production chunk: ${istep}"
-    mpirun -np 36 gmx_mpi mdrun -v -deffnm "${istep}" -cpi "${istep}.cpt" &
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm "${istep}" -cpi "${istep}.cpt" &
 
     mdrun_pid=$!
     while kill -0 $mdrun_pid 2> /dev/null; do

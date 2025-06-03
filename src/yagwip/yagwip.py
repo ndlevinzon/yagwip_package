@@ -281,18 +281,18 @@ class GromacsCLI(cmd.Cmd):
                 shutil.copy(analysis_slurm, os.getcwd())
                 print("[SLURM] Copied run_tremd_analysis.slurm.")
             else:
-                print("[WARNING] run_tremd_analysis.slurm not found in template directory.")
+                print("[!] run_tremd_analysis.slurm not found in template directory.")
 
         # Determine input SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
         slurm_tpl_path = template_dir / slurm_tpl_name
 
         if not slurm_tpl_path.is_file():
-            print(f"[ERROR] SLURM template not found: {slurm_tpl_name}")
+            print(f"[!] SLURM template not found: {slurm_tpl_name}")
             return
 
         if not self.basename:
-            print("[ERROR] No structure loaded. Run `loadpdb <file>` and `genion` first.")
+            print("[!] No structure loaded. Run `loadpdb <file>` and `genion` first.")
             return
 
         init_gro = f"{self.basename}.solv.ions"
@@ -314,7 +314,7 @@ class GromacsCLI(cmd.Cmd):
 
             print(f"[SLURM] Customized SLURM script written: {out_slurm}")
         except Exception as e:
-            print(f"[ERROR] Failed to configure SLURM script: {e}")
+            print(f"[!] Failed to configure SLURM script: {e}")
 
     def do_quit(self, _):
         """
