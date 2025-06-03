@@ -241,7 +241,7 @@ class GromacsCLI(cmd.Cmd):
         Generate a TREMD temperature ladder based on a user-specified .gro file.
         This computes replica exchange temperature ranges using the van der Spoel predictor.
 
-        Usage: tremd
+        Usage: "tremd calc X.solv.ions.gro"
         """
         run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
@@ -265,11 +265,23 @@ class GromacsCLI(cmd.Cmd):
         sim_type, hardware = args
         template_dir = files("yagwip.templates")
 
-        # Copy all .mdp files
+        # Determine which .mdp file to skip
+        exclude = "production.mdp" if sim_type == "tremd" else "remd_template.mdp"
+
+        # Copy only relevant .mdp files
         for f in template_dir.iterdir():
-            if f.name.endswith(".mdp"):
+            if f.name.endswith(".mdp") and f.name != exclude:
                 shutil.copy(f, os.getcwd())
-        print("[SLURM] Copied .mdp templates.")
+        print(f"[SLURM] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
+
+        # Copy analysis SLURM file for tremd
+        if sim_type == "tremd":
+            analysis_slurm = template_dir / "run_tremd_analysis.slurm"
+            if analysis_slurm.is_file():
+                shutil.copy(analysis_slurm, os.getcwd())
+                print("[SLURM] Copied run_tremd_analysis.slurm.")
+            else:
+                print("[WARNING] run_tremd_analysis.slurm not found in template directory.")
 
         # Determine input SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
@@ -279,20 +291,20 @@ class GromacsCLI(cmd.Cmd):
             print(f"[ERROR] SLURM template not found: {slurm_tpl_name}")
             return
 
-        # Define dynamic variable replacement
         if not self.basename:
             print("[ERROR] No structure loaded. Run `loadpdb <file>` and `genion` first.")
             return
 
-        init_gro = f"{self.basename}_solv_ions"  # Expected prefix of the final .gro after genion
+        init_gro = f"{self.basename}.solv.ions"
+
         try:
             with open(slurm_tpl_path, "r") as f:
                 slurm_content = f.read()
 
-            # Replace placeholder or static string
+            # Replace init variable in SLURM script
             slurm_content = re.sub(r'init="[^"]+"', f'init="{init_gro}"', slurm_content)
 
-            # Output SLURM script
+            # Write modified SLURM script
             out_slurm = f"{slurm_tpl_name}"
             with open(out_slurm, "w") as f:
                 f.write(slurm_content)

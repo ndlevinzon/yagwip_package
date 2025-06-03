@@ -22,13 +22,14 @@ index="index.ndx"
 # Read temperatures from file formatted like: "Replica 1: 300.00 K"
 temperature_file="TREMD_temp_ranges.txt"
 mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
+
 # ------------------------
 # Step 1: Minimization
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
     gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -n index.ndx -maxwarn 1
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${mini_prefix}
+    mpirun -np ${#temperatures[@]} gmx_mpi mdrun -v -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
 fi
@@ -39,7 +40,7 @@ fi
 if [ ! -f "${equi_prefix}.gro" ]; then
     echo "Starting equilibration..."
     gmx grompp -f ${equi_prefix}.mdp -o ${equi_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${equi_prefix}
+    mpirun -np ${#temperatures[@]} gmx_mpi mdrun -v -deffnm ${equi_prefix}
 else
     echo "Equilibration output ${equi_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -72,3 +73,15 @@ mpirun -np ${#temperatures[@]} gmx_mpi mdrun -multidir $(seq 0 $((${#temperature
     -replex 1000 -deffnm remd -ntomp 1
 
 echo "REMD complete."
+
+#      ___          _____
+#     /__/\        /  /::\
+#     \  \:\      /  /:/\:\
+#      \  \:\    /  /:/  \:\   ___     ___
+#  _____\__\:\  /__/:/ \__\:| /__/\   /  /\
+# /__/::::::::\ \  \:\ /  /:/ \  \:\ /  /:/
+# \  \:\~~\~~\/  \  \:\  /:/   \  \:\  /:/
+#  \  \:\  ~~~    \  \:\/:/     \  \:\/:/
+#   \  \:\         \  \::/       \  \::/
+#    \  \:\         \__\/         \__\/
+#     \__\/

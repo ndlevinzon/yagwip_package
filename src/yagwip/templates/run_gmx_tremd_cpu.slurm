@@ -3,7 +3,7 @@
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=1
-#SBATCH --ntasks=36   # One per replica
+#SBATCH --ntasks=40   # Max on Beluga
 #SBATCH --cpus-per-task=1
 #SBATCH --time=01:00:00
 #SBATCH --exclusive 
@@ -21,13 +21,17 @@ npt_prefix="npt"
 prod_prefix="prod"
 prod_step="step"
 
+# Read temperatures from file formatted like: "Replica 1: 300.00 K"
+temperature_file="TREMD_temp_ranges.txt"
+mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
+
 # ------------------------
 # Step 1: Minimization
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
     gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -n index.ndx -maxwarn 1
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${mini_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
 fi
@@ -38,7 +42,7 @@ fi
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -49,7 +53,7 @@ fi
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -n index.ndx
-    mpirun -np 32 gmx_mpi mdrun -v -deffnm ${npt_prefix}
+    mpirun -np 40 gmx_mpi mdrun -v -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -91,3 +95,15 @@ mpirun -np ${#temperatures[@]} gmx_mpi mdrun -multidir $(seq 0 $((${#temperature
 # ------------------------
 echo "Job ran for 55 minutes. Resubmitting self..."
 sbatch run_gmx_tremd_beluga.slurm
+
+#      ___          _____
+#     /__/\        /  /::\
+#     \  \:\      /  /:/\:\
+#      \  \:\    /  /:/  \:\   ___     ___
+#  _____\__\:\  /__/:/ \__\:| /__/\   /  /\
+# /__/::::::::\ \  \:\ /  /:/ \  \:\ /  /:/
+# \  \:\~~\~~\/  \  \:\  /:/   \  \:\  /:/
+#  \  \:\  ~~~    \  \:\/:/     \  \:\/:/
+#   \  \:\         \  \::/       \  \::/
+#    \  \:\         \__\/         \__\/
+#     \__\/
