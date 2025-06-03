@@ -29,7 +29,7 @@ class GromacsCLI(cmd.Cmd):
         self.print_banner()                                 # Prints intro banner to command line
 
         # Dictionary of custom command overrides set by the user, not implemented yet
-        self.custom_commands = {
+        self.custom_cmds = {
             "pdb2gmx": None,
             "solvate": None,
             "genion": None,
@@ -74,62 +74,62 @@ class GromacsCLI(cmd.Cmd):
         except Exception as e:
             print("[!] Could not load banner:", e)
 
-# TODO: Still need to find a way to implement user customizations elegantly
-#     def do_set(self, arg):
-#         cmd_name = arg.strip().lower()
-#         if cmd_name not in ["pdb2gmx", "solvate", "genion"]:
-#             print("[!] Command not supported for override. Choose from: pdb2gmx, solvate, genion")
-#             return
-#
-#         if not self.sim:
-#             print("[!] No PDB initialized. Use `loadPDB <filename.pdb>` first.")
-#             return
-#
-#         # Default GROMACS commands from sim
-#         default_cmds = {
-#             "pdb2gmx": self.sim.get_pdb2gmx_cmd(),
-#             "solvate": self.sim.get_solvate_cmd(),
-#             "genion": self.sim.get_genion_cmd(),
-#         }
-#
-#         current = self.custom_commands.get(cmd_name, default_cmds[cmd_name])
-#
-#         # TAB completion (for file path / flags)
-#         def completer(text, state):
-#             options = [f for f in os.listdir('.') if f.startswith(text)]
-#             if state < len(options):
-#                 return options[state]
-#             return None
-#
-#         readline.set_completer_delims(' \t\n=')
-#         readline.set_completer(completer)
-#         readline.parse_and_bind("tab: complete")
-#
-#         # Pre-fill
-#         def prefill():
-#             readline.insert_text(current)
-#             readline.redisplay()
-#
-#         readline.set_startup_hook(prefill)
-#
-#         try:
-#             new_command = input(f"{cmd_name}> ")
-#             new_command = new_command.strip()
-#
-#             if new_command.lower() == "quit":
-#                 print(f"[{cmd_name.upper()}] Command edit canceled.")
-#                 return
-#
-#             if new_command and new_command != current:
-#                 self.custom_commands[cmd_name] = new_command
-#                 print(f"[{cmd_name.upper()}] Custom command updated.")
-#             else:
-#                 print(f"[{cmd_name.upper()}] No changes made.")
-#         except KeyboardInterrupt:
-#             print("\nCommand entry canceled.")
-#         finally:
-#             readline.set_startup_hook(None)
-#             readline.set_completer(None)
+    def do_show(self, arg):
+        """Show current custom or default commands."""
+        for k in ["pdb2gmx", "solvate", "genions"]:
+            cmd = self.custom_cmds.get(k)
+            print(f"{k}: {cmd if cmd else '[DEFAULT]'}")
+
+    def do_set(self, arg):
+        """
+        Edit the default command string for pdb2gmx, solvate, or genions.
+
+        Usage:
+            set pdb2gmx
+            set solvate
+            set genions
+
+        The user is shown the current command and can modify it inline.
+        Press ENTER to accept the modified command.
+        Type 'quit' to cancel.
+        """
+        valid_keys = ["pdb2gmx", "solvate", "genions"]
+        cmd_key = arg.strip().lower()
+
+        if cmd_key not in valid_keys:
+            print(f"[!] Usage: set <{'|'.join(valid_keys)}>")
+            return
+
+        # Get the default command string
+        if cmd_key == "pdb2gmx":
+            base = self.basename if self.basename else "PLACEHOLDER"
+            default = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+        elif cmd_key == "solvate":
+            base = self.basename if self.basename else "PLACEHOLDER"
+            default = f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && " \
+                      f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs spc216.gro -o {base}.solv.gro -p topol.top"
+        elif cmd_key == "genions":
+            base = self.basename if self.basename else "PLACEHOLDER"
+            ions_mdp = "ions.mdp"  # assuming it's copied to current dir already
+            default = f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && " \
+                      f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
+
+        # Show current value
+        current = self.custom_cmds.get(cmd_key) or default
+        print(f"[EDIT {cmd_key}] Current command:\n{current}")
+        print("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
+
+        # Prompt user
+        new_cmd = input("New command: ").strip()
+        if new_cmd.lower() == "quit":
+            print("[SET] Edit canceled.")
+            return
+        elif new_cmd == "":
+            self.custom_cmds[cmd_key] = current
+            print(f"[SET] Keeping existing command.")
+        else:
+            self.custom_cmds[cmd_key] = new_cmd
+            print(f"[SET] Updated command for {cmd_key}.")
 
     def complete_loadpdb(self, text, line, begidx, endidx):
         """Adds tab completion for .pdb files for use in loadpdb"""
@@ -163,7 +163,7 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_pdb2gmx(self.gmx_path, self.basename, self.custom_commands.get("pdb2gmx"), debug=self.debug, logger=self.logger)
+        run_pdb2gmx(self.gmx_path, self.basename, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug, logger=self.logger)
 
     def do_solvate(self, arg):
         """
@@ -174,7 +174,7 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_solvate(self.gmx_path, self.basename, self.custom_commands.get("solvate"), debug=self.debug, logger=self.logger)
+        run_solvate(self.gmx_path, self.basename, custom_command=self.custom_cmds["solvate"], debug=self.debug, logger=self.logger)
 
     def do_genions(self, arg):
         """
@@ -185,7 +185,7 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_genions(self.gmx_path, self.basename, self.custom_commands.get("genions"), debug=self.debug, logger=self.logger)
+        run_genions(self.gmx_path, self.basename, custom_command=self.custom_cmds["genions"], debug=self.debug, logger=self.logger)
 
     def do_em(self, arg):
         """
@@ -300,6 +300,9 @@ class GromacsCLI(cmd.Cmd):
         try:
             with open(slurm_tpl_path, "r") as f:
                 slurm_content = f.read()
+
+            # Replace BASE variable in SLURM script with basename
+            slurm_content = re.sub(r'__BASE__', self.basename, slurm_content)
 
             # Replace init variable in SLURM script
             slurm_content = re.sub(r'init="[^"]+"', f'init="{init_gro}"', slurm_content)

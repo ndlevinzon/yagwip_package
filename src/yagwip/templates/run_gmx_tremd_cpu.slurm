@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gmx_remd
+#SBATCH --job-name=__BASE___gmx_remd
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=1
@@ -94,7 +94,7 @@ mpirun -np ${#temperatures[@]} gmx_mpi mdrun -multidir $(seq 0 $((${#temperature
 # Step 5: Resubmit Job
 # ------------------------
 echo "Job ran for 55 minutes. Resubmitting self..."
-sbatch run_gmx_tremd_beluga.slurm
+sbatch run_gmx_tremd_cpu.slurm
 
 #      ___          _____
 #     /__/\        /  /::\
