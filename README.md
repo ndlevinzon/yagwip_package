@@ -5,7 +5,7 @@ This work was inspired by the original library of Dr. Olivier Mailhot (aka Grego
 
 ---
 
-![YAGWIP building and simulation pipeline](docs/yagwip1.0_build_sim.png)
+![YAGWIP building and simulation pipeline](docs/yagwip1.0_build_sim.PNG)
  
 ## Features
 - Interactive command line interface.
