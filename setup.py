@@ -27,6 +27,7 @@ setuptools.setup(
             "assets/*.txt",
             "templates/*.mdp",
             "templates/*.slurm",
+            "templates/amber14sb.ff/",
         ],
     }
 )

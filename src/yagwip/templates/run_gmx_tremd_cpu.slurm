@@ -18,7 +18,7 @@ init="__INIT_GRO__"
 mini_prefix="em"
 nvt_prefix="nvt"
 npt_prefix="npt"
-prod_prefix="prod"
+prod_prefix="remd_template"
 prod_step="step"
 
 # Read temperatures from file formatted like: "Replica 1: 300.00 K"
@@ -66,14 +66,14 @@ for i in ${!temperatures[@]}; do
     temp=${temperatures[$i]}
     dir=$i
     mkdir -p $dir
-    cp ${topol} ${npt_prefix}.gro $dir/
+    cp topol.top ${npt_prefix}.gro $dir/
 
     # Generate MDP for this temperature
     sed "s/XXX/${temp}/g" remd_template.mdp > $dir/remd.mdp
-    
+
     # grompp for each replica
     pushd $dir
-    gmx grompp -f remd.mdp -c ${npt_prefix}.gro -p ${topol} -o remd.tpr -maxwarn 1
+    gmx grompp -f remd.mdp -c ${npt_prefix}.gro -p topol.top -o remd.tpr -maxwarn 1
     popd
 
 done
