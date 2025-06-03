@@ -32,7 +32,7 @@ class GromacsCLI(cmd.Cmd):
         self.custom_cmds = {
             "pdb2gmx": None,
             "solvate": None,
-            "genion": None,
+            "genions": None,
         }
 
     def default(self, line):
