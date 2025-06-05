@@ -245,10 +245,10 @@ class GromacsCLI(cmd.Cmd):
         """
         run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
 
-    def do_set(self, arg):
+    def do_source(self, arg):
         """
         Set a custom .itp include to be added to all topol.top files.
-        Usage: set /absolute/path/to/custom.itp
+        Usage: source /absolute/path/to/custom.itp
         """
         itp_path = arg.strip()
 
