@@ -1,6 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger, complete_loadpdb, complete_loadgro
+from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files
 from importlib.resources import files
 import importlib.metadata
 import cmd
@@ -244,6 +244,28 @@ class GromacsCLI(cmd.Cmd):
         Usage: "tremd calc X.solv.ions.gro"
         """
         run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+
+    def do_set(self, arg):
+        """
+        Set a custom .itp include to be added to all topol.top files.
+        Usage: set /absolute/path/to/custom.itp
+        """
+        itp_path = arg.strip()
+
+        if not itp_path.endswith('.itp'):
+            print("Error: Must provide a path to a .itp file.")
+            return
+
+        if not os.path.isfile(itp_path):
+            print(f"Error: File '{itp_path}' not found.")
+            return
+
+        self.custom_itp_include = itp_path
+        print(f"Custom .itp include set: {itp_path}")
+
+        # Inject into existing topol.top files in working directories (optional)
+        insert_itp_into_top_files()
+
 
     def do_slurm(self, arg):
         """

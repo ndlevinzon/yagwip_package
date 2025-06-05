@@ -289,3 +289,38 @@ def complete_loadgro(text, line=None, begidx=None, endidx=None):
     else:
         completions = [f for f in os.listdir() if f.startswith(text) and f.endswith("solv.ions.gro")]
     return completions
+
+
+def insert_itp_into_top_files(self):
+    """
+    Searches for topol.top files in known directories and injects the include line.
+    """
+    include_line = f'#include "{self.custom_itp_include}"\n'
+    top_files = []
+
+    for root, dirs, files in os.walk(self.base_working_dir):
+        for file in files:
+            if file == "topol.top":
+                top_files.append(os.path.join(root, file))
+
+    for top_file in top_files:
+        with open(top_file, 'r') as f:
+            lines = f.readlines()
+
+        # Check if the include already exists
+        if any(include_line.strip() in line for line in lines):
+            continue
+
+        # Find where to insert it (after forcefield section, typically after first #include)
+        insert_idx = 0
+        for i, line in enumerate(lines):
+            if "#include" in line and "forcefield" in line:
+                insert_idx = i + 1
+                break
+
+        lines.insert(insert_idx, include_line)
+
+        with open(top_file, 'w') as f:
+            f.writelines(lines)
+
+        print(f"Injected custom ITP into {top_file}")

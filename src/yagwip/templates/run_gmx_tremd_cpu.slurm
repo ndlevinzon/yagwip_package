@@ -2,9 +2,9 @@
 #SBATCH --job-name=__BASE___gmx_remd
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
-#SBATCH --nodes=1
-#SBATCH --ntasks=40   # Max on Beluga
-#SBATCH --cpus-per-task=1
+#SBATCH --nodes=8              # 8 Replicas = 8 Nodes
+#SBATCH --ntasks-per-node=1    # 1 Node Per Replica
+#SBATCH --cpus-per-task=40     # 40 CPUs Per Node
 #SBATCH --time=01:00:00
 #SBATCH --exclusive 
 #SBATCH --mem=0
@@ -86,7 +86,8 @@ timeout 3300 \
 mpirun -np ${#temperatures[@]} gmx_mpi mdrun -multidir $(seq 0 $((${#temperatures[@]} - 1))) \
     -replex 1000 \
     -deffnm remd \
-    -ntomp 1 \
+    -multi ${#temperatures[@]} \
+    -ntomp 40 \
     -cpt 5 \
     -cpi remd.cpt
 
