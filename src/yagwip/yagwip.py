@@ -260,11 +260,10 @@ class GromacsCLI(cmd.Cmd):
             print(f"Error: File '{itp_path}' not found.")
             return
 
-        self.custom_itp_include = itp_path
         print(f"Custom .itp include set: {itp_path}")
 
         # Inject into existing topol.top files in working directories (optional)
-        insert_itp_into_top_files()
+        insert_itp_into_top_files(itp_path, root_dir=os.getcwd())
 
 
     def do_slurm(self, arg):

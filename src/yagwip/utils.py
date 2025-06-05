@@ -291,14 +291,14 @@ def complete_loadgro(text, line=None, begidx=None, endidx=None):
     return completions
 
 
-def insert_itp_into_top_files(self):
+def insert_itp_into_top_files(custom_itp_include, root_dir="."):
     """
     Searches for topol.top files in known directories and injects the include line.
     """
-    include_line = f'#include "{self.custom_itp_include}"\n'
+    include_line = f'#include "{custom_itp_include}"\n'
     top_files = []
 
-    for root, dirs, files in os.walk(self.base_working_dir):
+    for root, dirs, files in os.walk(root_dir):
         for file in files:
             if file == "topol.top":
                 top_files.append(os.path.join(root, file))
