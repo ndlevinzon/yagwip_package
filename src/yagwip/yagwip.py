@@ -27,6 +27,7 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = None                        # Full path to the loaded PDB file
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
+        self.user_itp_paths = []                            # Stores user input paths for do_source
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
@@ -247,7 +248,9 @@ class GromacsCLI(cmd.Cmd):
 
     def do_source(self, arg):
         """
-        Set a custom .itp include to be added to all topol.top files.
+        Add a custom .itp include to be added to all topol.top files.
+        This replaces any existing #include lines not in the user-defined list.
+
         Usage: source /absolute/path/to/custom.itp
         """
         itp_path = arg.strip()
@@ -260,11 +263,20 @@ class GromacsCLI(cmd.Cmd):
             print(f"Error: File '{itp_path}' not found.")
             return
 
-        print(f"Custom .itp include set: {itp_path}")
+        # Add new path to list (no duplicates)
+        if itp_path not in self.user_itp_paths:
+            self.user_itp_paths.append(itp_path)
+            print(f"Added custom .itp include: {itp_path}")
+        else:
+            print(f"[!] Path already in include list: {itp_path}")
 
-        # Inject into existing topol.top files in working directories (optional)
-        insert_itp_into_top_files(itp_path, root_dir=os.getcwd())
+        # Apply all includes to all topol.top files
+        insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
 
+        # Display all tracked includes
+        print("\nCurrent custom ITP includes:")
+        for p in self.user_itp_paths:
+            print(f'  #include "{p}"')
 
     def do_slurm(self, arg):
         """

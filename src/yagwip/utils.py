@@ -291,11 +291,11 @@ def complete_loadgro(text, line=None, begidx=None, endidx=None):
     return completions
 
 
-def insert_itp_into_top_files(custom_itp_include, root_dir="."):
+def insert_itp_into_top_files(itp_path_list, root_dir="."):
     """
-    Searches for topol.top files in known directories and injects the include line.
+    Rewrite all topol.top files to include only the provided list of ITP paths,
+    removing any existing non-user-specified includes.
     """
-    include_line = f'#include "{custom_itp_include}"\n'
     top_files = []
 
     for root, dirs, files in os.walk(root_dir):
@@ -307,20 +307,28 @@ def insert_itp_into_top_files(custom_itp_include, root_dir="."):
         with open(top_file, 'r') as f:
             lines = f.readlines()
 
-        # Check if the include already exists
-        if any(include_line.strip() in line for line in lines):
-            continue
+        new_lines = []
+        inserted = False
 
-        # Find where to insert it (after forcefield section, typically after first #include)
+        for line in lines:
+            # Remove old includes of the form #include "..."
+            if line.strip().startswith("#include"):
+                continue
+            new_lines.append(line)
+
+        # Find insertion point (after forcefield include block)
         insert_idx = 0
-        for i, line in enumerate(lines):
+        for i, line in enumerate(new_lines):
             if "#include" in line and "forcefield" in line:
                 insert_idx = i + 1
                 break
 
-        lines.insert(insert_idx, include_line)
+        # Inject all custom includes
+        include_lines = [f'#include "{path}"\n' for path in itp_path_list]
+        new_lines[insert_idx:insert_idx] = include_lines
 
+        # Write updated file
         with open(top_file, 'w') as f:
-            f.writelines(lines)
+            f.writelines(new_lines)
 
-        print(f"Injected custom ITP into {top_file}")
+        print(f"[UPDATED] Injected {len(itp_path_list)} custom includes into {top_file}")
