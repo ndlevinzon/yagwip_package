@@ -311,7 +311,6 @@ def run_tremd(gmx_path, basename, arg="", debug=False):
         else:
             out_file = "TREMD_temp_ranges.txt"
             with open(out_file, 'w') as f:
-                f.write("# TREMD Temperature Ladder\n")
                 for i, temp in enumerate(temperatures):
                     f.write(f"Replica {i + 1}: {temp:.2f} K\n")
             print(f"[TREMD] Temperature ladder saved to {out_file}")
