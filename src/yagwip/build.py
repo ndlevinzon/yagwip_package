@@ -32,7 +32,7 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     print(f"Running pdb2gmx for {base}.pdb...")
 
     # Run the command, sending "7\n" as input (ff14SB on IRIC patched GROMACS in /levinzon/)
-    run_gromacs_command(command, pipe_input="7\n", debug=debug, logger=logger)
+    run_gromacs_command(command, pipe_input="1\n", debug=debug, logger=logger)
 
 
 def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", logger=None):
