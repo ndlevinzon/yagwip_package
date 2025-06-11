@@ -1,4 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
+import subprocess
+from pathlib import Path
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
 from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files
 from importlib.resources import files
@@ -188,24 +190,14 @@ class GromacsCLI(cmd.Cmd):
             print("[!] No PDB loaded.")
             return
 
-        import subprocess
-        from pathlib import Path
-
         # Build protein topology
         protein_pdb = "protein.pdb" if self.ligand_pdb_path else self.current_pdb_path
         base_prot = Path(protein_pdb).stem
         output_gro = f"{base_prot}.gro"
         topol_top = "topol.top"
 
-        # Run GROMACS pdb2gmx on the protein
-        cmd = self.custom_cmds["pdb2gmx"]
-        if not cmd:
-            cmd = f"{self.gmx_path} pdb2gmx -f {protein_pdb} -o {output_gro} -p {topol_top} -i posre.itp -ff amber99sb-ildn -water spce -ignh"
-
-        if self.debug:
-            print("[DEBUG]", cmd)
-        else:
-            subprocess.run(cmd, shell=True, check=True)
+        run_genions(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug,
+                    logger=self.logger)
 
         # If ligand is present, insert it into the .gro and topol.top
         if self.ligand_pdb_path:
