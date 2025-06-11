@@ -1,5 +1,4 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
-import subprocess
 from pathlib import Path
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
 from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files
@@ -157,6 +156,8 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
 
+        print(f"PDB file loaded: {full_path}")
+
         with open(full_path, 'r') as f:
             lines = f.readlines()
 
@@ -179,8 +180,6 @@ class GromacsCLI(cmd.Cmd):
             self.protein_pdb_path = self.current_pdb_path
             print("No HETATM entries found. Using single PDB for protein.")
 
-        print(f"PDB file loaded: {full_path}")
-
     def do_pdb2gmx(self, arg):
         """
         Run pdb2gmx. If ligand is present, treat protein and ligand separately.
@@ -196,7 +195,7 @@ class GromacsCLI(cmd.Cmd):
         output_gro = f"{base_prot}.gro"
         topol_top = "topol.top"
 
-        run_genions(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug,
+        run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug,
                     logger=self.logger)
 
         # If ligand is present, insert it into the .gro and topol.top
