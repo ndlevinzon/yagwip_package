@@ -136,7 +136,7 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
     return completions
 
 
-def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
+def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="complex.gro"):
     coords = []
     with open(ligand_pdb, 'r') as f:
         for line in f:
@@ -168,7 +168,6 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
             fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
 
         fout.write(box)
-
 
 
 def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
