@@ -171,23 +171,54 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
     print(f"Wrote {total_atoms} atoms to {combined_gro}")
 
 
-def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
+def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_name="LIG"):
     with open(topol_top, 'r') as f:
         lines = f.readlines()
 
+    new_lines = []
+    inserted_include = False
+    inserted_mol = False
+    in_molecules_section = False
+    molecules_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Insert ITP include after forcefield
+        if not inserted_include and '#include' in stripped and 'forcefield.itp' in stripped:
+            new_lines.append(line)
+            new_lines.append(f'#include "{ligand_itp}"\n')
+            inserted_include = True
+            continue
+
+        # Buffer molecule section to avoid duplicate insertion
+        if '[ molecules ]' in stripped:
+            in_molecules_section = True
+            molecules_lines.append(line)
+            continue
+
+        if in_molecules_section:
+            if stripped == '' or stripped.startswith('['):
+                if not inserted_mol:
+                    molecules_lines.append(f'{ligand_name}    1\n')
+                    inserted_mol = True
+                new_lines.extend(molecules_lines)
+                molecules_lines = []
+                in_molecules_section = False
+                new_lines.append(line)
+            else:
+                if ligand_name not in stripped:
+                    molecules_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    # Handle case where [ molecules ] is at the very end of the file
+    if in_molecules_section and not inserted_mol:
+        molecules_lines.append(f'{ligand_name}    1\n')
+        new_lines.extend(molecules_lines)
+
     with open(topol_top, 'w') as f:
-        inserted_include = False
-        inserted_mol = False
-        for line in lines:
-            f.write(line)
-            if not inserted_include and '#include' in line and 'forcefield.itp' in line:
-                f.write(f'#include "{ligand_itp}"\n')
-                inserted_include = True
-            if '[ molecules ]' in line:
-                inserted_mol = True
-            elif inserted_mol and line.strip() == '':
-                f.write(f'{ligand_name}    1\n')
-                inserted_mol = False
+        f.writelines(new_lines)
 
 
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):

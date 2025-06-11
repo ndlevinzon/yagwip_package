@@ -207,12 +207,10 @@ class GromacsCLI(cmd.Cmd):
         # Combine ligand coordinates
         if self.ligand_pdb_path and os.path.isfile("ligand.pdb") and os.path.getsize("ligand.pdb") > 0:
             append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+            include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
         else:
             shutil.copy(output_gro, "complex.gro")  # only protein
 
-        # Include ligand topology if available
-        if self.ligand_pdb_path and os.path.isfile("ligand.itp"):
-            include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
 
     def do_solvate(self, arg):
         """
