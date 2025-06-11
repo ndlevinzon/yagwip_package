@@ -332,3 +332,58 @@ def insert_itp_into_top_files(itp_path_list, root_dir="."):
             f.writelines(new_lines)
 
         print(f"[UPDATED] Injected {len(itp_path_list)} custom includes into {top_file}")
+
+def replace_coordinates_in_gro(template_gro, ligand_pdb, output_gro):
+    coords = []
+    with open(ligand_pdb) as f:
+        for line in f:
+            if line.startswith(('ATOM', 'HETATM')):
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+                coords.append((x, y, z))
+    with open(template_gro) as fin, open(output_gro, 'w') as fout:
+        header = [next(fin) for _ in range(2)]
+        fout.writelines(header)
+        for i, line in enumerate(fin):
+            if len(coords) <= i:
+                break
+            x, y, z = coords[i]
+            fout.write(f"{line[:20]}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+        box = fin.readline()
+        fout.write(box)
+
+def combine_systems(protein_gro, ligand_gro, combined_gro):
+    with open(protein_gro) as f:
+        prot_lines = f.readlines()
+    with open(ligand_gro) as f:
+        lig_lines = f.readlines()
+
+    header = prot_lines[:2]
+    box_line = prot_lines[-1]
+    atom_lines = prot_lines[2:-1] + lig_lines[2:-1]
+    total_atoms = len(atom_lines)
+
+    with open(combined_gro, 'w') as out:
+        out.writelines(header[:1])
+        out.write(f"{total_atoms}\n")
+        out.writelines(atom_lines)
+        out.write(box_line)
+
+def update_topol_to_include_ligand(top_file, ligand_itp_path, ligand_name):
+    with open(top_file, 'r') as f:
+        lines = f.readlines()
+
+    with open(top_file, 'w') as f:
+        inserted_itp = False
+        inserted_mol = False
+        for line in lines:
+            f.write(line)
+            if not inserted_itp and line.strip().startswith('#include') and 'forcefield.itp' in line:
+                f.write(f'#include "{ligand_itp_path}"\n')
+                inserted_itp = True
+            if '[ molecules ]' in line:
+                inserted_mol = True
+            elif inserted_mol and line.strip() == '':
+                f.write(f'{ligand_name}    1\n')
+                inserted_mol = False

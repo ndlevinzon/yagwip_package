@@ -122,12 +122,9 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     # Construct GROMACS commands
     grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
-    genindex_cmd = f"{gmx_path} make_ndx -f {output_gro}"        # Optional: regenerate index file (currently unused)
 
     # Execute the commands (or print if debug)
     print(f"Running genion for {base}...")
     run_gromacs_command(grompp_cmd, debug=debug, logger=logger)                     # Generate .tpr
     run_gromacs_command(genion_cmd, pipe_input="13\n", debug=debug, logger=logger)   # Add ions using group 13 (SOL)
-    # Optional step: create new index file from solvated+ionized structure
-    #run_gromacs_command(genindex_cmd, debug=debug, logger=logger)
 
