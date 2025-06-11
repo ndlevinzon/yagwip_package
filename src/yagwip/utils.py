@@ -141,14 +141,15 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
     with open(ligand_pdb, 'r') as f:
         for line in f:
             if line.startswith(('ATOM', 'HETATM')):
-                res_id = int(line[22:26].strip())
-                atom_name = line[12:16].strip()
+                res_id = int(line[23:26].strip())
+                atom_name = line[13:16].strip()
                 res_name = line[17:20].strip()
                 atom_index = int(line[6:11].strip())
                 x = float(line[30:38])
                 y = float(line[38:46])
                 z = float(line[46:54])
                 coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
+            print(coords)
 
     with open(protein_gro, 'r') as fin:
         lines = fin.readlines()
