@@ -136,6 +136,52 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
     return completions
 
 
+def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
+    coords = []
+    with open(ligand_pdb, 'r') as f:
+        for line in f:
+            if line.startswith(('ATOM', 'HETATM')):
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+                coords.append((x, y, z))
+
+    with open(protein_gro, 'r') as fin:
+        lines = fin.readlines()
+
+    header = lines[:2]
+    atom_lines = lines[2:-1]
+    box = lines[-1]
+    total_atoms = len(atom_lines) + len(coords)
+
+    with open(combined_gro, 'w') as fout:
+        fout.write(header[0])
+        fout.write(f"{total_atoms}\n")
+        fout.writelines(atom_lines)
+
+        for i, (x, y, z) in enumerate(coords, start=1):
+            fout.write(f"LIG     LIG  {i:>5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+        fout.write(box)
+
+def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
+    with open(topol_top, 'r') as f:
+        lines = f.readlines()
+
+    with open(topol_top, 'w') as f:
+        inserted_include = False
+        inserted_mol = False
+        for line in lines:
+            f.write(line)
+            if not inserted_include and '#include' in line and 'forcefield.itp' in line:
+                f.write(f'#include "{ligand_itp}"\n')
+                inserted_include = True
+            if '[ molecules ]' in line:
+                inserted_mol = True
+            elif inserted_mol and line.strip() == '':
+                f.write(f'{ligand_name}    1\n')
+                inserted_mol = False
+
+
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
     Parses a GROMACS .gro file to count protein and water residues.

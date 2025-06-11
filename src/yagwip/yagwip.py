@@ -1,7 +1,7 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
-from pathlib import Path
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files
+from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files, \
+    append_ligand_coordinates_to_gro, include_ligand_itp_in_topol
 from importlib.resources import files
 import importlib.metadata
 import cmd
@@ -192,85 +192,14 @@ class GromacsCLI(cmd.Cmd):
         # Build protein topology
         protein_pdb = "protein" if self.ligand_pdb_path else f"{self.current_pdb_path}"
         output_gro = f"{protein_pdb}.gro"
-        topol_top = "topol.top"
 
-        run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug,
+        run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug,
                     logger=self.logger)
 
-        # If ligand is present, insert it into the .gro and topol.top
-        if self.ligand_pdb_path:
-            print("[PDB2GMX] Ligand detected. Incorporating ligand into system...")
+        append_ligand_coordinates_to_gro(output_gro, self.ligand_pdb_path, "complex.gro")
 
-            ligand_pdb = self.ligand_pdb_path
-            ligand_gro = "ligand.gro"
+        include_ligand_itp_in_topol("topol.top", "/ligand.itp", ligand_name=None)
 
-            # Extract crystal coordinates from ligand.pdb into a dummy ligand.gro
-            self.replace_coordinates_in_gro(output_gro, ligand_pdb, ligand_gro)
-
-            # Combine ligand and protein
-            combined_gro = "complex.gro"
-            self.combine_systems(output_gro, ligand_gro, combined_gro)
-
-            # Update topol.top with ITP path and ligand name
-            ligand_itp_name = Path(self.user_itp_paths[0]).name if self.user_itp_paths else "ligand.itp"
-            self.update_topol_to_include_ligand(topol_top, ligand_itp_name, "LIG")
-
-            print(f"[PDB2GMX] System built: {combined_gro} with updated {topol_top}")
-
-    def replace_coordinates_in_gro(self, template_gro, ligand_pdb, output_gro):
-        coords = []
-        with open(ligand_pdb) as f:
-            for line in f:
-                if line.startswith(('ATOM', 'HETATM')):
-                    x = float(line[30:38])
-                    y = float(line[38:46])
-                    z = float(line[46:54])
-                    coords.append((x, y, z))
-        with open(template_gro) as fin, open(output_gro, 'w') as fout:
-            header = [next(fin) for _ in range(2)]
-            fout.writelines(header)
-            for i, line in enumerate(fin):
-                if len(coords) <= i:
-                    break
-                x, y, z = coords[i]
-                fout.write(f"{line[:20]}{x:8.3f}{y:8.3f}{z:8.3f}\n")
-            box = fin.readline()
-            fout.write(box)
-
-    def combine_systems(self, protein_gro, ligand_gro, combined_gro):
-        with open(protein_gro) as f:
-            prot_lines = f.readlines()
-        with open(ligand_gro) as f:
-            lig_lines = f.readlines()
-
-        header = prot_lines[:2]
-        box_line = prot_lines[-1]
-        atom_lines = prot_lines[2:-1] + lig_lines[2:-1]
-        total_atoms = len(atom_lines)
-
-        with open(combined_gro, 'w') as out:
-            out.writelines(header[:1])
-            out.write(f"{total_atoms}\n")
-            out.writelines(atom_lines)
-            out.write(box_line)
-
-    def update_topol_to_include_ligand(self, top_file, ligand_itp_path, ligand_name):
-        with open(top_file, 'r') as f:
-            lines = f.readlines()
-
-        with open(top_file, 'w') as f:
-            inserted_itp = False
-            inserted_mol = False
-            for line in lines:
-                f.write(line)
-                if not inserted_itp and line.strip().startswith('#include') and 'forcefield.itp' in line:
-                    f.write(f'#include "{ligand_itp_path}"\n')
-                    inserted_itp = True
-                if '[ molecules ]' in line:
-                    inserted_mol = True
-                elif inserted_mol and line.strip() == '':
-                    f.write(f'{ligand_name}    1\n')
-                    inserted_mol = False
     def do_solvate(self, arg):
         """
         Run solvate with optional custom command override. This command should be run after pdb2gmx.
