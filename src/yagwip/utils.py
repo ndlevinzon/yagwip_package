@@ -137,14 +137,17 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
 
 
 def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
-    coords = []
+    ligand_atoms = []
     with open(ligand_pdb, 'r') as f:
-        for line in f:
+        for i, line in enumerate(f):
             if line.startswith(('ATOM', 'HETATM')):
+                res_id = 1  # default ligand res id
+                res_name = line[17:20].strip()
+                atom_name = line[12:16].strip()
                 x = float(line[30:38])
                 y = float(line[38:46])
                 z = float(line[46:54])
-                coords.append((x, y, z))
+                ligand_atoms.append((res_id, res_name, atom_name, x, y, z))
 
     with open(protein_gro, 'r') as fin:
         lines = fin.readlines()
@@ -152,16 +155,19 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
     header = lines[:2]
     atom_lines = lines[2:-1]
     box = lines[-1]
-    total_atoms = len(atom_lines) + len(coords)
+    total_atoms = len(atom_lines) + len(ligand_atoms)
 
     with open(combined_gro, 'w') as fout:
         fout.write(header[0])
         fout.write(f"{total_atoms}\n")
         fout.writelines(atom_lines)
 
-        for i, (x, y, z) in enumerate(coords, start=1):
-            fout.write(f"  LIG     LIG  {i:>5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+        atom_index_start = len(atom_lines) + 1
+        for i, (resid, resname, atomname, x, y, z) in enumerate(ligand_atoms, start=atom_index_start):
+            fout.write(f"{resid:5d}{resname:<5}{atomname:>5}{i:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+
         fout.write(box)
+
 
 
 def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
