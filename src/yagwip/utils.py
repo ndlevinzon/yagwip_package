@@ -214,7 +214,7 @@ def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_nam
 
     # Handle case where [ molecules ] is at the very end of the file
     if in_molecules_section and not inserted_mol:
-        molecules_lines.append(f'{ligand_name}    1\n')
+        molecules_lines.append(f'{ligand_name}                 1\n')
         new_lines.extend(molecules_lines)
 
     with open(topol_top, 'w') as f:
