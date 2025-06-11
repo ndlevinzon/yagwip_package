@@ -169,7 +169,6 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
         fout.write(box)
 
 
-
 def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
     with open(topol_top, 'r') as f:
         lines = f.readlines()
