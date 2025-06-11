@@ -198,7 +198,7 @@ class GromacsCLI(cmd.Cmd):
 
         append_ligand_coordinates_to_gro(output_gro, self.ligand_pdb_path, "complex.gro")
 
-        include_ligand_itp_in_topol("topol.top", "/ligand.itp", ligand_name=None)
+        include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name=None)
 
     def do_solvate(self, arg):
         """

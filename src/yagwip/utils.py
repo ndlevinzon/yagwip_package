@@ -160,8 +160,9 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro):
         fout.writelines(atom_lines)
 
         for i, (x, y, z) in enumerate(coords, start=1):
-            fout.write(f"LIG     LIG  {i:>5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+            fout.write(f"  LIG     LIG  {i:>5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
         fout.write(box)
+
 
 def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
     with open(topol_top, 'r') as f:
