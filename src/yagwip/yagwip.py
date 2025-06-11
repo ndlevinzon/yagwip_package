@@ -156,6 +156,8 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
 
+        print(f"PDB file loaded: {full_path}")
+
         with open(full_path, 'r') as f:
             lines = f.readlines()
 
@@ -177,8 +179,6 @@ class GromacsCLI(cmd.Cmd):
         else:
             self.protein_pdb_path = self.current_pdb_path
             print("No HETATM entries found. Using single PDB for protein.")
-
-        print(f"PDB file loaded: {full_path}")
 
     def do_source(self, arg):
         """
@@ -219,7 +219,6 @@ class GromacsCLI(cmd.Cmd):
         run_pdb2gmx(
             gmx_path=self.gmx_path,
             basename=self.basename,
-            protein_pdb=self.protein_pdb_path,
             custom_command=self.custom_cmds["pdb2gmx"],
             debug=self.debug,
             logger=self.logger
