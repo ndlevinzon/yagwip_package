@@ -164,7 +164,7 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
         fout.writelines(atom_lines)
 
         for res_id, res_name, atom_name, atom_index, x, y, z in coords:
-            fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+            fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x/10:8.3f}{y/10:8.3f}{z/10:8.3f}\n")
 
         fout.write(box)
 
