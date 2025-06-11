@@ -189,16 +189,30 @@ class GromacsCLI(cmd.Cmd):
             print("[!] No PDB loaded.")
             return
 
-        # Build protein topology
-        protein_pdb = "protein" if self.ligand_pdb_path else f"{self.current_pdb_path}"
+        protein_pdb = "protein" if self.ligand_pdb_path else self.basename
         output_gro = f"{protein_pdb}.gro"
 
-        run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug,
-                    logger=self.logger)
+        run_pdb2gmx(
+            self.gmx_path,
+            protein_pdb,
+            custom_command=self.custom_cmds["pdb2gmx"],
+            debug=self.debug,
+            logger=self.logger
+        )
 
-        append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+        if not os.path.isfile(output_gro):
+            print(f"[!] Error: expected {output_gro} was not created.")
+            return
 
-        include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name=None)
+        # Combine ligand coordinates
+        if self.ligand_pdb_path and os.path.isfile("ligand.pdb") and os.path.getsize("ligand.pdb") > 0:
+            append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+        else:
+            shutil.copy(output_gro, "complex.gro")  # only protein
+
+        # Include ligand topology if available
+        if self.ligand_pdb_path and os.path.isfile("ligand.itp"):
+            include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
 
     def do_solvate(self, arg):
         """
