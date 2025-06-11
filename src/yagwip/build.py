@@ -26,7 +26,7 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     base = basename if basename else "PLACEHOLDER"
 
     # Construct the default pdb2gmx command if no custom one is given
-    default_cmd = f"{gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+    default_cmd = f"{gmx_path} pdb2gmx -f {base} -o {base}.gro -water spce -ignh"
     command = custom_command or default_cmd
 
     print(f"Running pdb2gmx for {base}.pdb...")
