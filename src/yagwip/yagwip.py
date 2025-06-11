@@ -196,7 +196,7 @@ class GromacsCLI(cmd.Cmd):
         run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug,
                     logger=self.logger)
 
-        append_ligand_coordinates_to_gro(output_gro, self.ligand_pdb_path, "complex.gro")
+        append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
 
         include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name=None)
 
