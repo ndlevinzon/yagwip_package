@@ -25,6 +25,7 @@ class GromacsCLI(cmd.Cmd):
         self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
         self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
         self.current_pdb_path = None                        # Full path to the loaded PDB file
+        self.ligand_pdb_path = None
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
@@ -147,25 +148,139 @@ class GromacsCLI(cmd.Cmd):
             return
 
         full_path = os.path.abspath(filename)
-        if os.path.isfile(full_path):
-            self.current_pdb_path = full_path
-            self.basename = os.path.splitext(os.path.basename(full_path))[0]
-            self.logger.info(f"Loaded PDB: {full_path}")
-            print(f"PDB file loaded: {full_path}")
-        else:
+        if not os.path.isfile(full_path):
             print(f"[!] '{filename}' not found.")
+            return
+
+        self.current_pdb_path = full_path
+        self.basename = os.path.splitext(os.path.basename(full_path))[0]
+
+        with open(full_path, 'r') as f:
+            lines = f.readlines()
+
+        hetatm_lines = [line for line in lines if line.startswith("HETATM")]
+
+        if hetatm_lines:
+            ligand_file = 'ligand.pdb'
+            protein_file = 'protein.pdb'
+            self.ligand_pdb_path = os.path.abspath(ligand_file)
+            self.protein_pdb_path = os.path.abspath(protein_file)
+
+            with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
+                for line in lines:
+                    if line.startswith("HETATM"):
+                        lig_out.write(line)
+                    else:
+                        prot_out.write(line)
+            print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
+        else:
+            self.protein_pdb_path = self.current_pdb_path
+            print("No HETATM entries found. Using single PDB for protein.")
+
+        print(f"PDB file loaded: {full_path}")
 
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx with optional custom command override. This command should be run after loadpdb.
+        Run pdb2gmx. If ligand is present, treat protein and ligand separately.
         Usage: "pdb2gmx"
-        Other Options: use "set pdb2gmx" to override defaults
         """
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_pdb2gmx(self.gmx_path, self.basename, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug, logger=self.logger)
 
+        import subprocess
+        from pathlib import Path
+
+        # Build protein topology
+        protein_pdb = "protein.pdb" if self.ligand_pdb_path else self.current_pdb_path
+        base_prot = Path(protein_pdb).stem
+        output_gro = f"{base_prot}.gro"
+        topol_top = "topol.top"
+
+        # Run GROMACS pdb2gmx on the protein
+        cmd = self.custom_cmds["pdb2gmx"]
+        if not cmd:
+            cmd = f"{self.gmx_path} pdb2gmx -f {protein_pdb} -o {output_gro} -p {topol_top} -i posre.itp -ff amber99sb-ildn -water spce -ignh"
+
+        if self.debug:
+            print("[DEBUG]", cmd)
+        else:
+            subprocess.run(cmd, shell=True, check=True)
+
+        # If ligand is present, insert it into the .gro and topol.top
+        if self.ligand_pdb_path:
+            print("[PDB2GMX] Ligand detected. Incorporating ligand into system...")
+
+            ligand_pdb = self.ligand_pdb_path
+            ligand_gro = "ligand.gro"
+
+            # Extract crystal coordinates from ligand.pdb into a dummy ligand.gro
+            self.replace_coordinates_in_gro(output_gro, ligand_pdb, ligand_gro)
+
+            # Combine ligand and protein
+            combined_gro = "complex.gro"
+            self.combine_systems(output_gro, ligand_gro, combined_gro)
+
+            # Update topol.top with ITP path and ligand name
+            ligand_itp_name = Path(self.user_itp_paths[0]).name if self.user_itp_paths else "ligand.itp"
+            self.update_topol_to_include_ligand(topol_top, ligand_itp_name, "LIG")
+
+            print(f"[PDB2GMX] System built: {combined_gro} with updated {topol_top}")
+
+    def replace_coordinates_in_gro(self, template_gro, ligand_pdb, output_gro):
+        coords = []
+        with open(ligand_pdb) as f:
+            for line in f:
+                if line.startswith(('ATOM', 'HETATM')):
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    coords.append((x, y, z))
+        with open(template_gro) as fin, open(output_gro, 'w') as fout:
+            header = [next(fin) for _ in range(2)]
+            fout.writelines(header)
+            for i, line in enumerate(fin):
+                if len(coords) <= i:
+                    break
+                x, y, z = coords[i]
+                fout.write(f"{line[:20]}{x:8.3f}{y:8.3f}{z:8.3f}\n")
+            box = fin.readline()
+            fout.write(box)
+
+    def combine_systems(self, protein_gro, ligand_gro, combined_gro):
+        with open(protein_gro) as f:
+            prot_lines = f.readlines()
+        with open(ligand_gro) as f:
+            lig_lines = f.readlines()
+
+        header = prot_lines[:2]
+        box_line = prot_lines[-1]
+        atom_lines = prot_lines[2:-1] + lig_lines[2:-1]
+        total_atoms = len(atom_lines)
+
+        with open(combined_gro, 'w') as out:
+            out.writelines(header[:1])
+            out.write(f"{total_atoms}\n")
+            out.writelines(atom_lines)
+            out.write(box_line)
+
+    def update_topol_to_include_ligand(self, top_file, ligand_itp_path, ligand_name):
+        with open(top_file, 'r') as f:
+            lines = f.readlines()
+
+        with open(top_file, 'w') as f:
+            inserted_itp = False
+            inserted_mol = False
+            for line in lines:
+                f.write(line)
+                if not inserted_itp and line.strip().startswith('#include') and 'forcefield.itp' in line:
+                    f.write(f'#include "{ligand_itp_path}"\n')
+                    inserted_itp = True
+                if '[ molecules ]' in line:
+                    inserted_mol = True
+                elif inserted_mol and line.strip() == '':
+                    f.write(f'{ligand_name}    1\n')
+                    inserted_mol = False
     def do_solvate(self, arg):
         """
         Run solvate with optional custom command override. This command should be run after pdb2gmx.
