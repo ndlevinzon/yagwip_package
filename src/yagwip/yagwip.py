@@ -1,7 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files, \
-    replace_coordinates_in_gro, combine_systems, update_topol_to_include_ligand
+from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files
 from importlib.resources import files
 import importlib.metadata
 import cmd
@@ -26,12 +25,11 @@ class GromacsCLI(cmd.Cmd):
         self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
         self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
         self.current_pdb_path = None                        # Full path to the loaded PDB file
-        self.ligand_pdb_path = None                         # Full path to the extracted ligand PDB file (if any)
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
 
-        # Dictionary of custom command overrides set by the user
+        # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
             "pdb2gmx": None,
             "solvate": None,
@@ -149,96 +147,24 @@ class GromacsCLI(cmd.Cmd):
             return
 
         full_path = os.path.abspath(filename)
-        if not os.path.isfile(full_path):
+        if os.path.isfile(full_path):
+            self.current_pdb_path = full_path
+            self.basename = os.path.splitext(os.path.basename(full_path))[0]
+            self.logger.info(f"Loaded PDB: {full_path}")
+            print(f"PDB file loaded: {full_path}")
+        else:
             print(f"[!] '{filename}' not found.")
-            return
-
-        self.current_pdb_path = full_path
-        self.basename = os.path.splitext(os.path.basename(full_path))[0]
-
-        print(f"PDB file loaded: {full_path}")
-
-        with open(full_path, 'r') as f:
-            lines = f.readlines()
-
-        hetatm_lines = [line for line in lines if line.startswith("HETATM")]
-
-        if hetatm_lines:
-            ligand_file = 'ligand.pdb'
-            protein_file = 'protein.pdb'
-            self.ligand_pdb_path = os.path.abspath(ligand_file)
-            self.protein_pdb_path = os.path.abspath(protein_file)
-
-            with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
-                for line in lines:
-                    if line.startswith("HETATM"):
-                        lig_out.write(line)
-                    else:
-                        prot_out.write(line)
-            print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
-        else:
-            self.protein_pdb_path = self.current_pdb_path
-            print("No HETATM entries found. Using single PDB for protein.")
-
-    def do_source(self, arg):
-        """
-        Add a custom .itp include to be added to all topol.top files.
-        Usage: source /absolute/path/to/custom.itp
-        """
-        itp_path = arg.strip()
-
-        if not itp_path.endswith('.itp'):
-            print("Error: Must provide a path to a .itp file.")
-            return
-
-        if not os.path.isfile(itp_path):
-            print(f"Error: File '{itp_path}' not found.")
-            return
-
-        if itp_path not in self.user_itp_paths:
-            self.user_itp_paths.append(itp_path)
-            print(f"Added custom .itp include: {itp_path}")
-        else:
-            print(f"[!] Path already in include list: {itp_path}")
-
-        insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
-
-        print("\nCurrent custom ITP includes:")
-        for p in self.user_itp_paths:
-            print(f'  #include "{p}"')
 
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx. Automatically detects and combines ligand if present.
+        Run pdb2gmx with optional custom command override. This command should be run after loadpdb.
         Usage: "pdb2gmx"
+        Other Options: use "set pdb2gmx" to override defaults
         """
-        if not self.protein_pdb_path:
+        if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-
-        run_pdb2gmx(
-            gmx_path=self.gmx_path,
-            basename=self.basename,
-            custom_command=self.custom_cmds["pdb2gmx"],
-            debug=self.debug,
-            logger=self.logger
-        )
-
-        if self.ligand_pdb_path and os.path.isfile("ligand_template.gro"):
-            ligand_gro = "ligand.gro"
-            self.ligand_gro_path = os.path.abspath(ligand_gro)
-
-            from utils import replace_coordinates_in_gro
-            replace_coordinates_in_gro("ligand_template.gro", self.ligand_pdb_path, ligand_gro)
-
-            combine_systems("protein.gro", ligand_gro, "complex.gro")
-
-            if self.user_itp_paths:
-                update_topol_to_include_ligand("topol.top", self.user_itp_paths[0], "LIG")
-
-            print("Combined protein and ligand into complex.gro")
-        else:
-            print("Only protein.gro generated.")
+        run_pdb2gmx(self.gmx_path, self.basename, custom_command=self.custom_cmds["pdb2gmx"], debug=self.debug, logger=self.logger)
 
     def do_solvate(self, arg):
         """
@@ -319,6 +245,38 @@ class GromacsCLI(cmd.Cmd):
         Usage: "tremd calc X.solv.ions.gro"
         """
         run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+
+    def do_source(self, arg):
+        """
+        Add a custom .itp include to be added to all topol.top files.
+        This replaces any existing #include lines not in the user-defined list.
+
+        Usage: source /absolute/path/to/custom.itp
+        """
+        itp_path = arg.strip()
+
+        if not itp_path.endswith('.itp'):
+            print("Error: Must provide a path to a .itp file.")
+            return
+
+        if not os.path.isfile(itp_path):
+            print(f"Error: File '{itp_path}' not found.")
+            return
+
+        # Add new path to list (no duplicates)
+        if itp_path not in self.user_itp_paths:
+            self.user_itp_paths.append(itp_path)
+            print(f"Added custom .itp include: {itp_path}")
+        else:
+            print(f"[!] Path already in include list: {itp_path}")
+
+        # Apply all includes to all topol.top files
+        insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
+
+        # Display all tracked includes
+        print("\nCurrent custom ITP includes:")
+        for p in self.user_itp_paths:
+            print(f'  #include "{p}"')
 
     def do_slurm(self, arg):
         """
