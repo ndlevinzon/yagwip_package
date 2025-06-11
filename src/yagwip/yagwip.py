@@ -190,9 +190,8 @@ class GromacsCLI(cmd.Cmd):
             return
 
         # Build protein topology
-        protein_pdb = "protein.pdb" if self.ligand_pdb_path else f"{self.current_pdb_path}"
-        base_prot = "protein" if self.ligand_pdb_path else f"{self.current_pdb_path}"
-        output_gro = f"{base_prot}.gro"
+        protein_pdb = "protein" if self.ligand_pdb_path else f"{self.current_pdb_path}"
+        output_gro = f"{protein_pdb}.gro"
         topol_top = "topol.top"
 
         run_pdb2gmx(self.gmx_path, protein_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug,
