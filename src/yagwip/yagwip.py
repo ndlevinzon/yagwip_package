@@ -220,10 +220,13 @@ class GromacsCLI(cmd.Cmd):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
+
+        complex_pdb = "complex" if self.ligand_pdb_path else self.basename
+
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_solvate(self.gmx_path, self.basename, custom_command=self.custom_cmds["solvate"], debug=self.debug, logger=self.logger)
+        run_solvate(self.gmx_path, complex_pdb, custom_command=self.custom_cmds["solvate"], debug=self.debug, logger=self.logger)
 
     def do_genions(self, arg):
         """
@@ -231,10 +234,12 @@ class GromacsCLI(cmd.Cmd):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
+        solvated_pdb = "complex" if self.ligand_pdb_path else self.basename
+
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_genions(self.gmx_path, self.basename, custom_command=self.custom_cmds["genions"], debug=self.debug, logger=self.logger)
+        run_genions(self.gmx_path, solvated_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug, logger=self.logger)
 
     def do_em(self, arg):
         """
