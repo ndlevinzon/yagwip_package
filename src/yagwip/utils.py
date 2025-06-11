@@ -149,7 +149,6 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
                 y = float(line[38:46])
                 z = float(line[46:54])
                 coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
-            print(coords)
 
     with open(protein_gro, 'r') as fin:
         lines = fin.readlines()
@@ -168,6 +167,8 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
             fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x:8.3f}{y:8.3f}{z:8.3f}\n")
 
         fout.write(box)
+
+    print(f"Wrote {total_atoms} atoms to {combined_gro}")
 
 
 def include_ligand_itp_in_topol(topol_top, ligand_itp, ligand_name="LIG"):
