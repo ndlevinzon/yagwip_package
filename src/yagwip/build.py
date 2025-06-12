@@ -1,6 +1,4 @@
 from .utils import run_gromacs_command
-import shutil
-import os
 from importlib.resources import files
 
 
