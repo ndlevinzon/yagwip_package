@@ -120,7 +120,7 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     grompp_opts = ""                                            # Placeholder for additional grompp options if needed
 
     # Construct GROMACS commands
-    grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts}"
+    grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 15"
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
     # Execute the commands (or print if debug)

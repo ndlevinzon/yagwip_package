@@ -1,7 +1,6 @@
 from .build import run_pdb2gmx, run_solvate, run_genions
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
-from .utils import setup_logger, complete_loadpdb, complete_loadgro, insert_itp_into_top_files, \
-    append_ligand_coordinates_to_gro, include_ligand_itp_in_topol
+from .utils import *
 from importlib.resources import files
 import importlib.metadata
 import cmd
@@ -210,7 +209,6 @@ class GromacsCLI(cmd.Cmd):
             include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
         else:
             shutil.copy(output_gro, "complex.gro")  # only protein
-
 
     def do_solvate(self, arg):
         """
