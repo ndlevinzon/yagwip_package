@@ -61,8 +61,9 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                 print("[STDERR]", result.stderr.strip())
                 print("[STDOUT]", result.stdout.strip())
 
-        # Catch specific error messages in stderr
-        if "number of coordinates in coordinate file" in stderr:
+        # Catch specific error messages in output
+        error_text = stderr + "\n" + stdout
+        if "number of coordinates in coordinate file" in error_text:
             specific_msg = ("[!] Topology/structure mismatch: Check that your .gro file and topol.top "
                             "contain the same number of atoms.")
             if logger:
