@@ -234,8 +234,8 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
 
 def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MOL", new_resname="LIG"):
     """
-    Replace the residue name in the [ atoms ] section and the molecule name in the [ moleculetype ] section
-    of a .itp file. Modifies the file in-place.
+    Replace the residue name in the [ atoms ] section and replace the molecule name in the [ moleculetype ] section
+    of a .itp file with 'LIG'. Modifies the file in-place.
     """
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -247,19 +247,19 @@ def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MO
     for idx, line in enumerate(lines):
         stripped = line.strip()
 
-        # Start of [ atoms ] section
+        # Detect start of [ atoms ] section
         if stripped.startswith("[ atoms ]"):
             in_atoms_section = True
             modified_lines.append(line)
             continue
 
-        # Start of [ moleculetype ] section
+        # Detect start of [ moleculetype ] section
         if stripped.startswith("[ moleculetype ]"):
             in_moleculetype_section = True
             modified_lines.append(line)
             continue
 
-        # Process lines within the [ atoms ] section
+        # Handle [ atoms ] entries
         if in_atoms_section:
             if stripped == "" or stripped.startswith("["):
                 in_atoms_section = False
@@ -268,34 +268,36 @@ def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MO
             if not stripped.startswith(";"):
                 parts = re.split(r'(\s+)', line)
                 if len(parts) >= 9 and parts[6].strip() == old_resname:
-                    parts[6] = parts[6].replace(old_resname, new_resname)
+                    parts[6] = new_resname
                 line = ''.join(parts)
             modified_lines.append(line)
             continue
 
-        # Process the line immediately after [ moleculetype ]
+        # Handle the molecule name in [ moleculetype ]
         if in_moleculetype_section:
             if stripped == "" or stripped.startswith(";"):
                 modified_lines.append(line)
                 continue
             else:
-                # Replace only the first field with "LIG", keep spacing
-                parts = re.split(r'(\s+)', line, maxsplit=2)
-                if parts:
-                    parts[0] = new_resname
-                    line = ''.join(parts)
+                # Replace the entire first column with LIG and preserve rest of line (e.g., nrexcl)
+                tokens = line.split()
+                if len(tokens) >= 2:
+                    tokens[0] = new_resname
+                    line = f"{tokens[0]:<20}{tokens[1]}\n"
+                else:
+                    line = f"{new_resname}\n"
                 modified_lines.append(line)
                 in_moleculetype_section = False
                 continue
 
-        # Default case
         modified_lines.append(line)
 
-    # Write back to the file
+    # Overwrite file
     with open(filename, 'w') as f:
         f.writelines(modified_lines)
 
-    print(f"[#] [ atoms ] and [ moleculetype ] sections in {filename} updated: {old_resname} → {new_resname}")
+    print(f"[#] Updated [ atoms ] and [ moleculetype ] sections in {filename}: {old_resname} -> {new_resname}")
+
 
 
 
