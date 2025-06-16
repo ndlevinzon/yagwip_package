@@ -4,7 +4,7 @@
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=6              # Number of Replicas
 #SBATCH --ntasks-per-node=1    # Nodes Per Replica
-#SBATCH --cpus-per-task=40     # CPUs Per Node
+#SBATCH --cpus-per-task=64     # CPUs Per Node
 #SBATCH --time=01:00:00
 #SBATCH --exclusive 
 #SBATCH --mem=0

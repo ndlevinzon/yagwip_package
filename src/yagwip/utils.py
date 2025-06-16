@@ -152,6 +152,7 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
 def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
     """
     If [ atomtypes ] section exists in ligand.itp, extract it and append to ffnonbonded.itp with a ";ligand" tag.
+    Skips appending if ";ligand" is already present.
     """
 
     if not os.path.isfile(ligand_itp):
@@ -164,7 +165,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
     atomtypes_block = []
     inside_atomtypes = False
 
-    for i, line in enumerate(lines):
+    for line in lines:
         if line.strip().startswith("[ moleculetype ]"):
             break
         if line.strip().startswith("[ atomtypes ]"):
@@ -181,11 +182,17 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
         print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
         return
 
+    with open(ffnonbonded_itp, 'r') as fcheck:
+        if ";ligand" in fcheck.read():
+            print("[!] ;ligand section already exists in ffnonbonded.itp. Skipping append.")
+            return
+
     with open(ffnonbonded_itp, 'a') as fout:
         fout.write("\n;ligand\n")
         fout.writelines(atomtypes_block)
 
     print(f"[#] Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
+
 
 
 def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
