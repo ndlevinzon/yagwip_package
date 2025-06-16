@@ -142,6 +142,7 @@ class GromacsCLI(cmd.Cmd):
         Loads .pdb path for further building steps. This command should be run first.
         Usage: "loadpdb X.pdb"
         """
+        import os
 
         filename = arg.strip()
         if not filename:
@@ -174,8 +175,11 @@ class GromacsCLI(cmd.Cmd):
             with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
-                        lig_out.write(line)
+                        # Replace ligand residue name with LIG
+                        modified_line = line[:17] + "LIG" + line[20:]
+                        lig_out.write(modified_line)
                     else:
+                        # Replace HSP or HSD with HIS in protein
                         if line[17:20] in ("HSP", "HSD"):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
