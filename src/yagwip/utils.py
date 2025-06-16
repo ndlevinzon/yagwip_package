@@ -42,12 +42,12 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
             capture_output=True,         # Capture both stdout and stderr
             text=True                    # Treat input/output as strings
         )
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
 
         # Handle non-zero return code (error)
         if result.returncode != 0:
             err_msg = f"[ERROR] Command failed with return code {result.returncode}"
-            stderr = result.stderr.strip()
-            stdout = result.stdout.strip()
 
             # Print basic error info
             if logger:
