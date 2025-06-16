@@ -142,7 +142,6 @@ class GromacsCLI(cmd.Cmd):
         Loads .pdb path for further building steps. This command should be run first.
         Usage: "loadpdb X.pdb"
         """
-        import os
 
         filename = arg.strip()
         if not filename:
@@ -164,30 +163,47 @@ class GromacsCLI(cmd.Cmd):
 
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
 
+        # Always rewrite the protein portion with HIS substitutions
+        protein_file = 'protein.pdb'
+        self.protein_pdb_path = os.path.abspath(protein_file)
+
         if hetatm_lines:
             ligand_file = 'ligand.pdb'
-            protein_file = 'protein.pdb'
             self.ligand_pdb_path = os.path.abspath(ligand_file)
-            self.protein_pdb_path = os.path.abspath(protein_file)
 
             with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
                         lig_out.write(line)
                     else:
+                        if line[17:20] in ("HSP", "HSD"):
+                            line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
 
             print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
 
             # Check for hydrogen atoms in ligand
-            has_hydrogens = any(line[76:78].strip() == 'H' or line[12:16].strip().startswith('H')
-                                for line in hetatm_lines)
+            has_hydrogens = any(
+                line[76:78].strip() == 'H' or line[12:16].strip().startswith('H')
+                for line in hetatm_lines
+            )
             if not has_hydrogens:
                 print("[!] Ligand appears to lack hydrogen atoms. Please add hydrogens and verify valences.")
                 return
+
+            # Check for ligand.itp
+            if not os.path.isfile("ligand.itp"):
+                print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
+                return
         else:
-            self.protein_pdb_path = self.current_pdb_path
-            print("No HETATM entries found. Using single PDB for protein.")
+            self.ligand_pdb_path = None
+            with open(protein_file, 'w') as prot_out:
+                for line in lines:
+                    if line[17:20] in ("HSP", "HSD"):
+                        line = line[:17] + "HIS" + line[20:]
+                    prot_out.write(line)
+
+            print("No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as protein.")
 
     def do_pdb2gmx(self, arg):
         """
