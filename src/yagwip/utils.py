@@ -67,7 +67,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.warning(specific_msg)
                 else:
                     print(specific_msg)
-                return
+            return False
 
         else:
             if stdout:
@@ -75,13 +75,14 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.info(f"[STDOUT] {stdout}")
                 else:
                     print(stdout)
+            return True
 
     except Exception as e:
         if logger:
             logger.exception(f"[EXCEPTION] Failed to run command: {e}")
         else:
             print(f"[EXCEPTION] Failed to run command: {e}")
-
+        return False
 
 def setup_logger(debug_mode=False):
     """

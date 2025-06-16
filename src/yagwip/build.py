@@ -125,5 +125,14 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
 
     # Execute the commands (or print if debug)
     print(f"Running genion for {base}...")
-    run_gromacs_command(grompp_cmd, debug=debug, logger=logger)  # Generate .tpr
-    run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger)  # Add ions using group 13 (SOL)
+    if debug:
+        print(f"[DEBUG] grompp command: {grompp_cmd}")
+        print(f"[DEBUG] genion command: {genion_cmd}")
+        return
+    if not run_gromacs_command(grompp_cmd, debug=debug, logger=logger):  # Generate .tpr
+        print("[!] grompp failed. Aborting genion step.")
+        return
+
+    if not run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger):  # Add ions
+        print("[!] genion failed.")
+        return
