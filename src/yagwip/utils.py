@@ -18,13 +18,11 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         logger (Logger, optional): Optional logger to capture stdout, stderr, and execution info.
     """
 
-    # Log or print the command about to be executed
     if logger:
         logger.info(f"[RUNNING] {command}")
     else:
         print(f"[RUNNING] {command}")
 
-    # In debug mode, do not execute the command
     if debug:
         msg = "[DEBUG MODE] Command not executed."
         if logger:
@@ -34,53 +32,50 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         return
 
     try:
-        # Execute the command in a subprocess, piping input if necessary
         result = subprocess.run(
             command,
-            input=pipe_input,            # e.g., group index input for genion
+            input=pipe_input,
             shell=True,
-            capture_output=True,         # Capture both stdout and stderr
-            text=True                    # Treat input/output as strings
+            capture_output=True,
+            text=True
         )
+
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()
+        error_text = f"{stderr}\n{stdout}".lower()
 
-        # Handle non-zero return code (error)
         if result.returncode != 0:
             err_msg = f"[ERROR] Command failed with return code {result.returncode}"
 
-            # Print basic error info
             if logger:
                 logger.error(err_msg)
-                if result.stderr.strip():
-                    logger.error(f"[STDERR] {result.stderr.strip()}")
-                if result.stdout.strip():
-                    logger.info(f"[STDOUT] {result.stdout.strip()}")
+                if stderr:
+                    logger.error(f"[STDERR] {stderr}")
+                if stdout:
+                    logger.info(f"[STDOUT] {stdout}")
             else:
                 print(err_msg)
-                print("[STDERR]", result.stderr.strip())
-                print("[STDOUT]", result.stdout.strip())
+                if stderr:
+                    print("[STDERR]", stderr)
+                if stdout:
+                    print("[STDOUT]", stdout)
 
-        # Catch specific error messages in output
-        error_text = stderr + "\n" + stdout
-        if "number of coordinates in coordinate file" in error_text:
-            specific_msg = ("[!] Topology/structure mismatch: Check that your .gro file and topol.top "
-                            "contain the same number of atoms.")
-            if logger:
-                logger.warning(specific_msg)
-            else:
-                print(specific_msg)
+            # Catch specific GROMACS error after logging main output
+            if "number of coordinates in coordinate file" in error_text:
+                specific_msg = "[!] Topology/structure mismatch: .gro and .top files have different atom counts."
+                if logger:
+                    logger.warning(specific_msg)
+                else:
+                    print(specific_msg)
 
         else:
-            # Successful command execution: display or log stdout if present
-            if result.stdout.strip():
+            if stdout:
                 if logger:
-                    logger.info(f"[STDOUT] {result.stdout.strip()}")
+                    logger.info(f"[STDOUT] {stdout}")
                 else:
-                    print(result.stdout.strip())
+                    print(stdout)
 
     except Exception as e:
-        # Handle unexpected exceptions during subprocess execution
         if logger:
             logger.exception(f"[EXCEPTION] Failed to run command: {e}")
         else:
