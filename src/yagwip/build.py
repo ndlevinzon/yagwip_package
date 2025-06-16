@@ -43,7 +43,8 @@ def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", lo
         basename (str): Base name of the input file (e.g., without .gro extension).
         custom_command (str, optional): If provided, runs this custom command instead of default solvation.
         debug (bool): If True, does not execute commands, only prints them.
-        arg (str): Optional CLI arguments for box type/size and solvent model (e.g., "-c -d 1.0 -bt triclinic spc216.gro").
+        arg (str): Optional CLI arguments for box type/size and solvent model
+         (e.g., "-c -d 1.0 -bt triclinic spc216.gro").
         logger (Logger, optional): Logger instance for writing logs instead of printing directly.
     """
 
@@ -56,8 +57,8 @@ def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", lo
     base = basename if basename else "PLACEHOLDER"
 
     # Set default box configuration and solvent type
-    default_box = " -c -d 1.0 -bt cubic"        # Center molecule, 1.0 nm buffer, cubic box
-    default_water = "spc216.gro"                # Default water model file
+    default_box = " -c -d 1.0 -bt cubic"  # Center molecule, 1.0 nm buffer, cubic box
+    default_water = "spc216.gro"  # Default water model file
     parts = arg.strip().split()
 
     # Override box or water model if specified in CLI arguments
@@ -109,20 +110,20 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     default_ions = files("yagwip.templates").joinpath("ions.mdp")
 
     # File naming conventions for genion input/output
-    input_gro = f"{base}.solv.gro"                              # Input: solvated structure
-    output_gro = f"{base}.solv.ions.gro"                        # Output: solvated + ionized structure
-    tpr_out = "ions.tpr"                                        # Temporary run input file for genion
+    input_gro = f"{base}.solv.gro"  # Input: solvated structure
+    output_gro = f"{base}.solv.ions.gro"  # Output: solvated + ionized structure
+    tpr_out = "ions.tpr"  # Temporary run input file for genion
 
     # Genion-specific options
-    ion_options = "-pname NA -nname CL -conc 0.150 -neutral"    # Add Na+ and Cl- to neutralize at 0.15 M
-    grompp_opts = ""                                            # Placeholder for additional grompp options if needed
+    ion_options = "-pname NA -nname CL -conc 0.150 -neutral"  # Add Na+ and Cl- to neutralize at 0.15 M
+    grompp_opts = ""  # Placeholder for additional grompp options if needed
 
     # Construct GROMACS commands
-    grompp_cmd = f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 15"
+    grompp_cmd = (f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} "
+                  f"{grompp_opts} -maxwarn 15")
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
     # Execute the commands (or print if debug)
     print(f"Running genion for {base}...")
-    run_gromacs_command(grompp_cmd, debug=debug, logger=logger)                      # Generate .tpr
-    run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger)   # Add ions using group 13 (SOL)
-
+    run_gromacs_command(grompp_cmd, debug=debug, logger=logger)  # Generate .tpr
+    run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger)  # Add ions using group 13 (SOL)

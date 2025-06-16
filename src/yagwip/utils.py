@@ -136,6 +136,101 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
     return completions
 
 
+def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14.ff/ffnonbonded.itp'):
+    """
+    If [ atomtypes ] section exists in ligand.itp, extract it and append to ffnonbonded.itp with a ";ligand" tag.
+    """
+
+    if not os.path.isfile(ligand_itp):
+        print(f"[!] ligand.itp not found at {ligand_itp}")
+        return
+
+    with open(ligand_itp, 'r') as f:
+        lines = f.readlines()
+
+    atomtypes_block = []
+    inside_atomtypes = False
+
+    for i, line in enumerate(lines):
+        if line.strip().startswith("[ moleculetype ]"):
+            break
+        if line.strip().startswith("[ atomtypes ]"):
+            inside_atomtypes = True
+            continue
+        if inside_atomtypes:
+            atomtypes_block.append(line)
+
+    if not atomtypes_block:
+        print("[!] No [ atomtypes ] section found in ligand.itp.")
+        return
+
+    if not os.path.isfile(ffnonbonded_itp):
+        print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
+        return
+
+    with open(ffnonbonded_itp, 'a') as fout:
+        fout.write("\n;ligand\n")
+        fout.writelines(atomtypes_block)
+
+    print(f"Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
+
+
+def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
+    """
+    Converts impropers from Amber format (func=4, includes pn) to GROMACS style (func=2, no pn)
+     in [ dihedrals ] section of ligand.itp.
+    """
+    import os
+
+    if not os.path.isfile(filename):
+        print(f"[!] {filename} not found.")
+        return
+
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    output_lines = []
+    in_dihedrals = False
+    modified = False
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        if stripped.lower().startswith("[ dihedrals ]") and "impropers" in stripped:
+            in_dihedrals = True
+            output_lines.append(line)
+            continue
+
+        # Stop modification when a new section begins
+        if in_dihedrals and stripped.startswith("[") and "]" in stripped:
+            in_dihedrals = False
+
+        if in_dihedrals and stripped and not stripped.startswith(";"):
+            parts = line.split(";")
+            comment = f";{parts[1]}" if len(parts) > 1 else ""
+            tokens = parts[0].split()
+            if len(tokens) >= 8 and tokens[4] == "4":
+                tokens[4] = "2"       # Change func from 4 to 2
+                del tokens[7]         # Remove the periodicity column (pn)
+                new_line = "   " + "   ".join(tokens) + "   " + comment + "\n"
+                output_lines.append(new_line)
+                modified = True
+            else:
+                output_lines.append(line)
+        else:
+            output_lines.append(line)
+
+    if not modified:
+        print("[!] No impropers with func=4 found to modify.")
+        return
+
+    # Write changes to file
+    with open(filename, 'w') as f:
+        f.writelines(output_lines)
+
+    print(f"Improper dihedrals converted to func=2 in {filename}.")
+
+
 def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="complex.gro"):
     coords = []
     with open(ligand_pdb, 'r') as f:

@@ -25,7 +25,7 @@ class GromacsCLI(cmd.Cmd):
         self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
         self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
         self.current_pdb_path = None                        # Full path to the loaded PDB file
-        self.ligand_pdb_path = None
+        self.ligand_pdb_path = None                         # Full path to the ligand PDB file, if any
         self.basename = None                                # Base filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
@@ -192,7 +192,12 @@ class GromacsCLI(cmd.Cmd):
                 return
 
             # Check for ligand.itp
-            if not os.path.isfile("ligand.itp"):
+            if os.path.isfile("ligand.itp"):
+                print("Checking ligand.itp...")
+                append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp',
+                                                      ffnonbonded_itp='./amber14.ff/ffnonbonded.itp')
+                modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp')
+            else:
                 print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
                 return
         else:
@@ -248,7 +253,8 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_solvate(self.gmx_path, complex_pdb, custom_command=self.custom_cmds["solvate"], debug=self.debug, logger=self.logger)
+        run_solvate(self.gmx_path, complex_pdb, custom_command=self.custom_cmds["solvate"],
+                    debug=self.debug, logger=self.logger)
 
     def do_genions(self, arg):
         """
@@ -261,7 +267,8 @@ class GromacsCLI(cmd.Cmd):
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
             return
-        run_genions(self.gmx_path, solvated_pdb, custom_command=self.custom_cmds["genions"], debug=self.debug, logger=self.logger)
+        run_genions(self.gmx_path, solvated_pdb, custom_command=self.custom_cmds["genions"],
+                    debug=self.debug, logger=self.logger)
 
     def do_em(self, arg):
         """
