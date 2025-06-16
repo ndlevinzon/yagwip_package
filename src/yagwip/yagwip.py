@@ -198,9 +198,9 @@ class GromacsCLI(cmd.Cmd):
             # Check for ligand.itp
             if os.path.isfile("ligand.itp"):
                 print("Checking ligand.itp...")
-                append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp',
-                                                      ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp')
-                modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp')
+                append_ligand_atomtypes_to_forcefield()
+                modify_improper_dihedrals_in_ligand_itp()
+                rename_residue_in_itp_atoms_section()
             else:
                 print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
                 return
