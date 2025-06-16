@@ -46,6 +46,10 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         # Handle non-zero return code (error)
         if result.returncode != 0:
             err_msg = f"[ERROR] Command failed with return code {result.returncode}"
+            stderr = result.stderr.strip()
+            stdout = result.stdout.strip()
+
+            # Print basic error info
             if logger:
                 logger.error(err_msg)
                 if result.stderr.strip():
@@ -56,6 +60,16 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                 print(err_msg)
                 print("[STDERR]", result.stderr.strip())
                 print("[STDOUT]", result.stdout.strip())
+
+        # Catch specific error messages in stderr
+        if "number of coordinates in coordinate file" in stderr:
+            specific_msg = ("[!] Topology/structure mismatch: Check that your .gro file and topol.top "
+                            "contain the same number of atoms.")
+            if logger:
+                logger.warning(specific_msg)
+            else:
+                print(specific_msg)
+
         else:
             # Successful command execution: display or log stdout if present
             if result.stdout.strip():

@@ -126,7 +126,4 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     # Execute the commands (or print if debug)
     print(f"Running genion for {base}...")
     run_gromacs_command(grompp_cmd, debug=debug, logger=logger)  # Generate .tpr
-    if hasattr(run_gromacs_command, "stderr") and "number of coordinates in coordinate file" in run_gromacs_command().stderr:
-        print(
-            "[!] Coordinate mismatch between structure and topology. Please check ligand topology!")
     run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger)  # Add ions using group 13 (SOL)
