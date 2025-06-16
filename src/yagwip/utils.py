@@ -62,7 +62,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
 
             # Catch specific GROMACS error after logging main output
             if "number of coordinates in coordinate file" in error_text:
-                specific_msg = "[!] Topology/structure mismatch: .gro and .top files have different atom counts."
+                specific_msg = "[!] Check ligand and protonation: .gro and .top files have different atom counts."
                 if logger:
                     logger.warning(specific_msg)
                 else:
