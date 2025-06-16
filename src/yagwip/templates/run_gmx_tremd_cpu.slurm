@@ -4,7 +4,7 @@
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=6              # Number of Replicas
 #SBATCH --ntasks-per-node=1    # Nodes Per Replica
-#SBATCH --cpus-per-task=24     # CPUs Per Node
+#SBATCH --cpus-per-task=40     # CPUs Per Node
 #SBATCH --time=01:00:00
 #SBATCH --exclusive 
 #SBATCH --mem=0
@@ -30,7 +30,7 @@ mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
-    srun gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 1
+    srun gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
     srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
@@ -41,7 +41,7 @@ fi
 # ------------------------
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top
+    srun gmx_mpi grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
     srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
@@ -52,7 +52,7 @@ fi
 # ------------------------
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top
+    srun gmx_mpi grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
     srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
@@ -73,7 +73,7 @@ for i in ${!temperatures[@]}; do
 
     # grompp for each replica
     pushd $dir
-    srun gmx_mpi grompp -f remd.mdp -c ${npt_prefix}.gro -p topol.top -o remd.tpr -maxwarn 1
+    srun gmx_mpi grompp -f remd.mdp -c ${npt_prefix}.gro -p topol.top -o remd.tpr -maxwarn 20
     popd
 
 done
@@ -92,8 +92,17 @@ srun gmx_mpi mdrun -multidir $(seq 0 $((${#temperatures[@]} - 1))) \
 
 
 # ------------------------
-# Step 5: Resubmit Job
+# Step 5: Clean Working Directories and Resubmit Job
 # ------------------------
+echo "Cleaning Temporary Files..."
+for dir in [0-9]*; do
+    if [[ -d "$dir" && "$dir" =~ ^[0-9]+$ ]]; then
+        cd "$dir"
+        find . -type f -name '*#remd.tpr.*' -exec rm -f -i {} \;
+        cd ..
+    fi
+done
+
 echo "Job ran for 55 minutes. Resubmitting self..."
 sbatch run_gmx_tremd_cpu.slurm
 

@@ -373,11 +373,11 @@ class GromacsCLI(cmd.Cmd):
             print(f"[!] SLURM template not found: {slurm_tpl_name}")
             return
 
-        if not self.basename:
+        if not self.basename or not self.ligand_pdb_path:
             print("[!] No structure loaded. Run `loadpdb <file>` and `genion` first.")
             return
 
-        init_gro = f"{self.basename}.solv.ions"
+        init_gro = "complex.solv.ions" if self.ligand_pdb_path else f"{self.basename}.solv.ions"
 
         try:
             with open(slurm_tpl_path, "r") as f:
