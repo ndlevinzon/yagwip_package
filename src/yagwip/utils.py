@@ -4,6 +4,7 @@ import math
 import logging
 import time
 import os
+import re
 
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
@@ -172,7 +173,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
         fout.write("\n;ligand\n")
         fout.writelines(atomtypes_block)
 
-    print(f"Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
+    print(f"[#] Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
 
 
 def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
@@ -228,50 +229,74 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
     with open(filename, 'w') as f:
         f.writelines(output_lines)
 
-    print(f"Improper dihedrals converted to func=2 in {filename}.")
+    print(f"[#] Improper dihedrals converted to func=2 in {filename}.")
 
 
-def rename_residue_in_itp_atoms_section(filename='ligand.itp', old_resname="MOL", new_resname="LIG"):
+def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MOL", new_resname="LIG"):
     """
-    Replace the residue name in the [ atoms ] section of a .itp file from old_resname to new_resname.
-    Modifies the file in-place.
+    Replace the residue name in the [ atoms ] section and the molecule name in the [ moleculetype ] section
+    of a .itp file. Modifies the file in-place.
     """
-    import re
-
     with open(filename, 'r') as f:
         lines = f.readlines()
 
     in_atoms_section = False
+    in_moleculetype_section = False
     modified_lines = []
 
-    for line in lines:
+    for idx, line in enumerate(lines):
         stripped = line.strip()
+
+        # Start of [ atoms ] section
         if stripped.startswith("[ atoms ]"):
             in_atoms_section = True
             modified_lines.append(line)
             continue
 
+        # Start of [ moleculetype ] section
+        if stripped.startswith("[ moleculetype ]"):
+            in_moleculetype_section = True
+            modified_lines.append(line)
+            continue
+
+        # Process lines within the [ atoms ] section
         if in_atoms_section:
-            # End of section is a blank line or a new section
             if stripped == "" or stripped.startswith("["):
                 in_atoms_section = False
                 modified_lines.append(line)
                 continue
-
-            # Modify the res name column if it's not a comment
             if not stripped.startswith(";"):
-                parts = re.split(r'(\s+)', line)  # split and preserve spacing
+                parts = re.split(r'(\s+)', line)
                 if len(parts) >= 9 and parts[6].strip() == old_resname:
                     parts[6] = parts[6].replace(old_resname, new_resname)
                 line = ''.join(parts)
+            modified_lines.append(line)
+            continue
 
+        # Process the line immediately after [ moleculetype ]
+        if in_moleculetype_section:
+            if stripped == "" or stripped.startswith(";"):
+                modified_lines.append(line)
+                continue
+            else:
+                # Replace only the first field with "LIG", keep spacing
+                parts = re.split(r'(\s+)', line, maxsplit=2)
+                if parts:
+                    parts[0] = new_resname
+                    line = ''.join(parts)
+                modified_lines.append(line)
+                in_moleculetype_section = False
+                continue
+
+        # Default case
         modified_lines.append(line)
 
-    # Write the modified content back to the file
+    # Write back to the file
     with open(filename, 'w') as f:
         f.writelines(modified_lines)
 
-    print(f"[ atoms ] section in {filename} updated: {old_resname} → {new_resname}")
+    print(f"[#] [ atoms ] and [ moleculetype ] sections in {filename} updated: {old_resname} → {new_resname}")
+
 
 
 def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="complex.gro"):
