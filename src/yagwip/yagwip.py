@@ -142,9 +142,11 @@ class GromacsCLI(cmd.Cmd):
         Loads .pdb path for further building steps. This command should be run first.
         Usage: "loadpdb X.pdb"
         """
+        import os
+
         filename = arg.strip()
         if not filename:
-            print("Usage: loadPDB <filename.pdb>")
+            print("Usage: loadpdb <filename.pdb>")
             return
 
         full_path = os.path.abspath(filename)
@@ -174,7 +176,15 @@ class GromacsCLI(cmd.Cmd):
                         lig_out.write(line)
                     else:
                         prot_out.write(line)
+
             print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
+
+            # Check for hydrogen atoms in ligand
+            has_hydrogens = any(line[76:78].strip() == 'H' or line[12:16].strip().startswith('H')
+                                for line in hetatm_lines)
+            if not has_hydrogens:
+                print("[!] Ligand appears to lack hydrogen atoms. Please add hydrogens and verify valences.")
+                return
         else:
             self.protein_pdb_path = self.current_pdb_path
             print("No HETATM entries found. Using single PDB for protein.")
@@ -200,7 +210,7 @@ class GromacsCLI(cmd.Cmd):
         )
 
         if not os.path.isfile(output_gro):
-            print(f"[!] Error: expected {output_gro} was not created.")
+            print(f"[!] Expected {output_gro} was not created.")
             return
 
         # Combine ligand coordinates
@@ -305,11 +315,11 @@ class GromacsCLI(cmd.Cmd):
         itp_path = arg.strip()
 
         if not itp_path.endswith('.itp'):
-            print("Error: Must provide a path to a .itp file.")
+            print("[!] Must provide a path to a .itp file.")
             return
 
         if not os.path.isfile(itp_path):
-            print(f"Error: File '{itp_path}' not found.")
+            print(f"[!] File '{itp_path}' not found.")
             return
 
         # Add new path to list (no duplicates)
@@ -440,7 +450,7 @@ def main():
                         print(f"YAGWIP> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:
-            print(f"Error: File '{args.file}' not found.")
+            print(f"[!] File '{args.file}' not found.")
             sys.exit(1)
     else:
         # Interactive mode
