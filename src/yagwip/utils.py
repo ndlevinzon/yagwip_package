@@ -67,6 +67,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.warning(specific_msg)
                 else:
                     print(specific_msg)
+                return
 
         else:
             if stdout:
