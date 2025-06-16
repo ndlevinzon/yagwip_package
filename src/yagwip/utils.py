@@ -136,7 +136,7 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
     return completions
 
 
-def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14SB.ff/ffnonbonded.itp'):
+def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
     """
     If [ atomtypes ] section exists in ligand.itp, extract it and append to ffnonbonded.itp with a ";ligand" tag.
     """
