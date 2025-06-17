@@ -55,7 +55,7 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     run_gromacs_command(command, pipe_input=PIPE_INPUTS['pdb2gmx'], debug=debug, logger=logger)
 
 
-def run_solvate(gmx_path, basename, custom_command=None, debug=False, logger=None):
+def run_solvate(gmx_path, basename, arg="", custom_command=None, debug=False, logger=None):
     """
     Runs the GROMACS solvation workflow. This includes box setup (editconf) and
     solvent addition (solvate) around the protein/structure.
