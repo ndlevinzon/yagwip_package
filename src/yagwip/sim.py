@@ -21,7 +21,7 @@ def run_em(gmx_path, basename, arg="", debug=False, logger=None):
 
     # Set a default placeholder name if no basename is provided
     base = basename if basename else "PLACEHOLDER"
-    print(f"Running energy minimization for {base}...")
+    print(f"[#] Running energy minimization for {base}...")
 
     # Split optional CLI arguments
     parts = arg.strip().split(maxsplit=3)
@@ -82,7 +82,7 @@ def run_nvt(gmx_path, basename, arg="", debug=False, logger=None):
 
     # Use placeholder if no basename was provided
     base = basename if basename else "PLACEHOLDER"
-    print(f"Running NVT equilibration for {base}...")
+    print(f"[#] Running NVT equilibration for {base}...")
 
     # Parse user input arguments (up to 4 space-separated values)
     parts = arg.strip().split(maxsplit=3)
@@ -200,7 +200,7 @@ def run_production(gmx_path, basename, arg="", debug=False, logger=None):
 
     # Use placeholder if no basename was provided
     base = basename if basename else "PLACEHOLDER"
-    print(f"Running production MD for {base}...")
+    print(f"[#] Running production MD for {base}...")
 
     # Parse user input arguments (up to 4 space-separated values)
     parts = arg.strip().split(maxsplit=3)
@@ -258,15 +258,15 @@ def run_tremd(gmx_path, basename, arg="", debug=False):
     # Resolve the absolute path of the input .gro file
     gro_path = os.path.abspath(args[1])
     if not os.path.isfile(gro_path):
-        print(f"[ERROR] File not found: {gro_path}")
+        print(f"[#] File not found: {gro_path}")
         return
 
     # Parse the .gro file to count the number of protein and water residues
     try:
         protein_residues, water_residues = count_residues_in_gro(gro_path)
-        print(f"[INFO] Found {protein_residues} protein residues and {water_residues} water residues.")
+        print(f"[#] Found {protein_residues} protein residues and {water_residues} water residues.")
     except Exception as e:
-        print(f"[ERROR] Failed to parse .gro file: {e}")
+        print(f"[!] Failed to parse .gro file: {e}")
         return
 
     # Prompt user for simulation parameters: Tlow, Thigh, and desired exchange probability
@@ -275,15 +275,15 @@ def run_tremd(gmx_path, basename, arg="", debug=False):
         Thigh = float(input("Final Temperature (K): "))
         Pdes = float(input("Exchange Probability (0 < P < 1): "))
     except ValueError:
-        print("[ERROR] Invalid numeric input.")
+        print("[!] Invalid numeric input.")
         return
 
     # Validate temperature and exchange probability inputs
     if not (0 < Pdes < 1):
-        print("[ERROR] Exchange probability must be between 0 and 1.")
+        print("[!] Exchange probability must be between 0 and 1.")
         return
     if Thigh <= Tlow:
-        print("[ERROR] Final temperature must be greater than initial temperature.")
+        print("[!] Final temperature must be greater than initial temperature.")
         return
 
     # Try to compute the temperature ladder using the van der Spoel algorithm
@@ -313,8 +313,8 @@ def run_tremd(gmx_path, basename, arg="", debug=False):
             with open(out_file, 'w') as f:
                 for i, temp in enumerate(temperatures):
                     f.write(f"Replica {i + 1}: {temp:.2f} K\n")
-            print(f"[TREMD] Temperature ladder saved to {out_file}")
+            print(f"[#] Temperature ladder saved to {out_file}")
 
     # Catch any errors during calculation or file I/O
     except Exception as e:
-        print(f"[ERROR] Temperature calculation failed: {e}")
+        print(f"[!] Temperature calculation failed: {e}")

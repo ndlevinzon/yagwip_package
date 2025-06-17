@@ -3,8 +3,8 @@
 #SBATCH --output=remd_analysis_%j.out
 #SBATCH --error=remd_analysis_%j.err
 #SBATCH --nodes=1
-#SBATCH --ntasks=40
-#SBATCH --cpus-per-task=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
 #SBATCH --time=24:00:00
 #SBATCH --exclusive
 #SBATCH --mem=0
@@ -59,57 +59,50 @@ for i in $(seq 0 $((REPLICAS - 1))); do
 done
 
 # Make demuxed .xtc files for each replica and place them in their analysis directories
-mpirun -np 40 trjcat -f "${XTCLIST[@]}" -demux remd_analysis_results/replica_index.xvg
+trjcat -f "${XTCLIST[@]}" -demux remd_analysis_results/replica_index.xvg
 
-# ----------- STEP 1: LOOP THROUGH REPLICAS ---------------
+# Parallelized Analysis
+MAX_JOBS=64
+JOBS=0
 
 for TARGET_REPLICA in $(seq 0 $((REPLICAS - 1))); do
+(
     echo "Processing replica $TARGET_REPLICA..."
 
     OUTDIR="remd_analysis_results/replica_${TARGET_REPLICA}"
     mkdir -p "$OUTDIR"
 
-    # Move .xtc to the correct analysis directory
     mv ${TARGET_REPLICA}_trajout.xtc ${OUTDIR}
-
     DEMUX_TRAJ="$OUTDIR/${TARGET_REPLICA}_trajout.xtc"
     DEMUX_TPR="$OUTDIR/demuxed_${TARGET_REPLICA}.tpr"
 
-    # 2. Copy matching .tpr
     cp ${TARGET_REPLICA}/${DEFFNM}.tpr "$DEMUX_TPR"
 
-    # 3. RMSD
-    echo 4 4 | mpirun -np 40 rms -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/rmsd.xvg"
-
-    # 4. RMSF
-    echo 4 | mpirun -np 40 rmsf -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/rmsf.xvg" -res
-
-    # 5. Radius of Gyration
-    echo 1 | mpirun -np 40 gyrate -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/gyrate.xvg"
-
-    # 6. PCA
-    echo 4 4 | mpirun -np 40 covar -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/eigenval.xvg" -v "$OUTDIR/eigenvec.trr"
-    echo 4 4 | mpirun -np 40 anaeig -v "$OUTDIR/eigenvec.trr" -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -first 1 -last 2 -proj "$OUTDIR/proj.xvg"
-
-    # 7. Clustering
-    echo 4 4 | mpirun -np 40 cluster -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -method gromos -cutoff 0.2 \
+    echo 4 4 | rms -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/rmsd.xvg"
+    echo 4 | rmsf -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/rmsf.xvg" -res
+    echo 1 | gyrate -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/gyrate.xvg"
+    echo 4 4 | covar -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -o "$OUTDIR/eigenval.xvg" -v "$OUTDIR/eigenvec.trr"
+    echo 4 4 | anaeig -v "$OUTDIR/eigenvec.trr" -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -first 1 -last 2 -proj "$OUTDIR/proj.xvg"
+    echo 4 4 | cluster -s "$DEMUX_TPR" -f "$DEMUX_TRAJ" -method gromos -cutoff 0.2 \
         -o "$OUTDIR/clusters.xpm" -g "$OUTDIR/cluster.log" -sz "$OUTDIR/cluster_sizes.xvg"
+    sham -f "$OUTDIR/proj.xvg" -ls "$OUTDIR/free_energy.xpm" -bin 100
 
-    # 8. Free Energy Surface
-    mpirun -np 40 sham -f "$OUTDIR/proj.xvg" -ls "$OUTDIR/free_energy.xpm" -bin 100
-
-    # 9. Optional temperature extraction
     if [[ -f ${TARGET_REPLICA}/${DEFFNM}.edr ]]; then
         cp ${TARGET_REPLICA}/${DEFFNM}.edr "$OUTDIR/ener.edr"
-        echo "Temperature" | mpirun -np 40 energy -f "$OUTDIR/ener.edr" -o "$OUTDIR/temp.xvg"
+        echo "Temperature" | energy -f "$OUTDIR/ener.edr" -o "$OUTDIR/temp.xvg"
     fi
 
     echo "Replica ${TARGET_REPLICA} complete."
+) &
+
+    ((JOBS+=1))
+    if (( JOBS >= MAX_JOBS )); then
+        wait
+        JOBS=0
+    fi
 done
 
-# Remove Cheackpoint Files
-find . -type f -name '*#*' -exec rm -i {} \;
-
+wait
 echo "All REMD replicas analyzed. Results in remd_analysis_results/"
 
 #      ___          _____

@@ -1,6 +1,22 @@
 from .utils import run_gromacs_command
 from importlib.resources import files
 
+PIPE_INPUTS = {
+    'pdb2gmx': '1\n',
+    'genion': '15\n'
+}
+
+
+def resolve_basename(basename, debug, logger=None):
+    if not basename and not debug:
+        msg = "[!] No PDB loaded. Use `loadPDB <filename.pdb>` first."
+        if logger:
+            logger.warning(msg)
+        else:
+            print(msg)
+        return None
+    return basename if basename else "PLACEHOLDER"
+
 
 def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=None):
     """
@@ -16,8 +32,8 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     """
 
     # If no basename is provided and not in debug mode, warn the user and exit
-    if not basename and not debug:
-        print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+    base = resolve_basename(basename, debug, logger)
+    if base is None:
         return
 
     # Use provided basename or placeholder if in debug mode
@@ -27,13 +43,18 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     default_cmd = f"{gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
     command = custom_command or default_cmd
 
-    print(f"Running pdb2gmx for {base}.pdb...")
+    if debug:
+        # If in debug mode, print the command instead of executing it
+        print(f"[DEBUG] Command: {command}")
+        return
+
+    print(f"[#] Running pdb2gmx for {base}.pdb...")
 
     # Run the command, sending "7\n" as input (ff14SB on IRIC patched GROMACS in /levinzon/)
-    run_gromacs_command(command, pipe_input="1\n", debug=debug, logger=logger)
+    run_gromacs_command(command, pipe_input=PIPE_INPUTS['pdb2gmx'], debug=debug, logger=logger)
 
 
-def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", logger=None):
+def run_solvate(gmx_path, basename, custom_command=None, debug=False, logger=None):
     """
     Runs the GROMACS solvation workflow. This includes box setup (editconf) and
     solvent addition (solvate) around the protein/structure.
@@ -49,12 +70,9 @@ def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", lo
     """
 
     # Ensure that a basename is provided unless in debug mode
-    if not basename and not debug:
-        print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
+    base = resolve_basename(basename, debug, logger)
+    if base is None:
         return
-
-    # Use provided basename or fallback to placeholder in debug mode
-    base = basename if basename else "PLACEHOLDER"
 
     # Set default box configuration and solvent type
     default_box = " -c -d 1.0 -bt cubic"  # Center molecule, 1.0 nm buffer, cubic box
@@ -70,6 +88,10 @@ def run_solvate(gmx_path, basename, custom_command=None, debug=False, arg="", lo
         f"{gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top"
     ]
 
+    if debug:
+        print(f"[DEBUG] Command: {default_cmds[0]}")
+        print(f"[DEBUG] Command: {default_cmds[1]}")
+        return
     # Define default commands for box generation and solvation
     if custom_command:
         print("[CUSTOM] Using custom solvate command")
@@ -93,12 +115,8 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     """
 
     # Check that a PDB structure has been loaded unless running in debug mode
-    if not basename and not debug:
-        print("[!] No PDB loaded. Use `loadPDB <filename.pdb>` first.")
-        return
-
-    # Use provided basename or placeholder
-    base = basename if basename else "PLACEHOLDER"
+    base = resolve_basename(basename, debug, logger)
+    if base is None: return
 
     # If a custom genion command is specified, use it and exit
     if custom_command:
@@ -124,15 +142,16 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
 
     # Execute the commands (or print if debug)
-    print(f"Running genion for {base}...")
+    print(f"[#] Running genion for {base}...")
     if debug:
-        print(f"[DEBUG] grompp command: {grompp_cmd}")
-        print(f"[DEBUG] genion command: {genion_cmd}")
+        print(f"[DEBUG] Command: {grompp_cmd}")
+        print(f"[DEBUG] Command: {genion_cmd}")
         return
     if not run_gromacs_command(grompp_cmd, debug=debug, logger=logger):  # Generate .tpr
         print("[!] grompp failed. Aborting genion step.")
         return
 
-    if not run_gromacs_command(genion_cmd, pipe_input="15\n", debug=debug, logger=logger):  # Add ions
+    if not run_gromacs_command(genion_cmd, pipe_input=PIPE_INPUTS['genion'], debug=debug,
+                               logger=logger):  # Add ions
         print("[!] genion failed.")
         return

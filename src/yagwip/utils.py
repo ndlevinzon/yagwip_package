@@ -17,12 +17,13 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         debug (bool): If True, prints the command but does not execute it.
         logger (Logger, optional): Optional logger to capture stdout, stderr, and execution info.
     """
-
+    # Log or print the command about to be executed
     if logger:
         logger.info(f"[RUNNING] {command}")
     else:
         print(f"[RUNNING] {command}")
 
+    # In debug mode, skip execution and only log/print a message
     if debug:
         msg = "[DEBUG MODE] Command not executed."
         if logger:
@@ -32,21 +33,25 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         return
 
     try:
+        # Execute the command with optional piped input
         result = subprocess.run(
             command,
-            input=pipe_input,
-            shell=True,
-            capture_output=True,
-            text=True
+            input=pipe_input,       # Piped input to stdin, if any (e.g., group number)
+            shell=True,             # Run command through shell
+            capture_output=True,    # Capture both stdout and stderr
+            text=True               # Decode outputs as strings instead of bytes
         )
 
+        # Strip leading/trailing whitespace from stderr and stdout
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()
-        error_text = f"{stderr}\n{stdout}".lower()
+        error_text = f"{stderr}\n{stdout}".lower()  # Combined output used for keyword-based error checks
 
+        # Check if the command failed based on return code
         if result.returncode != 0:
-            err_msg = f"[ERROR] Command failed with return code {result.returncode}"
+            err_msg = f"[!] Command failed with return code {result.returncode}"
 
+            # Log or print error details
             if logger:
                 logger.error(err_msg)
                 if stderr:
@@ -67,9 +72,10 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.warning(specific_msg)
                 else:
                     print(specific_msg)
-            return False
+            return False        # Signal failure to caller
 
         else:
+            # If successful, optionally print/log stdout
             if stdout:
                 if logger:
                     logger.info(f"[STDOUT] {stdout}")
@@ -78,11 +84,13 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
             return True
 
     except Exception as e:
+        # Catch and log any unexpected runtime exceptions (e.g., permission issues)
         if logger:
             logger.exception(f"[EXCEPTION] Failed to run command: {e}")
         else:
             print(f"[EXCEPTION] Failed to run command: {e}")
         return False
+
 
 def setup_logger(debug_mode=False):
     """
@@ -94,7 +102,6 @@ def setup_logger(debug_mode=False):
     Returns:
         logging.Logger: Configured logger instance for use throughout the CLI.
     """
-
     # Create or retrieve the logger with a fixed name
     logger = logging.getLogger("yagwip")
 
@@ -151,84 +158,102 @@ def complete_loadpdb(text, line=None, begidx=None, endidx=None):
 
 def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
     """
-    If [ atomtypes ] section exists in ligand.itp, extract it and append to ffnonbonded.itp with a ";ligand" tag.
-    Skips appending if ";ligand" is already present.
-    """
+    Appends the [ atomtypes ] section from the ligand.itp file to the forcefield's ffnonbonded.itp file.
+    Ensures that this block is only added once by checking for a ";ligand" tag.
 
+    Parameters:
+        ligand_itp (str): Path to the ligand .itp file.
+        ffnonbonded_itp (str): Path to the forcefield nonbonded types file (typically ffnonbonded.itp).
+    """
+    # --- Step 1: Check if the ligand.itp file exists ---
     if not os.path.isfile(ligand_itp):
         print(f"[!] ligand.itp not found at {ligand_itp}")
         return
 
+    # --- Step 2: Read all lines from ligand.itp --
     with open(ligand_itp, 'r') as f:
         lines = f.readlines()
 
-    atomtypes_block = []
-    inside_atomtypes = False
+    atomtypes_block = []        # Buffer for collecting atomtypes lines
+    inside_atomtypes = False    # Flag to track whether we are inside the [ atomtypes ] section
 
+    # --- Step 3: Extract the [ atomtypes ] section before [ moleculetype ] ---
     for line in lines:
         if line.strip().startswith("[ moleculetype ]"):
-            break
+            break               # Stop parsing if we reach the [ moleculetype ] section
         if line.strip().startswith("[ atomtypes ]"):
             inside_atomtypes = True
             continue
         if inside_atomtypes:
             atomtypes_block.append(line)
 
+    # --- Step 4: If no atomtypes were found, exit with a warning ---
     if not atomtypes_block:
         print("[!] No [ atomtypes ] section found in ligand.itp.")
         return
 
+    # --- Step 5: Ensure the ffnonbonded.itp file exists ---
     if not os.path.isfile(ffnonbonded_itp):
         print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
         return
 
+    # --- Step 6: Prevent duplicate addition by checking for the ";ligand" marker ---
     with open(ffnonbonded_itp, 'r') as fcheck:
         if ";ligand" in fcheck.read():
             print("[!] ;ligand section already exists in ffnonbonded.itp. Skipping append.")
             return
 
+    # --- Step 7: Append the atomtypes block to the end of ffnonbonded.itp ---
     with open(ffnonbonded_itp, 'a') as fout:
-        fout.write("\n;ligand\n")
-        fout.writelines(atomtypes_block)
+        fout.write("\n;ligand\n")            # Marker for later identification
+        fout.writelines(atomtypes_block)     # Write the atomtypes lines
 
     print(f"[#] Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
 
 
-
 def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
     """
-    Converts impropers from Amber format (func=4, includes pn) to GROMACS style (func=2, no pn)
-     in [ dihedrals ] section of ligand.itp.
-    """
-    import os
+    Converts improper dihedrals from AMBER format to GROMACS format in the [ dihedrals ] section.
+    Specifically:
+        - Converts func=4 (used in AMBER forcefields for improper torsions) to func=2 (used in GROMACS).
+        - Removes the eighth column (periodicity, pn) which is unnecessary for func=2.
 
+    Parameters:
+        filename (str): Path to the ligand .itp file (default: 'ligand.itp').
+    """
+    # Check if the ligand.itp file exists
     if not os.path.isfile(filename):
         print(f"[!] {filename} not found.")
         return
 
+    # Read all lines from the file
     with open(filename, 'r') as f:
         lines = f.readlines()
 
-    output_lines = []
-    in_dihedrals = False
-    modified = False
+    output_lines = []       # Buffer to store modified lines
+    in_dihedrals = False    # Flag to track whether we're inside [ dihedrals ] section
+    modified = False        # Flag to report if any line was changed
 
     for i, line in enumerate(lines):
         stripped = line.strip()
 
+        # Detect beginning of [ dihedrals ] section (specifically for impropers)
         if stripped.lower().startswith("[ dihedrals ]") and "impropers" in stripped:
             in_dihedrals = True
-            output_lines.append(line)
+            output_lines.append(line)   # Keep the section header
             continue
 
-        # Stop modification when a new section begins
+        # If a new section starts, we are no longer inside [ dihedrals ]
         if in_dihedrals and stripped.startswith("[") and "]" in stripped:
             in_dihedrals = False
 
+        # Modify only lines within [ dihedrals ] and skip comments and blank lines
         if in_dihedrals and stripped and not stripped.startswith(";"):
-            parts = line.split(";")
-            comment = f";{parts[1]}" if len(parts) > 1 else ""
-            tokens = parts[0].split()
+            parts = line.split(";")                              # Split potential comment from the line
+            comment = f";{parts[1]}" if len(parts) > 1 else ""   # Preserve any comment
+            tokens = parts[0].split()                            # Split numeric fields
+
+            # Check if line looks like an Amber-style improper dihedral
             if len(tokens) >= 8 and tokens[4] == "4":
                 tokens[4] = "2"       # Change func from 4 to 2
                 del tokens[7]         # Remove the periodicity column (pn)
@@ -236,15 +261,16 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
                 output_lines.append(new_line)
                 modified = True
             else:
-                output_lines.append(line)
+                output_lines.append(line)   # Keep the line unchanged if it doesn't match the expected format
         else:
-            output_lines.append(line)
+            output_lines.append(line)       # Outside [ dihedrals ] or irrelevant lines
 
+    # If nothing was modified, notify and exit
     if not modified:
         print("[!] No impropers with func=4 found to modify.")
         return
 
-    # Write changes to file
+    # Write modified lines back to the original file
     with open(filename, 'w') as f:
         f.writelines(output_lines)
 
@@ -253,16 +279,25 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
 
 def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MOL", new_resname="LIG"):
     """
-    Replace the residue name in the [ atoms ] section and replace the molecule name in the [ moleculetype ] section
-    of a .itp file with 'LIG'. Modifies the file in-place.
+    Replaces the residue name in the [ atoms ] section and the molecule name in the [ moleculetype ] section
+    of a GROMACS .itp file. This is useful for standardizing naming (e.g., replacing "MOL" with "LIG").
+    The function performs in-place modification of the file.
+
+    Parameters:
+        filename (str): Path to the ligand .itp file (default: './ligand.itp').
+        old_resname (str): Residue name to search for (e.g., 'MOL').
+        new_resname (str): Replacement residue name (e.g., 'LIG').
     """
+    # Read all lines from the input .itp file
     with open(filename, 'r') as f:
         lines = f.readlines()
 
+    # Initialize state flags and output list
     in_atoms_section = False
     in_moleculetype_section = False
     modified_lines = []
 
+    # Iterate through each line in the file
     for idx, line in enumerate(lines):
         stripped = line.strip()
 
@@ -278,22 +313,29 @@ def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MO
             modified_lines.append(line)
             continue
 
-        # Handle [ atoms ] entries
+        # Inside [ atoms ] section: look for data lines to modify residue name
         if in_atoms_section:
+            # Exit section if a blank line or new header is encountered
             if stripped == "" or stripped.startswith("["):
                 in_atoms_section = False
                 modified_lines.append(line)
                 continue
+            # Process only non-comment lines
             if not stripped.startswith(";"):
+                # Split the line using regex to preserve spacing
                 parts = re.split(r'(\s+)', line)
+
+                # Make sure there's a residue field to edit (column 4 = index 6 in split-by-whitespace+space list)
                 if len(parts) >= 9 and parts[6].strip() == old_resname:
-                    parts[6] = new_resname
-                line = ''.join(parts)
-            modified_lines.append(line)
+                    parts[6] = new_resname      # Replace residue name with new one
+                line = ''.join(parts)           # Reconstruct the line with original spacing
+
+            modified_lines.append(line)         # Store modified or unmodified line
             continue
 
-        # Handle the molecule name in [ moleculetype ]
+        # Inside [ moleculetype ] section: replace molecule name
         if in_moleculetype_section:
+            # Preserve empty lines and comments
             if stripped == "" or stripped.startswith(";"):
                 modified_lines.append(line)
                 continue
@@ -302,98 +344,134 @@ def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MO
                 tokens = line.split()
                 if len(tokens) >= 2:
                     tokens[0] = new_resname
-                    line = f"{tokens[0]:<20}{tokens[1]}\n"
+                    line = f"{tokens[0]:<20}{tokens[1]}\n"      # Align first column to 20 chars for formatting
                 else:
-                    line = f"{new_resname}\n"
+                    line = f"{new_resname}\n"                   # If only one token present, just replace it
+
+                # Append modified line and exit section
                 modified_lines.append(line)
                 in_moleculetype_section = False
                 continue
 
+        # If not in a special section, leave line unmodified
         modified_lines.append(line)
 
-    # Overwrite file
+    # Write modified content back to the same file
     with open(filename, 'w') as f:
         f.writelines(modified_lines)
 
     print(f"[#] Updated [ atoms ] and [ moleculetype ] sections in {filename}: {old_resname} -> {new_resname}")
 
 
-
-
 def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="complex.gro"):
+    """
+    Appends ligand atomic coordinates from a PDB file to an existing GROMACS .gro file
+    containing a protein, and writes the combined structure to a new .gro file.
+
+    Parameters:
+        protein_gro (str): Path to the input .gro file containing the protein structure.
+        ligand_pdb (str): Path to the ligand structure in PDB format.
+        combined_gro (str): Output path for the combined protein-ligand .gro file (default: 'complex.gro').
+    """
+
     coords = []
+
+    # --- Step 1: Parse coordinates from ligand .PDB ---
     with open(ligand_pdb, 'r') as f:
         for line in f:
             if line.startswith(('ATOM', 'HETATM')):
-                res_id = int(line[23:26].strip())
-                atom_name = line[13:16].strip()
-                res_name = line[17:20].strip()
-                atom_index = int(line[6:11].strip())
-                x = float(line[30:38])
-                y = float(line[38:46])
-                z = float(line[46:54])
+                res_id = int(line[23:26].strip())       # Residue number
+                atom_name = line[13:16].strip()         # Atom name (e.g., CA, HN)
+                res_name = line[17:20].strip()          # Residue name (e.g., LIG)
+                atom_index = int(line[6:11].strip())    # Atom serial number
+                x = float(line[30:38])                  # X Coordinate (A)
+                y = float(line[38:46])                  # Y Coordinate (A)
+                z = float(line[46:54])                  # Z Coordinate (A)
+
+                # Store parsed ligand atom as a tuple
                 coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
 
+    # --- Step 2: Read protein .GRO ---
     with open(protein_gro, 'r') as fin:
         lines = fin.readlines()
 
-    header = lines[:2]
-    atom_lines = lines[2:-1]
-    box = lines[-1]
+    header = lines[:2]                  # First two lines: title and atom count
+    atom_lines = lines[2:-1]            # Middle lines: atom entries
+    box = lines[-1]                     # Last line: box dimensions
+
+    # Update total atom count (protein atoms + ligand atoms)
     total_atoms = len(atom_lines) + len(coords)
 
+    # --- Step 3: Write combined .GRO ---
     with open(combined_gro, 'w') as fout:
-        fout.write(header[0])
-        fout.write(f"{total_atoms}\n")
-        fout.writelines(atom_lines)
+        fout.write(header[0])           # Title line
+        fout.write(f"{total_atoms}\n")  # Updated atom count
+        fout.writelines(atom_lines)     # Original protein atoms
 
+        # Write ligand atoms, converting from Angstrom to nm for GROMACS format
         for res_id, res_name, atom_name, atom_index, x, y, z in coords:
             fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x/10:8.3f}{y/10:8.3f}{z/10:8.3f}\n")
 
-        fout.write(box)
+        fout.write(box)                 # Box dimensions, unchanged (last line)
 
-    print(f"Wrote {total_atoms} atoms to {combined_gro}")
+    print(f"[#] Wrote {total_atoms} atoms to {combined_gro}")
 
 
 def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_name="LIG"):
+    """
+    Modifies the topology file (topol.top) to include the ligand's .itp file and add an entry for the ligand in
+    the [ molecules ] section.
+
+    Parameters:
+        topol_top (str): Path to the topology file to modify (e.g., topol.top).
+        ligand_itp (str): Path to the ligand's .itp file to include (default: ./ligand.itp).
+        ligand_name (str): Residue name of the ligand to add in the [ molecules ] section (default: "LIG").
+    """
+    # Read the original topology file
     with open(topol_top, 'r') as f:
         lines = f.readlines()
 
-    new_lines = []
-    inserted_include = False
-    inserted_mol = False
-    in_molecules_section = False
-    molecules_lines = []
+    new_lines = []                  # Holds the modified lines to write back
+    inserted_include = False        # Track whether we've inserted the #include line for ligand.itp
+    inserted_mol = False            # Track whether we've inserted the ligand entry in [ molecules ]
+    in_molecules_section = False    # Track whether we are currently in the [ molecules ] section
+    molecules_lines = []            # Buffer for lines in the [ molecules ] section
 
     for line in lines:
         stripped = line.strip()
 
-        # Insert ITP include after forcefield
+        # If we find the forcefield include line, insert ligand.itp include right after it
         if not inserted_include and '#include' in stripped and 'forcefield.itp' in stripped:
             new_lines.append(line)
-            new_lines.append(f'#include "{ligand_itp}"\n')
+            new_lines.append(f'#include "{ligand_itp}"\n')  # Insert ligand .itp include
             inserted_include = True
-            continue
+            continue                                        # Skip to next line
 
-        # Buffer molecule section to avoid duplicate insertion
+        # Detect start of the [ molecules ] section, start buffering lines
         if '[ molecules ]' in stripped:
             in_molecules_section = True
             molecules_lines.append(line)
             continue
 
+        # If we reach the end of the [ molecules ] section or a new section starts
         if in_molecules_section:
+            # If we reach the end of section (blank line or new section)
             if stripped == '' or stripped.startswith('['):
+                # If ligand wasn't already added, append it now
                 if not inserted_mol:
                     molecules_lines.append(f'{ligand_name}    1\n')
                     inserted_mol = True
+                # Append buffered section to output
                 new_lines.extend(molecules_lines)
-                molecules_lines = []
-                in_molecules_section = False
-                new_lines.append(line)
+                molecules_lines = []                # Clear buffer
+                in_molecules_section = False        # Exit section
+                new_lines.append(line)              # Append the current section header or blank line
             else:
+                # Only add lines that are not already the ligand (avoid duplication)
                 if ligand_name not in stripped:
                     molecules_lines.append(line)
         else:
+            # Outside [ molecules ] section, append lines as-is
             new_lines.append(line)
 
     # Handle case where [ molecules ] is at the very end of the file
@@ -401,6 +479,7 @@ def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_nam
         molecules_lines.append(f'{ligand_name}                 1\n')
         new_lines.extend(molecules_lines)
 
+    # Write the modified content back to the topology file
     with open(topol_top, 'w') as f:
         f.writelines(new_lines)
 
@@ -600,4 +679,4 @@ def insert_itp_into_top_files(itp_path_list, root_dir="."):
         with open(top_file, 'w') as f:
             f.writelines(new_lines)
 
-        print(f"[UPDATED] Injected {len(itp_path_list)} custom includes into {top_file}")
+        print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")

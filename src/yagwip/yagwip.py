@@ -26,7 +26,7 @@ class GromacsCLI(cmd.Cmd):
         self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
         self.current_pdb_path = None                        # Full path to the loaded PDB file
         self.ligand_pdb_path = None                         # Full path to the ligand PDB file, if any
-        self.basename = None                                # Base filename (without extension)
+        self.basename = None                                # Base PDB filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
 
@@ -142,8 +142,8 @@ class GromacsCLI(cmd.Cmd):
         Loads .pdb path for further building steps. This command should be run first.
         Usage: "loadpdb X.pdb"
         """
-        import os
 
+        # Clean and validate the provided file path
         filename = arg.strip()
         if not filename:
             print("Usage: loadpdb <filename.pdb>")
@@ -154,24 +154,28 @@ class GromacsCLI(cmd.Cmd):
             print(f"[!] '{filename}' not found.")
             return
 
+        # Store the full path and basename for later use in the build pipeline
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
 
         print(f"PDB file loaded: {full_path}")
 
+        # Read all lines from the PDB file
         with open(full_path, 'r') as f:
             lines = f.readlines()
 
+        # Extract all lines representing heteroatoms (typically ligands or cofactors)
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
 
         # Always rewrite the protein portion with HIS substitutions
         protein_file = 'protein.pdb'
-        self.protein_pdb_path = os.path.abspath(protein_file)
 
         if hetatm_lines:
+            # If ligand atoms were found, prepare a separate ligand file
             ligand_file = 'ligand.pdb'
             self.ligand_pdb_path = os.path.abspath(ligand_file)
 
+            # Open output files for writing protein and ligand portions
             with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
@@ -186,7 +190,7 @@ class GromacsCLI(cmd.Cmd):
 
             print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
 
-            # Check for hydrogen atoms in ligand
+            # Determine if the ligand contains hydrogen atoms (important for parameterization)
             has_hydrogens = any(
                 line[76:78].strip() == 'H' or line[12:16].strip().startswith('H')
                 for line in hetatm_lines
@@ -195,7 +199,7 @@ class GromacsCLI(cmd.Cmd):
                 print("[!] Ligand appears to lack hydrogen atoms. Please add hydrogens and verify valences.")
                 return
 
-            # Check for ligand.itp
+            # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
                 print("Checking ligand.itp...")
                 append_ligand_atomtypes_to_forcefield()
@@ -205,9 +209,11 @@ class GromacsCLI(cmd.Cmd):
                 print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
                 return
         else:
+            # If no HETATM lines are found, treat entire file as protein
             self.ligand_pdb_path = None
             with open(protein_file, 'w') as prot_out:
                 for line in lines:
+                    # Normalize histidine variants to 'HIS'
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
@@ -239,7 +245,7 @@ class GromacsCLI(cmd.Cmd):
             return
 
         # Combine ligand coordinates
-        if self.ligand_pdb_path and os.path.isfile("ligand.pdb") and os.path.getsize("ligand.pdb") > 0:
+        if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
             append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
             include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
         else:
@@ -391,14 +397,14 @@ class GromacsCLI(cmd.Cmd):
         for f in template_dir.iterdir():
             if f.name.endswith(".mdp") and f.name != exclude:
                 shutil.copy(f, os.getcwd())
-        print(f"[SLURM] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
+        print(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
 
         # Copy analysis SLURM file for tremd
         if sim_type == "tremd":
             analysis_slurm = template_dir / "run_tremd_analysis.slurm"
             if analysis_slurm.is_file():
                 shutil.copy(analysis_slurm, os.getcwd())
-                print("[SLURM] Copied run_tremd_analysis.slurm.")
+                print("[#] Copied run_tremd_analysis.slurm.")
             else:
                 print("[!] run_tremd_analysis.slurm not found in template directory.")
 
@@ -431,7 +437,7 @@ class GromacsCLI(cmd.Cmd):
             with open(out_slurm, "w") as f:
                 f.write(slurm_content)
 
-            print(f"[SLURM] Customized SLURM script written: {out_slurm}")
+            print(f"[#] Customized SLURM script written: {out_slurm}")
         except Exception as e:
             print(f"[!] Failed to configure SLURM script: {e}")
 

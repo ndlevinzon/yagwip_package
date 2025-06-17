@@ -98,7 +98,7 @@ echo "Cleaning Temporary Files..."
 for dir in [0-9]*; do
     if [[ -d "$dir" && "$dir" =~ ^[0-9]+$ ]]; then
         cd "$dir"
-        find . -type f -name '*#remd.tpr.*' -exec rm -f -i {} \;
+        find . -type f -name '*#remd.tpr.*' -exec rm -f {} \;
         cd ..
     fi
 done
