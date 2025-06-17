@@ -65,7 +65,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                 if stdout:
                     print("[STDOUT]", stdout)
 
-            # Catch specific GROMACS error after logging main output
+            # Catch atom number mismatch error
             if "number of coordinates in coordinate file" in error_text:
                 specific_msg = "[!] Check ligand and protonation: .gro and .top files have different atom counts."
                 if logger:
@@ -75,7 +75,6 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
 
             # Catch periodic improper dihedral type error
             elif "no default periodic improper dih. types" in error_text:
-
                 match = re.search(r'\[file topol\.top, line (\d+)\]', stderr, re.IGNORECASE)
                 if match:
                     line_num = int(match.group(1))
@@ -91,7 +90,8 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                 with open(top_path, 'w') as f:
                                     f.writelines(lines)
 
-                                msg = f"[!] Commented out line {line_num} in topol.top due to improper dihedral error."
+                                msg = (f"[!] Detected improper dihedral error, likely an artifact from AMBER force fields.\n"
+                                       f"[!] Commented out line {line_num} in topol.top due to improper dihedral error.")
                                 if logger:
                                     logger.warning(msg)
                                 else:
@@ -248,7 +248,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
     # --- Step 6: Prevent duplicate addition by checking for the ";ligand" marker ---
     with open(ffnonbonded_itp, 'r') as fcheck:
         if ";ligand" in fcheck.read():
-            print("[!] ;ligand section already exists in ffnonbonded.itp. Skipping append.")
+            print("[!] ligand section already exists in ffnonbonded.itp. Skipping append.")
             return
 
     # --- Step 7: Append the atomtypes block to the end of ffnonbonded.itp ---
