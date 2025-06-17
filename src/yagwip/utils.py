@@ -72,7 +72,55 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.warning(specific_msg)
                 else:
                     print(specific_msg)
-            return False        # Signal failure to caller
+
+            # Catch periodic improper dihedral type error
+            elif "no default periodic improper dih. types" in error_text:
+
+                match = re.search(r'\[file topol\.top, line (\d+)\]', stderr, re.IGNORECASE)
+                if match:
+                    line_num = int(match.group(1))
+                    top_path = "./topol.top"
+
+                    try:
+                        with open(top_path, 'r') as f:
+                            lines = f.readlines()
+
+                        if 0 <= line_num - 1 < len(lines):
+                            if not lines[line_num - 1].strip().startswith(';'):
+                                lines[line_num - 1] = f";{lines[line_num - 1]}"
+                                with open(top_path, 'w') as f:
+                                    f.writelines(lines)
+
+                                msg = f"[!] Commented out line {line_num} in topol.top due to improper dihedral error."
+                                if logger:
+                                    logger.warning(msg)
+                                else:
+                                    print(msg)
+
+                            # Retry the command
+                                retry_msg = f"[#] Retrying command after modifying topol.top..."
+                                if logger:
+                                    logger.info(retry_msg)
+                                else:
+                                    print(retry_msg)
+
+                                # Important: recursive retry, but prevent infinite loops
+                                return run_gromacs_command(command, pipe_input=pipe_input, debug=debug, logger=logger)
+
+                    except Exception as e:
+                        fail_msg = f"[!] Failed to modify topol.top: {e}"
+                        if logger:
+                            logger.error(fail_msg)
+                        else:
+                            print(fail_msg)
+                else:
+                    fallback_msg = "[!] Detected dihedral error, but couldn't find line number in topol.top."
+                    if logger:
+                        logger.warning(fallback_msg)
+                    else:
+                        print(fallback_msg)
+
+            return False  # Final return if not resolved
 
         else:
             # If successful, optionally print/log stdout
