@@ -133,9 +133,8 @@ class GromacsCLI(cmd.Cmd):
             self.custom_cmds[cmd_key] = new_cmd
             print(f"[SET] Updated command for {cmd_key}.")
 
-    def complete_loadpdb(self, text, line, begidx, endidx):
-        """Adds tab completion for .pdb files for use in loadpdb"""
-        return complete_loadpdb(text)
+    def complete_loadpdb(text, line=None, begidx=None, endidx=None):
+        return complete_filename(text, ".pdb", line, begidx, endidx)
 
     def do_loadpdb(self, arg):
         """
@@ -158,7 +157,7 @@ class GromacsCLI(cmd.Cmd):
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
 
-        print(f"PDB file loaded: {full_path}")
+        print(f"[#] PDB file loaded: {full_path}")
 
         # Read all lines from the PDB file
         with open(full_path, 'r') as f:
@@ -188,7 +187,7 @@ class GromacsCLI(cmd.Cmd):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
 
-            print(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
+            print(f"[#] Detected ligand. Split into: {protein_file}, {ligand_file}")
 
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
             has_hydrogens = any(
@@ -201,7 +200,7 @@ class GromacsCLI(cmd.Cmd):
 
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
-                print("Checking ligand.itp...")
+                print("[#] Checking ligand.itp...")
                 append_ligand_atomtypes_to_forcefield()
                 modify_improper_dihedrals_in_ligand_itp()
                 rename_residue_in_itp_atoms_section()
@@ -218,7 +217,7 @@ class GromacsCLI(cmd.Cmd):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
 
-            print("No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as protein.")
+            print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as protein.")
 
     def do_pdb2gmx(self, arg):
         """
@@ -326,7 +325,7 @@ class GromacsCLI(cmd.Cmd):
 
         # Only complete the filename after 'tremd calc'
         if len(args) >= 2 and args[1] == "calc":
-            return complete_loadgro(text)
+            return complete_filename(text, "solv.ions.gro", line, begidx, endidx)
         return []
 
     def do_tremd(self, arg):

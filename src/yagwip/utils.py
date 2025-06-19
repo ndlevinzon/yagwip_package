@@ -195,37 +195,43 @@ def setup_logger(debug_mode=False):
     return logger
 
 
-def complete_loadpdb(text, line=None, begidx=None, endidx=None):
-    """Autocomplete PDB filenames in current directory"""
+def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
+    """
+    Generic TAB Autocomplete for filenames in the current directory matching a suffix.
+
+    Parameters:
+        text (str): The current input text to match.
+        suffix (str): The file suffix or pattern to match (e.g., ".pdb", "solv.ions.gro").
+    """
     if not text:
-        completions = [f for f in os.listdir() if f.endswith(".pdb")]
+        return [f for f in os.listdir() if f.endswith(suffix)]
     else:
-        completions = [f for f in os.listdir() if f.startswith(text) and f.endswith(".pdb")]
-    return completions
+        return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
 
 
 def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
     """
     Appends the [ atomtypes ] section from the ligand.itp file to the forcefield's ffnonbonded.itp file.
+    This fixes the improper dihedrals term that AMBER ANTECHAMBER generates for ligands.
     Ensures that this block is only added once by checking for a ";ligand" tag.
 
     Parameters:
         ligand_itp (str): Path to the ligand .itp file.
         ffnonbonded_itp (str): Path to the forcefield nonbonded types file (typically ffnonbonded.itp).
     """
-    # --- Step 1: Check if the ligand.itp file exists ---
+    # Check if the ligand.itp file exists
     if not os.path.isfile(ligand_itp):
         print(f"[!] ligand.itp not found at {ligand_itp}")
         return
 
-    # --- Step 2: Read all lines from ligand.itp --
+    # Read all lines from ligand.itp
     with open(ligand_itp, 'r') as f:
         lines = f.readlines()
 
     atomtypes_block = []        # Buffer for collecting atomtypes lines
     inside_atomtypes = False    # Flag to track whether we are inside the [ atomtypes ] section
 
-    # --- Step 3: Extract the [ atomtypes ] section before [ moleculetype ] ---
+    # Extract the [ atomtypes ] section before [ moleculetype ]
     for line in lines:
         if line.strip().startswith("[ moleculetype ]"):
             break               # Stop parsing if we reach the [ moleculetype ] section
@@ -235,23 +241,23 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
         if inside_atomtypes:
             atomtypes_block.append(line)
 
-    # --- Step 4: If no atomtypes were found, exit with a warning ---
+    # If no atomtypes were found, exit with a warning
     if not atomtypes_block:
         print("[!] No [ atomtypes ] section found in ligand.itp.")
         return
 
-    # --- Step 5: Ensure the ffnonbonded.itp file exists ---
+    # Ensure the ffnonbonded.itp file exists
     if not os.path.isfile(ffnonbonded_itp):
         print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
         return
 
-    # --- Step 6: Prevent duplicate addition by checking for the ";ligand" marker ---
+    # Prevent duplicate addition by checking for the ";ligand" marker
     with open(ffnonbonded_itp, 'r') as fcheck:
         if ";ligand" in fcheck.read():
             print("[!] ligand section already exists in ffnonbonded.itp. Skipping append.")
             return
 
-    # --- Step 7: Append the atomtypes block to the end of ffnonbonded.itp ---
+    # Append the atomtypes block to the end of ffnonbonded.itp
     with open(ffnonbonded_itp, 'a') as fout:
         fout.write("\n;ligand\n")            # Marker for later identification
         fout.writelines(atomtypes_block)     # Write the atomtypes lines
@@ -424,7 +430,7 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
 
     coords = []
 
-    # --- Step 1: Parse coordinates from ligand .PDB ---
+    # Parse coordinates from ligand .PDB
     with open(ligand_pdb, 'r') as f:
         for line in f:
             if line.startswith(('ATOM', 'HETATM')):
@@ -439,7 +445,7 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
                 # Store parsed ligand atom as a tuple
                 coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
 
-    # --- Step 2: Read protein .GRO ---
+    # Read protein .GRO
     with open(protein_gro, 'r') as fin:
         lines = fin.readlines()
 
@@ -450,7 +456,7 @@ def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="comp
     # Update total atom count (protein atoms + ligand atoms)
     total_atoms = len(atom_lines) + len(coords)
 
-    # --- Step 3: Write combined .GRO ---
+    # Write combined .GRO file
     with open(combined_gro, 'w') as fout:
         fout.write(header[0])           # Title line
         fout.write(f"{total_atoms}\n")  # Updated atom count
@@ -535,6 +541,7 @@ def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_nam
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
     Parses a GROMACS .gro file to count protein and water residues.
+    Used for generating T-REMD Temperature Ladder.
 
     Parameters:
         gro_path (str): Path to the .gro file.
@@ -571,7 +578,7 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
 # Based on http://dx.doi.org/10.1039/b716554d
 def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Alg=0, Tol=0.001):
     """
-    Generate a temperature ladder for temperature replica exchange molecular dynamics (TREMD).
+    Generate a temperature ladder for temperature replica exchange molecular dynamics (T-REMD).
 
     Parameters:
         Nw (int): Number of water molecules
@@ -678,19 +685,10 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
     return temps
 
 
-def complete_loadgro(text, line=None, begidx=None, endidx=None):
-    """Autocomplete .solv.ions.gro filename in current directory"""
-    if not text:
-        completions = [f for f in os.listdir() if f.endswith("solv.ions.gro")]
-    else:
-        completions = [f for f in os.listdir() if f.startswith(text) and f.endswith("solv.ions.gro")]
-    return completions
-
-
 def insert_itp_into_top_files(itp_path_list, root_dir="."):
     """
     Rewrite all topol.top files to include only the provided list of ITP paths,
-    removing any existing non-user-specified includes.
+    removing any existing non-user-specified includes. Used for the SOURCE command.
     """
     top_files = []
 

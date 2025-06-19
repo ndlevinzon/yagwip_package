@@ -2,18 +2,22 @@
 #SBATCH --job-name=__BASE___gmx_remd
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
-#SBATCH --nodes=6              # Number of Replicas
-#SBATCH --ntasks-per-node=1    # Nodes Per Replica
-#SBATCH --cpus-per-task=64     # CPUs Per Node
-#SBATCH --time=01:00:00
-#SBATCH --exclusive 
-#SBATCH --mem=0
+#SBATCH --nodes=8              # Number of Nodes
+#SBATCH --ntasks-per-node=4    # Replicas per Node
+#SBATCH --cpus-per-task=16     # CPUs Per Replicas
+#SBATCH --time=01:00:00        # Time limit (1 hour)
+#SBATCH --exclusive            # Exclusive node allocation
+#SBATCH --mem=0                # Use all available memory
 
+# ------------------------
 # Load GROMACS module
+# ------------------------
 module purge
 module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 
-# Variables
+# ------------------------
+# VARIABLES
+# ------------------------
 init="__INIT_GRO__"
 mini_prefix="em"
 nvt_prefix="nvt"
@@ -21,12 +25,67 @@ npt_prefix="npt"
 prod_prefix="remd_template"
 prod_step="step"
 
-# Read temperatures from file formatted like: "Replica 1: 300.00 K"
+# ------------------------
+# ADJUST TOPOL FILE TO CURRENT WORKING DIRECTORY
+# ------------------------
+# Step 1: Capture the current working directory in a variable
+CUR_DIR="$(pwd)"
+
+# Step 2: Make a backup copy of topol.top in case anything goes wrong
+cp topol.top topol.top.bak
+
+# Step 3: Use awk to scan through the lines of the backup file and modify #include paths
+awk -v cwd="$CUR_DIR" '                                   # Pass the current directory to awk as variable "cwd"
+{
+    if ($1 == "#include") {                               # Process only lines that begin with "#include"
+        path = $2                                         # Extract the path portion (e.g., "./amber14sb.ff/forcefield.itp")
+        gsub(/"/, "", path)                               # Remove any quotation marks around the path
+
+        # Case 1: Handle relative paths that start with "./"
+        if (path ~ /^\.\/.*/) {
+            new_path = "\"" cwd "/" substr(path, 3) "\""  # Remove "./" from the beginning and prepend the current directory
+            print "#include " new_path                    # Print the modified line
+        }
+
+        # Case 2: Handle absolute paths that do NOT begin with the current directory
+        else if (path ~ /^\// && index(path, cwd) != 1) {
+            # Extract just the file path component (e.g., "amber14sb.ff/forcefield.itp")
+            file = substr(path, length(path) - index(reverse(path), "/") + 2)
+
+            # Construct new absolute path using the current directory + file
+            new_path = "\"" cwd "/" file "\""
+            print "#include " new_path
+        }
+
+        # Case 3: Path is already absolute and within current directory; leave unchanged
+        else {
+            print $0
+        }
+    } else {
+        # For all other lines (not #include), print them unchanged
+        print $0
+    }
+}
+
+# Helper function: reverse(string)
+# Used to locate the last "/" in the path string
+function reverse(s,    i, r) {
+    r = ""
+    for (i = length(s); i > 0; i--) {
+        r = r substr(s, i, 1)
+    }
+    return r
+}
+' topol.top.bak > topol.top    # Output the modified content into topol.top, replacing the original
+
+# ------------------------
+# READ TEMPERATURES FROM TEMPERATURE LADDER FILE
+# ------------------------
 temperature_file="TREMD_temp_ranges.txt"
 mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 
 # ------------------------
-# Step 1: Minimization
+# MINIMIZATION
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
@@ -37,7 +96,7 @@ else
 fi
 
 # ------------------------
-# Step 2: NVT
+# NVT
 # ------------------------
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
@@ -48,7 +107,7 @@ else
 fi
 
 # ------------------------
-# Step 3: NPT
+# NPT
 # ------------------------
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
@@ -59,9 +118,9 @@ else
 fi
 
 # ------------------------
-# Step 3: Prepare REMD Directories
+# PREPARE T-REMD DIRECTORIES
 # ------------------------
-echo "Preparing REMD directories..."
+echo "Preparing T-REMD directories..."
 for i in ${!temperatures[@]}; do
     temp=${temperatures[$i]}
     dir=$i
@@ -79,7 +138,7 @@ for i in ${!temperatures[@]}; do
 done
 
 # ------------------------
-# Step 4: Run T-REMD with checkpointing
+# RUN T-REMD WITH CHECKPOINTING
 # ------------------------
 echo "Launching T-REMD with ${#temperatures[@]} replicas..."
 timeout 3300 \
@@ -92,7 +151,7 @@ srun gmx_mpi mdrun -multidir $(seq 0 $((${#temperatures[@]} - 1))) \
 
 
 # ------------------------
-# Step 5: Clean Working Directories and Resubmit Job
+# CLEAN CHECKPOINT FILES AND RESUBMIT JOB
 # ------------------------
 echo "Cleaning Temporary Files..."
 for dir in [0-9]*; do
