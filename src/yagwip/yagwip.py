@@ -228,7 +228,7 @@ class GromacsCLI(cmd.Cmd):
             print("[!] No PDB loaded.")
             return
 
-        protein_pdb = "protein" if self.ligand_pdb_path else self.basename
+        protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
 
         run_pdb2gmx(
@@ -257,7 +257,7 @@ class GromacsCLI(cmd.Cmd):
         Other Options: use "set solvate" to override defaults
         """
 
-        complex_pdb = "complex" if self.ligand_pdb_path else self.basename
+        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
 
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
@@ -271,7 +271,7 @@ class GromacsCLI(cmd.Cmd):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
-        solvated_pdb = "complex" if self.ligand_pdb_path else self.basename
+        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
 
         if not self.current_pdb_path and not self.debug:
             print("[!] No PDB loaded.")
@@ -357,7 +357,7 @@ class GromacsCLI(cmd.Cmd):
         # Add new path to list (no duplicates)
         if itp_path not in self.user_itp_paths:
             self.user_itp_paths.append(itp_path)
-            print(f"Added custom .itp include: {itp_path}")
+            print(f"[#] Added custom .itp include: {itp_path}")
         else:
             print(f"[!] Path already in include list: {itp_path}")
 
