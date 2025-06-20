@@ -4,8 +4,10 @@ from importlib.resources import files
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
     'pdb2gmx': '1\n',
-    'genion': '15\n'
+    'genion_prot': '13\n',
+    'genion_complex': '15\n'
 }
+
 
 def resolve_basename(basename, debug, logger=None):
     """Helps resolve the basename for PDB files, ensuring it is set correctly."""
@@ -77,7 +79,7 @@ def run_solvate(gmx_path, basename, arg="", custom_command=None, debug=False, lo
 
     # Set default box configuration and solvent type
     default_box = " -c -d 1.0 -bt cubic"  # Center molecule, 1.0 nm buffer, cubic box
-    default_water = "spc216.gro"          # Default water model file
+    default_water = "spc216.gro"  # Default water model file
     parts = arg.strip().split()
 
     # Override box or water model if specified in CLI arguments
@@ -119,40 +121,39 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     base = resolve_basename(basename, debug, logger)
     if base is None: return
 
-    # If a custom genion command is specified, use it and exit
-    if custom_command:
-        print("[CUSTOM] Using custom genion command")
-        run_gromacs_command(custom_command, pipe_input="13\n", debug=debug, logger=logger)
-        return
-
     # Path to default ions.mdp configuration file bundled in templates
     default_ions = files("yagwip.templates").joinpath("ions.mdp")
 
     # File naming conventions for genion input/output
-    input_gro = f"{base}.solv.gro"          # Input: solvated structure
-    output_gro = f"{base}.solv.ions.gro"    # Output: solvated + ionized structure
-    tpr_out = "ions.tpr"                    # Temporary run input file for genion
+    input_gro = f"{base}.solv.gro"  # Input: solvated structure
+    output_gro = f"{base}.solv.ions.gro"  # Output: solvated + ionized structure
+    tpr_out = "ions.tpr"  # Temporary run input file for genion
 
     # Genion-specific options
     ion_options = "-pname NA -nname CL -conc 0.150 -neutral"  # Add Na+ and Cl- to neutralize at 0.15 M
-    grompp_opts = ""                                           # Placeholder for additional grompp options if needed
+    grompp_opts = ""  # Placeholder for additional grompp options if needed
+
+    # If just a protein, pipe 13. If a complex, pipe 15.
+    ion_pipe_input = PIPE_INPUTS['genion_prot'] if basename.endswith('protein') else PIPE_INPUTS['genion_complex']
 
     # Construct GROMACS commands
-    grompp_cmd = (f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} "
-                  f"{grompp_opts} -maxwarn 15")
-    genion_cmd = f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
+    default_cmds = [
+        (f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} "
+         f"{grompp_opts} -maxwarn 15"),
+        f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
+    ]
 
     # Execute the commands (or print if debug)
     print(f"[#] Running genion for {base}...")
     if debug:
-        print(f"[DEBUG] Command: {grompp_cmd}")
-        print(f"[DEBUG] Command: {genion_cmd}")
+        print(f"[DEBUG] Command: {default_cmds[0]}")
+        print(f"[DEBUG] Command: {default_cmds[1]}")
         return
-    if not run_gromacs_command(grompp_cmd, debug=debug, logger=logger):  # Generate .tpr
-        print("[!] grompp failed. Aborting genion step.")
-        return
-
-    if not run_gromacs_command(genion_cmd, pipe_input=PIPE_INPUTS['genion'], debug=debug,
-                               logger=logger):                          # Add ions
-        print("[!] genion failed.")
-        return
+        # Define default commands for box generation and solvation
+    if custom_command:
+        print("[CUSTOM] Using custom genion command")
+        run_gromacs_command(custom_command, debug=debug, logger=logger)
+    else:
+        # Otherwise, run the default sequence of editconf and solvate
+        for cmd in default_cmds:
+            run_gromacs_command(cmd, pipe_input=ion_pipe_input, debug=debug, logger=logger)
