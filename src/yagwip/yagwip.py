@@ -133,7 +133,7 @@ class GromacsCLI(cmd.Cmd):
             self.custom_cmds[cmd_key] = new_cmd
             print(f"[SET] Updated command for {cmd_key}.")
 
-    def complete_loadpdb(text, line=None, begidx=None, endidx=None):
+    def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
         return complete_filename(text, ".pdb", line, begidx, endidx)
 
     def do_loadpdb(self, arg):
