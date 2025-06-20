@@ -37,6 +37,12 @@ class GromacsCLI(cmd.Cmd):
             "genions": None,
         }
 
+    def _require_pdb(self):
+        if not self.current_pdb_path and not self.debug:
+            print("[!] No PDB loaded.")
+            return False
+        return True
+
     def default(self, line):
         """Throws error when command is not recognized"""
         print(f"[!] Unknown command: {line}")
@@ -224,9 +230,7 @@ class GromacsCLI(cmd.Cmd):
         Run pdb2gmx. If ligand is present, treat protein and ligand separately.
         Usage: "pdb2gmx"
         """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
 
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
@@ -259,9 +263,8 @@ class GromacsCLI(cmd.Cmd):
 
         complex_pdb = "complex" if self.ligand_pdb_path else "protein"
 
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_solvate(self.gmx_path, complex_pdb, custom_command=self.custom_cmds["solvate"],
                     debug=self.debug, logger=self.logger)
 
@@ -273,9 +276,8 @@ class GromacsCLI(cmd.Cmd):
         """
         solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
 
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_genions(self.gmx_path, solvated_pdb, custom_command=self.custom_cmds["genions"],
                     debug=self.debug, logger=self.logger)
 
@@ -284,9 +286,8 @@ class GromacsCLI(cmd.Cmd):
         Runs default energy minimization on the command line
         Usage: "em"
         """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_nvt(self, arg):
@@ -294,9 +295,8 @@ class GromacsCLI(cmd.Cmd):
         Runs default NVT equilibration on the command line
         Usage: "em"
         """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_npt(self, arg):
@@ -304,9 +304,8 @@ class GromacsCLI(cmd.Cmd):
         Runs default NPT equilibration on the command line
         Usage: "npt"
         """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def do_production(self, arg):
@@ -314,9 +313,8 @@ class GromacsCLI(cmd.Cmd):
         Runs default production-phase MD on the command line
         Usage: "production"
         """
-        if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
-            return
+        if not self._require_pdb(): return
+
         run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
 
     def complete_tremd(self, text, line, begidx, endidx):
