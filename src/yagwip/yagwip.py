@@ -217,7 +217,7 @@ class GromacsCLI(cmd.Cmd):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
 
-            print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as protein.")
+            print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
 
     def do_pdb2gmx(self, arg):
         """

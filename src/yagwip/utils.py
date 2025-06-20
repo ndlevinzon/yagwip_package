@@ -243,7 +243,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
 
     # If no atomtypes were found, exit with a warning
     if not atomtypes_block:
-        print("[!] No [ atomtypes ] section found in ligand.itp.")
+        print("[#] No [ atomtypes ] section found in ligand.itp. Skipping...")
         return
 
     # Ensure the ffnonbonded.itp file exists
@@ -254,7 +254,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
     # Prevent duplicate addition by checking for the ";ligand" marker
     with open(ffnonbonded_itp, 'r') as fcheck:
         if ";ligand" in fcheck.read():
-            print("[#] ligand section already exists in ffnonbonded.itp. Skipping append...")
+            print("[#] ligand section already exists in ffnonbonded.itp. Skipping...")
             return
 
     # Append the atomtypes block to the end of ffnonbonded.itp
@@ -321,7 +321,7 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
 
     # If nothing was modified, notify and exit
     if not modified:
-        print("[#] No impropers with func=4 found to modify, skipping...")
+        print("[#] No impropers with func=4 found to modify. Skipping...")
         return
 
     # Write modified lines back to the original file
