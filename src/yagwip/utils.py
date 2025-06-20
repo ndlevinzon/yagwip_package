@@ -90,8 +90,8 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                 with open(top_path, 'w') as f:
                                     f.writelines(lines)
 
-                                msg = (f"[#] Detected improper dihedral error, likely an artifact from AMBER force fields.\n"
-                                       f"[#] Commenting out line {line_num} in topol.top and rerunning...")
+                                msg = (f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
+                                       f" Commenting out line {line_num} in topol.top and rerunning...")
                                 if logger:
                                     logger.warning(msg)
                                 else:
@@ -187,9 +187,9 @@ def setup_logger(debug_mode=False):
 
     # Optional: Notify the user where logs are being written
     if not debug_mode:
-        logger.info(f"[#] Output logged to {logfile}")
+        logger.info(f"Output logged to {logfile}")
     else:
-        logger.debug(f"[#] Debug logging active; also writing to {logfile}")
+        logger.debug(f"Debug logging active; also writing to {logfile}")
 
     # Return the configured logger object
     return logger

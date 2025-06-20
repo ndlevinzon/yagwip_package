@@ -434,15 +434,6 @@ class GromacsCLI(cmd.Cmd):
         except Exception as e:
             print(f"[!] Failed to configure SLURM script: {e}")
 
-    def do_quit(self, _):
-        """
-        Quit the CLI.
-        Usage: "quit"
-        """
-        self.print_random_quote()
-        print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
-        return True
-
     def print_random_quote(self):
         """
         Prints random quote on exit.
@@ -456,6 +447,15 @@ class GromacsCLI(cmd.Cmd):
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
             print(f"([!] Unable to load quotes: {e})")
+
+    def do_quit(self, _):
+        """
+        Quit the CLI.
+        Usage: "quit"
+        """
+        self.print_random_quote()
+        print("Copyright (c) 2025 gregorpatof, NDL\nQuitting YAGWIP.")
+        return True
 
 
 def main():

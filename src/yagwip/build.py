@@ -9,7 +9,7 @@ PIPE_INPUTS = {
 }
 
 
-def resolve_basename(basename, debug, logger=None):
+def _resolve_basename(basename, debug, logger=None):
     """Helps resolve the basename for PDB files, ensuring it is set correctly."""
     if not basename and not debug:
         msg = "[!] No PDB loaded. Use `loadPDB <filename.pdb>` first."
@@ -35,12 +35,8 @@ def run_pdb2gmx(gmx_path, basename, custom_command=None, debug=False, logger=Non
     """
 
     # If no basename is provided and not in debug mode, warn the user and exit
-    base = resolve_basename(basename, debug, logger)
-    if base is None:
-        return
-
-    # Use provided basename or placeholder if in debug mode
-    base = basename if basename else "PLACEHOLDER"
+    base = _resolve_basename(basename, debug, logger)
+    if base is None: return
 
     # Construct the default pdb2gmx command if no custom one is given
     default_cmd = f"{gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
@@ -73,9 +69,8 @@ def run_solvate(gmx_path, basename, arg="", custom_command=None, debug=False, lo
     """
 
     # Ensure that a basename is provided unless in debug mode
-    base = resolve_basename(basename, debug, logger)
-    if base is None:
-        return
+    base = _resolve_basename(basename, debug, logger)
+    if base is None: return
 
     # Set default box configuration and solvent type
     default_box = " -c -d 1.0 -bt cubic"  # Center molecule, 1.0 nm buffer, cubic box
@@ -118,7 +113,7 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     """
 
     # Check that a PDB structure has been loaded unless running in debug mode
-    base = resolve_basename(basename, debug, logger)
+    base = _resolve_basename(basename, debug, logger)
     if base is None: return
 
     # Path to default ions.mdp configuration file bundled in templates
