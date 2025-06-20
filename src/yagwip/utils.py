@@ -90,15 +90,15 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                 with open(top_path, 'w') as f:
                                     f.writelines(lines)
 
-                                msg = (f"[!] Detected improper dihedral error, likely an artifact from AMBER force fields.\n"
-                                       f"[!] Commented out line {line_num} in topol.top due to improper dihedral error.")
+                                msg = (f"[#] Detected improper dihedral error, likely an artifact from AMBER force fields.\n"
+                                       f"[#] Commenting out line {line_num} in topol.top and rerunning...")
                                 if logger:
                                     logger.warning(msg)
                                 else:
                                     print(msg)
 
                             # Retry the command
-                                retry_msg = f"[#] Retrying command after modifying topol.top..."
+                                retry_msg = f"[#] Rerunning command after modifying topol.top..."
                                 if logger:
                                     logger.info(retry_msg)
                                 else:
@@ -134,9 +134,9 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     except Exception as e:
         # Catch and log any unexpected runtime exceptions (e.g., permission issues)
         if logger:
-            logger.exception(f"[EXCEPTION] Failed to run command: {e}")
+            logger.exception(f"[!] Failed to run command: {e}")
         else:
-            print(f"[EXCEPTION] Failed to run command: {e}")
+            print(f"[!] Failed to run command: {e}")
         return False
 
 
@@ -187,9 +187,9 @@ def setup_logger(debug_mode=False):
 
     # Optional: Notify the user where logs are being written
     if not debug_mode:
-        logger.info(f"[LOGGING] Output logged to {logfile}")
+        logger.info(f"[#] Output logged to {logfile}")
     else:
-        logger.debug(f"[LOGGING] Debug logging active; also writing to {logfile}")
+        logger.debug(f"[#] Debug logging active; also writing to {logfile}")
 
     # Return the configured logger object
     return logger
@@ -254,7 +254,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
     # Prevent duplicate addition by checking for the ";ligand" marker
     with open(ffnonbonded_itp, 'r') as fcheck:
         if ";ligand" in fcheck.read():
-            print("[!] ligand section already exists in ffnonbonded.itp. Skipping append.")
+            print("[#] ligand section already exists in ffnonbonded.itp. Skipping append...")
             return
 
     # Append the atomtypes block to the end of ffnonbonded.itp
@@ -321,7 +321,7 @@ def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
 
     # If nothing was modified, notify and exit
     if not modified:
-        print("[!] No impropers with func=4 found to modify.")
+        print("[#] No impropers with func=4 found to modify, skipping...")
         return
 
     # Write modified lines back to the original file
