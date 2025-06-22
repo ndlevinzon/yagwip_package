@@ -208,6 +208,7 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
     else:
         return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
 
+
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
     Parses a GROMACS .gro file to count protein and water residues.
