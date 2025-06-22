@@ -2,12 +2,14 @@
 #SBATCH --job-name=__BASE___gmx_remd
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
-#SBATCH --nodes=8              # Number of Nodes
+#SBATCH --nodes=8              # Nodes
 #SBATCH --ntasks-per-node=4    # Replicas per Node
 #SBATCH --cpus-per-task=16     # CPUs Per Replicas
-#SBATCH --time=01:00:00        # Time limit (1 hour)
-#SBATCH --exclusive            # Exclusive node allocation
-#SBATCH --mem=0                # Use all available memory
+#SBATCH --time=01:00:00
+#SBATCH --exclusive
+#SBATCH --mem=0
+
+export OMP_NUM_THREADS=16
 
 # ------------------------
 # Load GROMACS module
