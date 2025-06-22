@@ -211,58 +211,60 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
 
 def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
     """
-    Appends the [ atomtypes ] section from the ligand.itp file to the forcefield's ffnonbonded.itp file.
-    This fixes the improper dihedrals term that AMBER ANTECHAMBER generates for ligands.
-    Ensures that this block is only added once by checking for a ";ligand" tag.
-
-    Parameters:
-        ligand_itp (str): Path to the ligand .itp file.
-        ffnonbonded_itp (str): Path to the forcefield nonbonded types file (typically ffnonbonded.itp).
+    Appends the [ atomtypes ] section from ligand.itp to ffnonbonded.itp if not already present.
+    Also removes the [ atomtypes ] section from ligand.itp after copying, even if already appended.
+    Prevents duplication via ";ligand" marker.
     """
-    # Check if the ligand.itp file exists
+
     if not os.path.isfile(ligand_itp):
         print(f"[!] ligand.itp not found at {ligand_itp}")
         return
 
-    # Read all lines from ligand.itp
+    # Step 1: Extract atomtypes block and rewrite ligand.itp without it
     with open(ligand_itp, 'r') as f:
         lines = f.readlines()
 
-    atomtypes_block = []        # Buffer for collecting atomtypes lines
-    inside_atomtypes = False    # Flag to track whether we are inside the [ atomtypes ] section
+    atomtypes_block = []
+    new_ligand_lines = []
+    inside_atomtypes = False
 
-    # Extract the [ atomtypes ] section before [ moleculetype ]
     for line in lines:
-        if line.strip().startswith("[ moleculetype ]"):
-            break               # Stop parsing if we reach the [ moleculetype ] section
-        if line.strip().startswith("[ atomtypes ]"):
+        stripped = line.strip()
+        if stripped.startswith("[ atomtypes ]"):
             inside_atomtypes = True
             continue
+        if inside_atomtypes and stripped.startswith("["):
+            inside_atomtypes = False
         if inside_atomtypes:
             atomtypes_block.append(line)
+        else:
+            new_ligand_lines.append(line)
 
-    # If no atomtypes were found, exit with a warning
+    # Always overwrite ligand.itp to remove atomtypes section
+    with open(ligand_itp, 'w') as fout:
+        fout.writelines(new_ligand_lines)
+    print("[#] Removed [ atomtypes ] section from ligand.itp")
+
     if not atomtypes_block:
-        print("[#] No [ atomtypes ] section found in ligand.itp. Skipping...")
+        print("[#] No atomtypes section found in ligand.itp. Skipping append.")
         return
 
-    # Ensure the ffnonbonded.itp file exists
+    # Step 2: Append to ffnonbonded.itp if not already present
     if not os.path.isfile(ffnonbonded_itp):
         print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
         return
 
-    # Prevent duplicate addition by checking for the ";ligand" marker
-    with open(ffnonbonded_itp, 'r') as fcheck:
-        if ";ligand" in fcheck.read():
-            print("[#] ligand section already exists in ffnonbonded.itp. Skipping...")
+    with open(ffnonbonded_itp, 'r') as f:
+        if ";ligand" in f.read():
+            print("[#] ligand section already exists in ffnonbonded.itp. Skipping append.")
             return
 
-    # Append the atomtypes block to the end of ffnonbonded.itp
-    with open(ffnonbonded_itp, 'a') as fout:
-        fout.write("\n;ligand\n")            # Marker for later identification
-        fout.writelines(atomtypes_block)     # Write the atomtypes lines
+    with open(ffnonbonded_itp, 'a') as f:
+        f.write("\n;ligand\n")
+        f.writelines(atomtypes_block)
 
-    print(f"[#] Atomtypes from {ligand_itp} appended to {ffnonbonded_itp}.")
+    print(f"[#] Appended ligand atomtypes to {ffnonbonded_itp}")
+
 
 
 def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
