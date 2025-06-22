@@ -6,6 +6,9 @@ This work was inspired by the original library of Dr. Olivier Mailhot (aka Grego
 ---
 
 ![YAGWIP building and simulation pipeline](docs/yagwipv1.0.png)
+
+## Disclaimer and Copyright
+
  
 ## Features
 - Interactive command line interface.
@@ -20,7 +23,7 @@ In your Python environment, simply run:
 pip install git+https://github.com/ndlevinzon/yagwip_package.git
 ```
 
-## Usage
+# Usage
 Once installed, YAGWIP can be run either interactively or via input file for easy high-throughput functionality:
 ```python
 yagwip or yagwip -i # launches CLI
