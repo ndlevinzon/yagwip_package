@@ -36,10 +36,10 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         # Execute the command with optional piped input
         result = subprocess.run(
             command,
-            input=pipe_input,       # Piped input to stdin, if any (e.g., group number)
-            shell=True,             # Run command through shell
-            capture_output=True,    # Capture both stdout and stderr
-            text=True               # Decode outputs as strings instead of bytes
+            input=pipe_input,  # Piped input to stdin, if any (e.g., group number)
+            shell=True,  # Run command through shell
+            capture_output=True,  # Capture both stdout and stderr
+            text=True  # Decode outputs as strings instead of bytes
         )
 
         # Strip leading/trailing whitespace from stderr and stdout
@@ -90,14 +90,15 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                 with open(top_path, 'w') as f:
                                     f.writelines(lines)
 
-                                msg = (f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
-                                       f" Commenting out line {line_num} in topol.top and rerunning...")
+                                msg = (
+                                    f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
+                                    f" Commenting out line {line_num} in topol.top and rerunning...")
                                 if logger:
                                     logger.warning(msg)
                                 else:
                                     print(msg)
 
-                            # Retry the command
+                                # Retry the command
                                 retry_msg = f"[#] Rerunning command after modifying topol.top..."
                                 if logger:
                                     logger.info(retry_msg)
@@ -160,9 +161,9 @@ def setup_logger(debug_mode=False):
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    # --- Console Handler Setup ---
-    ch = logging.StreamHandler()                                # Handler for stdout/stderr
-    ch_level = logging.DEBUG if debug_mode else logging.INFO    # Use DEBUG level in debug mode
+    # Console Handler Setup
+    ch = logging.StreamHandler()  # Handler for stdout/stderr
+    ch_level = logging.DEBUG if debug_mode else logging.INFO  # Use DEBUG level in debug mode
     ch.setLevel(ch_level)
 
     # Define the log message format for console output
@@ -172,7 +173,6 @@ def setup_logger(debug_mode=False):
     # Attach the console handler to the logger
     logger.addHandler(ch)
 
-    # --- File Handler Setup ---
     # Generate a timestamped filename for the log file
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     logfile = f"yagwip_{timestamp}.log"
@@ -207,338 +207,6 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
         return [f for f in os.listdir() if f.endswith(suffix)]
     else:
         return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
-
-
-def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
-    """
-    Appends the [ atomtypes ] section from ligand.itp to ffnonbonded.itp if not already present.
-    Also removes the [ atomtypes ] section from ligand.itp after copying, even if already appended.
-    Prevents duplication via ";ligand" marker.
-    """
-
-    if not os.path.isfile(ligand_itp):
-        print(f"[!] ligand.itp not found at {ligand_itp}")
-        return
-
-    # Step 1: Extract atomtypes block and rewrite ligand.itp without it
-    with open(ligand_itp, 'r') as f:
-        lines = f.readlines()
-
-    atomtypes_block = []
-    new_ligand_lines = []
-    inside_atomtypes = False
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("[ atomtypes ]"):
-            inside_atomtypes = True
-            continue
-        if inside_atomtypes and stripped.startswith("["):
-            inside_atomtypes = False
-        if inside_atomtypes:
-            atomtypes_block.append(line)
-        else:
-            new_ligand_lines.append(line)
-
-    # Always overwrite ligand.itp to remove atomtypes section
-    with open(ligand_itp, 'w') as fout:
-        fout.writelines(new_ligand_lines)
-    print("[#] Removed [ atomtypes ] section from ligand.itp")
-
-    if not atomtypes_block:
-        print("[#] No atomtypes section found in ligand.itp. Skipping...")
-        return
-
-    # Step 2: Append to ffnonbonded.itp if not already present
-    if not os.path.isfile(ffnonbonded_itp):
-        print(f"[!] ffnonbonded.itp not found at {ffnonbonded_itp}")
-        return
-
-    with open(ffnonbonded_itp, 'r') as f:
-        if ";ligand" in f.read():
-            print("[#] Ligand section already exists in ffnonbonded.itp. Skipping...")
-            return
-
-    with open(ffnonbonded_itp, 'a') as f:
-        f.write("\n;ligand\n")
-        f.writelines(atomtypes_block)
-
-    print(f"[#] Appended ligand atomtypes to {ffnonbonded_itp}")
-
-
-
-def modify_improper_dihedrals_in_ligand_itp(filename='ligand.itp'):
-    """
-    Converts improper dihedrals from AMBER format to GROMACS format in the [ dihedrals ] section.
-    Specifically:
-        - Converts func=4 (used in AMBER forcefields for improper torsions) to func=2 (used in GROMACS).
-        - Removes the eighth column (periodicity, pn) which is unnecessary for func=2.
-
-    Parameters:
-        filename (str): Path to the ligand .itp file (default: 'ligand.itp').
-    """
-    # Check if the ligand.itp file exists
-    if not os.path.isfile(filename):
-        print(f"[!] {filename} not found.")
-        return
-
-    # Read all lines from the file
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-
-    output_lines = []       # Buffer to store modified lines
-    in_dihedrals = False    # Flag to track whether we're inside [ dihedrals ] section
-    modified = False        # Flag to report if any line was changed
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-
-        # Detect beginning of [ dihedrals ] section (specifically for impropers)
-        if stripped.lower().startswith("[ dihedrals ]") and "impropers" in stripped:
-            in_dihedrals = True
-            output_lines.append(line)   # Keep the section header
-            continue
-
-        # If a new section starts, we are no longer inside [ dihedrals ]
-        if in_dihedrals and stripped.startswith("[") and "]" in stripped:
-            in_dihedrals = False
-
-        # Modify only lines within [ dihedrals ] and skip comments and blank lines
-        if in_dihedrals and stripped and not stripped.startswith(";"):
-            parts = line.split(";")                              # Split potential comment from the line
-            comment = f";{parts[1]}" if len(parts) > 1 else ""   # Preserve any comment
-            tokens = parts[0].split()                            # Split numeric fields
-
-            # Check if line looks like an Amber-style improper dihedral
-            if len(tokens) >= 8 and tokens[4] == "4":
-                tokens[4] = "2"       # Change func from 4 to 2
-                del tokens[7]         # Remove the periodicity column (pn)
-                new_line = "   " + "   ".join(tokens) + "   " + comment + "\n"
-                output_lines.append(new_line)
-                modified = True
-            else:
-                output_lines.append(line)   # Keep the line unchanged if it doesn't match the expected format
-        else:
-            output_lines.append(line)       # Outside [ dihedrals ] or irrelevant lines
-
-    # If nothing was modified, notify and exit
-    if not modified:
-        print("[#] No impropers with func=4 found to modify. Skipping...")
-        return
-
-    # Write modified lines back to the original file
-    with open(filename, 'w') as f:
-        f.writelines(output_lines)
-
-    print(f"[#] Improper dihedrals converted to func=2 in {filename}.")
-
-
-def rename_residue_in_itp_atoms_section(filename='./ligand.itp', old_resname="MOL", new_resname="LIG"):
-    """
-    Replaces the residue name in the [ atoms ] section and the molecule name in the [ moleculetype ] section
-    of a GROMACS .itp file. This is useful for standardizing naming (e.g., replacing "MOL" with "LIG").
-    The function performs in-place modification of the file.
-
-    Parameters:
-        filename (str): Path to the ligand .itp file (default: './ligand.itp').
-        old_resname (str): Residue name to search for (e.g., 'MOL').
-        new_resname (str): Replacement residue name (e.g., 'LIG').
-    """
-    # Read all lines from the input .itp file
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-
-    # Initialize state flags and output list
-    in_atoms_section = False
-    in_moleculetype_section = False
-    modified_lines = []
-
-    # Iterate through each line in the file
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-
-        # Detect start of [ atoms ] section
-        if stripped.startswith("[ atoms ]"):
-            in_atoms_section = True
-            modified_lines.append(line)
-            continue
-
-        # Detect start of [ moleculetype ] section
-        if stripped.startswith("[ moleculetype ]"):
-            in_moleculetype_section = True
-            modified_lines.append(line)
-            continue
-
-        # Inside [ atoms ] section: look for data lines to modify residue name
-        if in_atoms_section:
-            # Exit section if a blank line or new header is encountered
-            if stripped == "" or stripped.startswith("["):
-                in_atoms_section = False
-                modified_lines.append(line)
-                continue
-            # Process only non-comment lines
-            if not stripped.startswith(";"):
-                # Split the line using regex to preserve spacing
-                parts = re.split(r'(\s+)', line)
-
-                # Make sure there's a residue field to edit (column 4 = index 6 in split-by-whitespace+space list)
-                if len(parts) >= 9 and parts[6].strip() == old_resname:
-                    parts[6] = new_resname      # Replace residue name with new one
-                line = ''.join(parts)           # Reconstruct the line with original spacing
-
-            modified_lines.append(line)         # Store modified or unmodified line
-            continue
-
-        # Inside [ moleculetype ] section: replace molecule name
-        if in_moleculetype_section:
-            # Preserve empty lines and comments
-            if stripped == "" or stripped.startswith(";"):
-                modified_lines.append(line)
-                continue
-            else:
-                # Replace the entire first column with LIG and preserve rest of line (e.g., nrexcl)
-                tokens = line.split()
-                if len(tokens) >= 2:
-                    tokens[0] = new_resname
-                    line = f"{tokens[0]:<20}{tokens[1]}\n"      # Align first column to 20 chars for formatting
-                else:
-                    line = f"{new_resname}\n"                   # If only one token present, just replace it
-
-                # Append modified line and exit section
-                modified_lines.append(line)
-                in_moleculetype_section = False
-                continue
-
-        # If not in a special section, leave line unmodified
-        modified_lines.append(line)
-
-    # Write modified content back to the same file
-    with open(filename, 'w') as f:
-        f.writelines(modified_lines)
-
-    print(f"[#] Updated [ atoms ] and [ moleculetype ] sections in {filename}: {old_resname} -> {new_resname}")
-
-
-def append_ligand_coordinates_to_gro(protein_gro, ligand_pdb, combined_gro="complex.gro"):
-    """
-    Appends ligand atomic coordinates from a PDB file to an existing GROMACS .gro file
-    containing a protein, and writes the combined structure to a new .gro file.
-
-    Parameters:
-        protein_gro (str): Path to the input .gro file containing the protein structure.
-        ligand_pdb (str): Path to the ligand structure in PDB format.
-        combined_gro (str): Output path for the combined protein-ligand .gro file (default: 'complex.gro').
-    """
-
-    coords = []
-
-    # Parse coordinates from ligand .PDB
-    with open(ligand_pdb, 'r') as f:
-        for line in f:
-            if line.startswith(('ATOM', 'HETATM')):
-                res_id = int(line[23:26].strip())       # Residue number
-                atom_name = line[13:16].strip()         # Atom name (e.g., CA, HN)
-                res_name = line[17:20].strip()          # Residue name (e.g., LIG)
-                atom_index = int(line[6:11].strip())    # Atom serial number
-                x = float(line[30:38])                  # X Coordinate (A)
-                y = float(line[38:46])                  # Y Coordinate (A)
-                z = float(line[46:54])                  # Z Coordinate (A)
-
-                # Store parsed ligand atom as a tuple
-                coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
-
-    # Read protein .GRO
-    with open(protein_gro, 'r') as fin:
-        lines = fin.readlines()
-
-    header = lines[:2]                  # First two lines: title and atom count
-    atom_lines = lines[2:-1]            # Middle lines: atom entries
-    box = lines[-1]                     # Last line: box dimensions
-
-    # Update total atom count (protein atoms + ligand atoms)
-    total_atoms = len(atom_lines) + len(coords)
-
-    # Write combined .GRO file
-    with open(combined_gro, 'w') as fout:
-        fout.write(header[0])           # Title line
-        fout.write(f"{total_atoms}\n")  # Updated atom count
-        fout.writelines(atom_lines)     # Original protein atoms
-
-        # Write ligand atoms, converting from Angstrom to nm for GROMACS format
-        for res_id, res_name, atom_name, atom_index, x, y, z in coords:
-            fout.write(f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x/10:8.3f}{y/10:8.3f}{z/10:8.3f}\n")
-
-        fout.write(box)                 # Box dimensions, unchanged (last line)
-
-    print(f"[#] Wrote {total_atoms} atoms to {combined_gro}")
-
-
-def include_ligand_itp_in_topol(topol_top, ligand_itp="./ligand.itp", ligand_name="LIG"):
-    """
-    Modifies the topology file (topol.top) to include the ligand's .itp file and add an entry for the ligand in
-    the [ molecules ] section.
-
-    Parameters:
-        topol_top (str): Path to the topology file to modify (e.g., topol.top).
-        ligand_itp (str): Path to the ligand's .itp file to include (default: ./ligand.itp).
-        ligand_name (str): Residue name of the ligand to add in the [ molecules ] section (default: "LIG").
-    """
-    # Read the original topology file
-    with open(topol_top, 'r') as f:
-        lines = f.readlines()
-
-    new_lines = []                  # Holds the modified lines to write back
-    inserted_include = False        # Track whether we've inserted the #include line for ligand.itp
-    inserted_mol = False            # Track whether we've inserted the ligand entry in [ molecules ]
-    in_molecules_section = False    # Track whether we are currently in the [ molecules ] section
-    molecules_lines = []            # Buffer for lines in the [ molecules ] section
-
-    for line in lines:
-        stripped = line.strip()
-
-        # If we find the forcefield include line, insert ligand.itp include right after it
-        if not inserted_include and '#include' in stripped and 'forcefield.itp' in stripped:
-            new_lines.append(line)
-            new_lines.append(f'#include "{ligand_itp}"\n')  # Insert ligand .itp include
-            inserted_include = True
-            continue                                        # Skip to next line
-
-        # Detect start of the [ molecules ] section, start buffering lines
-        if '[ molecules ]' in stripped:
-            in_molecules_section = True
-            molecules_lines.append(line)
-            continue
-
-        # If we reach the end of the [ molecules ] section or a new section starts
-        if in_molecules_section:
-            # If we reach the end of section (blank line or new section)
-            if stripped == '' or stripped.startswith('['):
-                # If ligand wasn't already added, append it now
-                if not inserted_mol:
-                    molecules_lines.append(f'{ligand_name}    1\n')
-                    inserted_mol = True
-                # Append buffered section to output
-                new_lines.extend(molecules_lines)
-                molecules_lines = []                # Clear buffer
-                in_molecules_section = False        # Exit section
-                new_lines.append(line)              # Append the current section header or blank line
-            else:
-                # Only add lines that are not already the ligand (avoid duplication)
-                if ligand_name not in stripped:
-                    molecules_lines.append(line)
-        else:
-            # Outside [ molecules ] section, append lines as-is
-            new_lines.append(line)
-
-    # Handle case where [ molecules ] is at the very end of the file
-    if in_molecules_section and not inserted_mol:
-        molecules_lines.append(f'{ligand_name}                 1\n')
-        new_lines.extend(molecules_lines)
-
-    # Write the modified content back to the topology file
-    with open(topol_top, 'w') as f:
-        f.writelines(new_lines)
-
 
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
@@ -603,8 +271,8 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
     A0, A1 = -59.2194, 0.07594
     B0, B1 = -22.8396, 0.01347
     D0, D1 = 1.1677, 0.002976
-    kB = 0.008314   # Boltzmann constant in kJ/mol/K
-    maxiter = 100   # Maximum number of iterations for convergence
+    kB = 0.008314  # Boltzmann constant in kJ/mol/K
+    maxiter = 100  # Maximum number of iterations for convergence
 
     # Estimate number of hydrogen atoms and virtual sites (VC) based on model
     if Hff == 0:
@@ -619,8 +287,8 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 
     # Degrees of freedom corrections based on constraints
     NC = Nh if PC == 1 else Np if PC == 2 else 0
-    Ndf = (9 - WC) * Nw + 3 * Np - NC - VC      # Total degrees of freedom
-    FlexEner = 0.5 * kB * (NC + VC + WC * Nw)   # Internal flexibility energy
+    Ndf = (9 - WC) * Nw + 3 * Np - NC - VC  # Total degrees of freedom
+    FlexEner = 0.5 * kB * (NC + VC + WC * Nw)  # Internal flexibility energy
 
     # Probability evaluation function for exchange efficiency
     def myeval(m12, s12, CC, u):
@@ -641,12 +309,12 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
 
     # Iteratively compute the next temperature until reaching Thigh
     while temps[-1] < Thigh:
-        T1 = temps[-1]                              # Last accepted temperature
-        T2 = T1 + 1 if T1 + 1 < Thigh else Thigh    # Initial guess for next temperature
+        T1 = temps[-1]  # Last accepted temperature
+        T2 = T1 + 1 if T1 + 1 < Thigh else Thigh  # Initial guess for next temperature
         low, high = T1, Thigh
         iter_count = 0
         piter = 0
-        forward = True                              # Flag for adjusting search direction
+        forward = True  # Flag for adjusting search direction
 
         # Newton-like iteration to find T2 that yields desired exchange probability
         while abs(Pdes - piter) > Tol and iter_count < maxiter:
@@ -687,44 +355,282 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
     return temps
 
 
-def insert_itp_into_top_files(itp_path_list, root_dir="."):
-    """
-    Rewrite all topol.top files to include only the provided list of ITP paths,
-    removing any existing non-user-specified includes. Used for the SOURCE command.
-    """
-    top_files = []
+class Editor:
+    def __init__(self, ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
+        self.ligand_itp = ligand_itp
+        self.ffnonbonded_itp = ffnonbonded_itp
 
-    for root, dirs, files in os.walk(root_dir):
-        for file in files:
-            if file == "topol.top":
-                top_files.append(os.path.join(root, file))
+    def append_ligand_atomtypes_to_forcefield(self):
+        if not os.path.isfile(self.ligand_itp):
+            print(f"[!] {self.ligand_itp} not found.")
+            return
 
-    for top_file in top_files:
-        with open(top_file, 'r') as f:
+        with open(self.ligand_itp, 'r') as f:
+            lines = f.readlines()
+
+        atomtypes_block = []
+        new_ligand_lines = []
+        inside_atomtypes = False
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("[ atomtypes ]"):
+                inside_atomtypes = True
+                continue
+            if inside_atomtypes and stripped.startswith("["):
+                inside_atomtypes = False
+            if inside_atomtypes:
+                atomtypes_block.append(line)
+            else:
+                new_ligand_lines.append(line)
+
+        with open(self.ligand_itp, 'w') as fout:
+            fout.writelines(new_ligand_lines)
+        print("[#] Removed [ atomtypes ] section from ligand.itp")
+
+        if not atomtypes_block:
+            print("[#] No atomtypes section found in ligand.itp. Skipping...")
+            return
+
+        if not os.path.isfile(self.ffnonbonded_itp):
+            print(f"[!] {self.ffnonbonded_itp} not found.")
+            return
+
+        with open(self.ffnonbonded_itp, 'r') as f:
+            if ";ligand" in f.read():
+                print("[#] Ligand section already exists in ffnonbonded.itp. Skipping...")
+                return
+
+        with open(self.ffnonbonded_itp, 'a') as f:
+            f.write("\n;ligand\n")
+            f.writelines(atomtypes_block)
+
+        print(f"[#] Appended ligand atomtypes to {self.ffnonbonded_itp}")
+
+    def modify_improper_dihedrals_in_ligand_itp(self):
+        if not os.path.isfile(self.ligand_itp):
+            print(f"[!] {self.ligand_itp} not found.")
+            return
+
+        with open(self.ligand_itp, 'r') as f:
+            lines = f.readlines()
+
+        output_lines = []
+        in_dihedrals = False
+        modified = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            if stripped.lower().startswith("[ dihedrals ]") and "impropers" in stripped:
+                in_dihedrals = True
+                output_lines.append(line)
+                continue
+
+            if in_dihedrals and stripped.startswith("["):
+                in_dihedrals = False
+
+            if in_dihedrals and stripped and not stripped.startswith(";"):
+                parts = line.split(";")
+                comment = f";{parts[1]}" if len(parts) > 1 else ""
+                tokens = parts[0].split()
+
+                if len(tokens) >= 8 and tokens[4] == "4":
+                    tokens[4] = "2"
+                    del tokens[7]
+                    new_line = "   " + "   ".join(tokens) + "   " + comment + "\n"
+                    output_lines.append(new_line)
+                    modified = True
+                else:
+                    output_lines.append(line)
+            else:
+                output_lines.append(line)
+
+        if not modified:
+            print("[#] No impropers with func=4 found to modify. Skipping...")
+            return
+
+        with open(self.ligand_itp, 'w') as f:
+            f.writelines(output_lines)
+
+        print(f"[#] Improper dihedrals converted to func=2 in {self.ligand_itp}.")
+
+    def rename_residue_in_itp_atoms_section(self, old_resname="MOL", new_resname="LIG"):
+        with open(self.ligand_itp, 'r') as f:
+            lines = f.readlines()
+
+        in_atoms = in_moleculetype = False
+        modified_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+
+            if stripped.startswith("[ atoms ]"):
+                in_atoms = True
+                modified_lines.append(line)
+                continue
+
+            if stripped.startswith("[ moleculetype ]"):
+                in_moleculetype = True
+                modified_lines.append(line)
+                continue
+
+            if in_atoms:
+                if stripped == "" or stripped.startswith("["):
+                    in_atoms = False
+                    modified_lines.append(line)
+                    continue
+                if not stripped.startswith(";"):
+                    parts = re.split(r'(\s+)', line)
+                    if len(parts) >= 9 and parts[6].strip() == old_resname:
+                        parts[6] = new_resname
+                    line = ''.join(parts)
+                modified_lines.append(line)
+                continue
+
+            if in_moleculetype:
+                if stripped == "" or stripped.startswith(";"):
+                    modified_lines.append(line)
+                    continue
+                else:
+                    tokens = line.split()
+                    if len(tokens) >= 2:
+                        tokens[0] = new_resname
+                        line = f"{tokens[0]:<20}{tokens[1]}\n"
+                    else:
+                        line = f"{new_resname}\n"
+                    modified_lines.append(line)
+                    in_moleculetype = False
+                    continue
+
+            modified_lines.append(line)
+
+        with open(self.ligand_itp, 'w') as f:
+            f.writelines(modified_lines)
+
+        print(f"[#] Updated residue names in {self.ligand_itp}: {old_resname} -> {new_resname}")
+
+    def append_ligand_coordinates_to_gro(self, protein_gro, ligand_pdb, combined_gro="complex.gro"):
+        coords = []
+        with open(ligand_pdb, 'r') as f:
+            for line in f:
+                if line.startswith(('ATOM', 'HETATM')):
+                    res_id = int(line[23:26].strip())
+                    atom_name = line[13:16].strip()
+                    res_name = line[17:20].strip()
+                    atom_index = int(line[6:11].strip())
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
+
+        with open(protein_gro, 'r') as f:
+            lines = f.readlines()
+
+        header, atom_lines, box = lines[:2], lines[2:-1], lines[-1]
+        total_atoms = len(atom_lines) + len(coords)
+
+        with open(combined_gro, 'w') as fout:
+            fout.write(header[0])
+            fout.write(f"{total_atoms}\n")
+            fout.writelines(atom_lines)
+            for res_id, res_name, atom_name, atom_index, x, y, z in coords:
+                fout.write(
+                    f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x / 10:8.3f}{y / 10:8.3f}{z / 10:8.3f}\n")
+            fout.write(box)
+
+        print(f"[#] Wrote combined coordinates to {combined_gro}")
+
+    def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
+        with open(topol_top, 'r') as f:
             lines = f.readlines()
 
         new_lines = []
-        inserted = False
+        inserted_include = False
+        inserted_mol = False
+        in_molecules_section = False
+        molecules_lines = []
 
         for line in lines:
-            # Remove old includes of the form #include "..."
-            if line.strip().startswith("#include"):
+            stripped = line.strip()
+
+            if not inserted_include and '#include' in stripped and 'forcefield.itp' in stripped:
+                new_lines.append(line)
+                new_lines.append(f'#include "{self.ligand_itp}"\n')
+                inserted_include = True
                 continue
-            new_lines.append(line)
 
-        # Find insertion point (after forcefield include block)
-        insert_idx = 0
-        for i, line in enumerate(new_lines):
-            if "#include" in line and "forcefield" in line:
-                insert_idx = i + 1
-                break
+            if '[ molecules ]' in stripped:
+                in_molecules_section = True
+                molecules_lines.append(line)
+                continue
 
-        # Inject all custom includes
-        include_lines = [f'#include "{path}"\n' for path in itp_path_list]
-        new_lines[insert_idx:insert_idx] = include_lines
+            if in_molecules_section:
+                if stripped == '' or stripped.startswith('['):
+                    if not inserted_mol:
+                        molecules_lines.append(f'{ligand_name}    1\n')
+                        inserted_mol = True
+                    new_lines.extend(molecules_lines)
+                    molecules_lines = []
+                    in_molecules_section = False
+                    new_lines.append(line)
+                else:
+                    if ligand_name not in stripped:
+                        molecules_lines.append(line)
+            else:
+                new_lines.append(line)
 
-        # Write updated file
-        with open(top_file, 'w') as f:
+        if in_molecules_section and not inserted_mol:
+            molecules_lines.append(f'{ligand_name}    1\n')
+            new_lines.extend(molecules_lines)
+
+        with open(topol_top, 'w') as f:
             f.writelines(new_lines)
 
-        print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")
+        print(f"[#] Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
+
+        def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
+            """
+            Rewrite all topol.top files to include only the provided list of ITP paths,
+            removing any existing non-user-specified includes. Used for the SOURCE command.
+
+            Parameters:
+                itp_path_list (list): List of ITP file paths (strings) to include in the topology files.
+                root_dir (str): Root directory to search for topol.top files (default: current directory).
+            """
+            top_files = []
+
+            for root, dirs, files in os.walk(root_dir):
+                for file in files:
+                    if file == "topol.top":
+                        top_files.append(os.path.join(root, file))
+
+            for top_file in top_files:
+                with open(top_file, 'r') as f:
+                    lines = f.readlines()
+
+                new_lines = []
+                inserted = False
+
+                for line in lines:
+                    # Remove all #include lines that aren't forcefield.itp
+                    if line.strip().startswith("#include") and "forcefield" not in line:
+                        continue
+                    new_lines.append(line)
+
+                # Find insertion point (after forcefield include)
+                insert_idx = 0
+                for i, line in enumerate(new_lines):
+                    if "#include" in line and "forcefield" in line:
+                        insert_idx = i + 1
+                        break
+
+                # Inject all custom includes
+                include_lines = [f'#include "{path}"\n' for path in itp_path_list]
+                new_lines[insert_idx:insert_idx] = include_lines
+
+                # Write updated file
+                with open(top_file, 'w') as f:
+                    f.writelines(new_lines)
+
+                print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")

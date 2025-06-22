@@ -29,6 +29,7 @@ class GromacsCLI(cmd.Cmd):
         self.basename = None                                # Base PDB filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
+        self.editor = Editor()                              # Initialize the Editor class from utils.py
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
@@ -207,9 +208,9 @@ class GromacsCLI(cmd.Cmd):
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
                 print("[#] Checking ligand.itp...")
-                append_ligand_atomtypes_to_forcefield()
-                modify_improper_dihedrals_in_ligand_itp()
-                rename_residue_in_itp_atoms_section()
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
             else:
                 print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
                 return
@@ -249,8 +250,8 @@ class GromacsCLI(cmd.Cmd):
 
         # Combine ligand coordinates
         if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
-            include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
+            self.editor.append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+            self.editor.include_ligand_itp_in_topol("topol.top", "./ligand.itp", ligand_name="LIG")
         else:
             shutil.copy(output_gro, "complex.gro")  # only protein
 
@@ -360,7 +361,7 @@ class GromacsCLI(cmd.Cmd):
             print(f"[!] Path already in include list: {itp_path}")
 
         # Apply all includes to all topol.top files
-        insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
+        self.editor.insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
 
         # Display all tracked includes
         print("\nCurrent custom ITP includes:")
