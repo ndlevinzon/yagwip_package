@@ -246,7 +246,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
     print("[#] Removed [ atomtypes ] section from ligand.itp")
 
     if not atomtypes_block:
-        print("[#] No atomtypes section found in ligand.itp. Skipping append.")
+        print("[#] No atomtypes section found in ligand.itp. Skipping...")
         return
 
     # Step 2: Append to ffnonbonded.itp if not already present
@@ -256,7 +256,7 @@ def append_ligand_atomtypes_to_forcefield(ligand_itp='ligand.itp', ffnonbonded_i
 
     with open(ffnonbonded_itp, 'r') as f:
         if ";ligand" in f.read():
-            print("[#] ligand section already exists in ffnonbonded.itp. Skipping append.")
+            print("[#] Ligand section already exists in ffnonbonded.itp. Skipping...")
             return
 
     with open(ffnonbonded_itp, 'a') as f:

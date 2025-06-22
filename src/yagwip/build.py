@@ -134,7 +134,7 @@ def run_genions(gmx_path, basename, custom_command=None, debug=False, logger=Non
     # Construct GROMACS commands
     default_cmds = [
         (f"{gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} "
-         f"{grompp_opts} -maxwarn 15"),
+         f"{grompp_opts} -maxwarn 50"),
         f"{gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
     ]
 
