@@ -24,7 +24,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from .build import run_pdb2gmx, run_solvate, run_genions
+from .build import Builder
 from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
 from .utils import *
 from importlib.resources import files
@@ -58,6 +58,7 @@ class GromacsCLI(cmd.Cmd):
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
         self.editor = Editor()                              # Initialize the Editor class from utils.py
+        self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
@@ -264,13 +265,7 @@ class GromacsCLI(cmd.Cmd):
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
 
-        run_pdb2gmx(
-            self.gmx_path,
-            protein_pdb,
-            custom_command=self.custom_cmds["pdb2gmx"],
-            debug=self.debug,
-            logger=self.logger
-        )
+        self.builder.run_pdb2gmx(protein_pdb,custom_command=self.custom_cmds["pdb2gmx"])
 
         if not os.path.isfile(output_gro):
             print(f"[!] Expected {output_gro} was not created.")
@@ -294,8 +289,7 @@ class GromacsCLI(cmd.Cmd):
 
         if not self._require_pdb(): return
 
-        run_solvate(self.gmx_path, complex_pdb, custom_command=self.custom_cmds["solvate"],
-                    debug=self.debug, logger=self.logger)
+        self.builder.run_solvate(complex_pdb, custom_command=self.custom_cmds["solvate"])
 
     def do_genions(self, arg):
         """
@@ -307,8 +301,7 @@ class GromacsCLI(cmd.Cmd):
 
         if not self._require_pdb(): return
 
-        run_genions(self.gmx_path, solvated_pdb, custom_command=self.custom_cmds["genions"],
-                    debug=self.debug, logger=self.logger)
+        self.builder.run_genions(solvated_pdb, custom_command=self.custom_cmds["genions"])
 
     def do_em(self, arg):
         """
