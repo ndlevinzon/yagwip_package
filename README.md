@@ -26,3 +26,6 @@ Once installed, YAGWIP can be run either interactively or via input file for eas
 yagwip or yagwip -i # launches CLI
 yagwip -f files.in  # launches input script
 ```
+# YAGWIP Authors
+## Contributors
+# External Code
