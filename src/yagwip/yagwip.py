@@ -196,8 +196,6 @@ class GromacsCLI(cmd.Cmd):
 
         # Always rewrite the protein portion with HIS substitutions
         protein_file = 'protein.pdb'
-        self.modeller.find_missing_residues()
-        self.modeller.fill_missing_loops()
 
         if hetatm_lines:
             # If ligand atoms were found, prepare a separate ligand file
@@ -248,6 +246,8 @@ class GromacsCLI(cmd.Cmd):
                     prot_out.write(line)
 
             print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
+        self.modeller.find_missing_residues()
+        self.modeller.fill_missing_loops()
 
     def do_pdb2gmx(self, arg):
         """
