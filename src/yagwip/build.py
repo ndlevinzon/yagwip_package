@@ -1,9 +1,5 @@
 from .utils import run_gromacs_command
 from importlib.resources import files
-import shutil
-import re
-from Bio.PDB import PDBParser
-from Bio.PDB.Polypeptide import index_to_three
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
@@ -146,50 +142,5 @@ class Modeller:
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
 
-        self._log(f"[#] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
+        self._log(f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
         return gaps
-
-    # def fill_missing_loops(self):
-    #     """
-    #     Placeholder for loop modeling. If gaps are detected, just copies the original to output.
-    #     If no gaps, returns the original PDB.
-    #     """
-    #     gaps = self.find_missing_residues()
-    #     if not gaps:
-    #         self._log("[#] No missing loops to fill.")
-    #         return self.pdb
-    #
-    #     self._log(f"[#] Copying PDB to {self.output_file} (loop modeling not implemented).")
-    #     if not self.debug:
-    #         shutil.copyfile(self.pdb, self.output_file)
-    #     return self.output_file
-    #
-    # def mutate_residue(self, mutation_string):
-    #     """
-    #     Mutates a single residue in the protein structure.
-    #     Mutation format: "123T" or "A123T" (chain optional).
-    #     Always writes to self.output_file.
-    #     """
-    #     match = re.match(r"([A-Za-z]?)(\d+)([A-Z])", mutation_string)
-    #     if not match:
-    #         raise ValueError(f"[!] Invalid mutation format: {mutation_string}")
-    #
-    #     chain = match.group(1) if match.group(1) else "A"
-    #     res_id = int(match.group(2))
-    #     new_res = index_to_three(match.group(3).upper())
-    #
-    #     self._log(f"[#] Applying mutation: {chain}{res_id} -> {new_res}")
-    #
-    #     with open(self.pdb, 'r') as fin, open(self.output_file, 'w') as fout:
-    #         for line in fin:
-    #             if line.startswith(("ATOM", "HETATM")):
-    #                 line_chain = line[21].strip()
-    #                 line_resid = int(line[22:26])
-    #                 if line_chain == chain and line_resid == res_id:
-    #                     line = line[:17] + f"{new_res:>3}" + line[20:]
-    #             fout.write(line)
-    #
-    #     if self.debug:
-    #         self._log(f"[DEBUG] Mutation would have written to {self.output_file}")
-    #
-    #     return self.output_file
