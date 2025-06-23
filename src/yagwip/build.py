@@ -3,7 +3,7 @@ from importlib.resources import files
 import shutil
 import re
 from Bio.PDB import PDBParser
-from Bio.PDB.Polypeptide import one_to_three
+from Bio.PDB.Polypeptide import index_to_three
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
@@ -168,7 +168,7 @@ class Modeller:
 
         chain = match.group(1) if match.group(1) else "A"
         res_id = int(match.group(2))
-        new_res = one_to_three(match.group(3).upper())
+        new_res = index_to_three(match.group(3).upper())
 
         self._log(f"[#] Applying mutation: {chain}{res_id} -> {new_res}")
 
