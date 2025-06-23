@@ -247,7 +247,6 @@ class GromacsCLI(cmd.Cmd):
 
             print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
         self.modeller.find_missing_residues()
-        self.modeller.fill_missing_loops()
 
     def do_pdb2gmx(self, arg):
         """
