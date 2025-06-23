@@ -557,7 +557,7 @@ class Editor:
 
             if not inserted_include and '#include' in stripped and 'forcefield.itp' in stripped:
                 new_lines.append(line)
-                new_lines.append(f'#include "{self.ligand_itp}"\n')
+                new_lines.append(f'#include "./{self.ligand_itp}"\n')
                 inserted_include = True
                 continue
 
