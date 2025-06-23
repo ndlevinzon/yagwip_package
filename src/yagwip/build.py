@@ -106,7 +106,7 @@ class Builder:
 
 
 class Modeller:
-    def __init__(self, pdb, logger=None, debug=False, output_file="protein.pdb"):
+    def __init__(self, pdb, logger=None, debug=False, output_file="protein_test.pdb"):
         self.logger = logger
         self.debug = debug
         self.pdb = pdb
