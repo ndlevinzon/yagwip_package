@@ -3,318 +3,103 @@ from .utils import run_gromacs_command, tremd_temperature_ladder, count_residues
 from importlib.resources import files
 
 
-def run_em(gmx_path, basename, arg="", debug=False, logger=None):
-    """
-    Run energy minimization using GROMACS.
+class Sim:
+    def __init__(self, gmx_path, debug=False, logger=None):
+        self.gmx_path = gmx_path
+        self.debug = debug
+        self.logger = logger
 
-    Parameters:
-        gmx_path (str): Path to the GROMACS executable (e.g., "gmx").
-        basename (str): Base filename (without extension) of the system.
-        arg (str): Optional space-separated arguments:
-                   [0] = .mdp file path,
-                   [1] = suffix for input .gro file (default: ".solv.ions"),
-                   [2] = prefix for output files (default: "em"),
-                   [3] = additional mdrun arguments (e.g., "-ntmpi 4").
-        debug (bool): If True, print commands without executing them.
-        logger (logging.Logger): Optional logger for output messages.
-    """
+    def run_em(self, basename, arg=""):
+        self._run_stage(basename, arg, default_mdp="em.mdp", suffix=".solv.ions", tprname="em")
 
-    # Set a default placeholder name if no basename is provided
-    base = basename if basename else "PLACEHOLDER"
-    print(f"[#] Running energy minimization for {base}...")
+    def run_nvt(self, basename, arg=""):
+        self._run_stage(basename, arg, default_mdp="nvt.mdp", suffix=".em", tprname="nvt")
 
-    # Split optional CLI arguments
-    parts = arg.strip().split(maxsplit=3)
+    def run_npt(self, basename, arg=""):
+        self._run_stage(basename, arg, default_mdp="npt.mdp", suffix=".nvt", tprname="npt")
 
-    # Set default .mdp file from internal template if not provided
-    default_mdp = files("yagwip.templates").joinpath("em.mdp")
-    mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
+    def run_production(self, basename, arg=""):
+        parts = arg.strip().split(maxsplit=3)
+        default_mdp = files("yagwip.templates").joinpath("production.mdp")
+        mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
+        inputname = parts[1] if len(parts) > 1 else "npt."
+        outname = parts[2] if len(parts) > 2 else "md1ns"
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
 
-    # Define suffix for input GRO file (e.g., ".solv.ions")
-    suffix = parts[1] if len(parts) > 1 else ".solv.ions"
+        input_gro = f"{inputname}gro"
+        tpr_file = f"{outname}.tpr"
 
-    # Set output file prefix (e.g., em.tpr, em.trr, etc.)
-    tprname = parts[2] if len(parts) > 2 else "em"
+        grompp_cmd = f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {outname} {mdrun_suffix}"
 
-    # Optional trailing arguments for mdrun (e.g., "-ntmpi 4")
-    mdrun_suffix = parts[3] if len(parts) > 3 else ""
+        self._execute(grompp_cmd)
+        self._execute(mdrun_cmd)
 
-    # Construct input and output file names
-    input_gro = f"{base}{suffix}.gro"
-    tpr_file = f"{tprname}.tpr"
+    def run_tremd(self, basename, arg=""):
+        args = arg.strip().split()
+        if len(args) != 2 or args[0].lower() != "calc":
+            print("Usage: tremd calc <filename.gro>")
+            return
 
-    # Construct GROMACS grompp command
-    grompp_cmd = (
-        f"{gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
-    )
+        gro_path = os.path.abspath(args[1])
+        if not os.path.isfile(gro_path):
+            print(f"[#] File not found: {gro_path}")
+            return
 
-    # Construct GROMACS mdrun command
-    mdrun_cmd = f"{gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
+        try:
+            protein_residues, water_residues = count_residues_in_gro(gro_path)
+            print(f"[#] Found {protein_residues} protein residues and {water_residues} water residues.")
+        except Exception as e:
+            print(f"[!] Failed to parse .gro file: {e}")
+            return
 
-    # If in debug mode, only print commands
-    if debug:
-        print(f"[RUNNING] {grompp_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-        print(f"[RUNNING] {mdrun_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
+        try:
+            Tlow = float(input("Initial Temperature (K): "))
+            Thigh = float(input("Final Temperature (K): "))
+            Pdes = float(input("Exchange Probability (0 < P < 1): "))
+        except ValueError:
+            print("[!] Invalid numeric input.")
+            return
 
-    # Run the commands using the GROMACS runner function
-    else:
-        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
-        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
+        if not (0 < Pdes < 1) or Thigh <= Tlow:
+            print("[!] Invalid parameters.")
+            return
 
-
-def run_nvt(gmx_path, basename, arg="", debug=False, logger=None):
-    """
-    Run the NVT equilibration step using GROMACS.
-
-    Parameters:
-        gmx_path (str): Path to the GROMACS executable (e.g., "gmx").
-        basename (str): Base name of the system files (without extension).
-        arg (str): Optional CLI-style arguments (space-separated):
-                   [0] = path to .mdp file (default: nvt.mdp from templates),
-                   [1] = suffix for input .gro file (default: ".em"),
-                   [2] = output file prefix (default: "nvt"),
-                   [3] = additional flags for mdrun (e.g., "-ntmpi 4").
-        debug (bool): If True, print commands instead of executing them.
-        logger (logging.Logger): Logger object for logging output if provided.
-    """
-
-    # Use placeholder if no basename was provided
-    base = basename if basename else "PLACEHOLDER"
-    print(f"[#] Running NVT equilibration for {base}...")
-
-    # Parse user input arguments (up to 4 space-separated values)
-    parts = arg.strip().split(maxsplit=3)
-
-    # Set default .mdp file if not provided
-    default_mdp = files("yagwip.templates").joinpath("nvt.mdp")
-    mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-
-    # Set suffix for the input .gro file (usually .em from the prior energy minimization step)
-    suffix = parts[1] if len(parts) > 1 else ".em"
-
-    # Define prefix for the output TPR and trajectory files
-    tprname = parts[2] if len(parts) > 2 else "nvt"
-
-    # Optional additional arguments for the mdrun command
-    mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-    # Construct input and output file names
-    input_gro = f"{base}{suffix}.gro"
-    tpr_file = f"{tprname}.tpr"
-
-    # Construct GROMACS grompp command
-    grompp_cmd = (
-        f"{gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
-    )
-
-    # Construct GROMACS mdrun command
-    mdrun_cmd = f"{gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
-
-    # If in debug mode, only print commands
-    if debug:
-        print(f"[RUNNING] {grompp_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-        print(f"[RUNNING] {mdrun_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-
-    # Run the commands using the GROMACS runner function
-    else:
-        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
-        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
-
-
-def run_npt(gmx_path, basename, arg="", debug=False, logger=None):
-    """
-    Run the NPT equilibration step using GROMACS.
-
-    Parameters:
-        gmx_path (str): Path to the GROMACS executable (e.g., "gmx").
-        basename (str): Base name for input/output files (e.g., system identifier).
-        arg (str): Optional CLI-style arguments (space-separated):
-                   [0] = .mdp file (defaults to npt.mdp from templates),
-                   [1] = suffix for the input .gro file (default: ".nvt"),
-                   [2] = output prefix for TPR and trajectory files (default: "npt"),
-                   [3] = additional arguments for mdrun (e.g., "-ntmpi 8").
-        debug (bool): If True, commands are printed but not executed.
-        logger (Logger): Optional logger to capture output.
-    """
-
-    # Use placeholder if no basename was provided
-    base = basename if basename else "PLACEHOLDER"
-    print(f"Running NPT equilibration for {base}...")
-
-    # Parse user input arguments (up to 4 space-separated values)
-    parts = arg.strip().split(maxsplit=3)
-
-    # Set default .mdp file if not provided
-    default_mdp = files("yagwip.templates").joinpath("npt.mdp")
-    mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-
-    # Determine suffix of the input .gro file (usually ".nvt" from the prior equilibration step)
-    suffix = parts[1] if len(parts) > 1 else ".nvt"
-    tprname = parts[2] if len(parts) > 2 else "npt"
-    mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-    # Construct input and output file names
-    input_gro = f"{base}{suffix}.gro"
-    tpr_file = f"{tprname}.tpr"
-
-    # Construct GROMACS grompp command
-    grompp_cmd = (
-        f"{gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
-    )
-
-    # Construct GROMACS mdrun command
-    mdrun_cmd = f"{gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
-
-    # If in debug mode, only print commands
-    if debug:
-        print(f"[RUNNING] {grompp_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-        print(f"[RUNNING] {mdrun_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-
-    # Run the commands using the GROMACS runner function
-    else:
-        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
-        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
-
-
-def run_production(gmx_path, basename, arg="", debug=False, logger=None):
-    """
-    Run the production molecular dynamics (MD) simulation using GROMACS.
-
-    Parameters:
-        gmx_path (str): Path to the GROMACS executable (e.g., "gmx").
-        basename (str): Base name for identifying the simulation system.
-        arg (str): Optional space-separated user arguments:
-                   [0] = .mdp file path (default: production.mdp from templates),
-                   [1] = input .gro file prefix (default: "npt."),
-                   [2] = output prefix for the production run (default: "md1ns"),
-                   [3] = optional mdrun suffix (e.g., "-ntmpi 4 -ntomp 8").
-        debug (bool): If True, print commands without executing.
-        logger (Logger): Optional logger to capture command output.
-    """
-
-    # Use placeholder if no basename was provided
-    base = basename if basename else "PLACEHOLDER"
-    print(f"[#] Running production MD for {base}...")
-
-    # Parse user input arguments (up to 4 space-separated values)
-    parts = arg.strip().split(maxsplit=3)
-
-    # Set default .mdp file if not provided
-    default_mdp = files("yagwip.templates").joinpath("production.mdp")
-    mdpfile = parts[0] if len(parts) > 0 else str(default_mdp)
-    inputname = parts[1] if len(parts) > 1 else "npt."
-    outname = parts[2] if len(parts) > 2 else "md1ns"
-    mdrun_suffix = parts[3] if len(parts) > 3 else ""
-
-    # Construct input and output file names
-    input_gro = f"{inputname}gro"
-    tpr_file = f"{outname}.tpr"
-
-    # Construct GROMACS grompp command
-    grompp_cmd = (
-        f"{gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
-    )
-
-    # Construct GROMACS mdrun command
-    mdrun_cmd = f"{gmx_path} mdrun -v -deffnm {outname} {mdrun_suffix}"
-
-    # If in debug mode, only print commands
-    if debug:
-        print(f"[RUNNING] {grompp_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-        print(f"[RUNNING] {mdrun_cmd}")
-        print(f"[DEBUG MODE] Command not executed.")
-
-    # Run the commands using the GROMACS runner function
-    else:
-        run_gromacs_command(grompp_cmd, debug=debug, logger=logger)
-        run_gromacs_command(mdrun_cmd, debug=debug, logger=logger)
-
-
-def run_tremd(gmx_path, basename, arg="", debug=False):
-    """
-    Compute a TREMD temperature ladder for replica exchange MD simulations using
-    the van der Spoel temperature predictor. Optionally write output to file or print to console.
-
-    Parameters:
-        gmx_path (str): Path to the GROMACS executable (not used in this function but kept for interface consistency).
-        basename (str): Base name of the system (not used directly here).
-        arg (str): Argument string expected to be 'calc <filename.gro>'.
-        debug (bool): If True, print the temperature ladder to the console instead of writing to file.
-    """
-
-    # Split and validate the command-line-style arguments
-    args = arg.strip().split()
-    if len(args) != 2 or args[0].lower() != "calc":
-        print("Usage: tremd calc <filename.gro>")
-        return
-
-    # Resolve the absolute path of the input .gro file
-    gro_path = os.path.abspath(args[1])
-    if not os.path.isfile(gro_path):
-        print(f"[#] File not found: {gro_path}")
-        return
-
-    # Parse the .gro file to count the number of protein and water residues
-    try:
-        protein_residues, water_residues = count_residues_in_gro(gro_path)
-        print(f"[#] Found {protein_residues} protein residues and {water_residues} water residues.")
-    except Exception as e:
-        print(f"[!] Failed to parse .gro file: {e}")
-        return
-
-    # Prompt user for simulation parameters: Tlow, Thigh, and desired exchange probability
-    try:
-        Tlow = float(input("Initial Temperature (K): "))
-        Thigh = float(input("Final Temperature (K): "))
-        Pdes = float(input("Exchange Probability (0 < P < 1): "))
-    except ValueError:
-        print("[!] Invalid numeric input.")
-        return
-
-    # Validate temperature and exchange probability inputs
-    if not (0 < Pdes < 1):
-        print("[!] Exchange probability must be between 0 and 1.")
-        return
-    if Thigh <= Tlow:
-        print("[!] Final temperature must be greater than initial temperature.")
-        return
-
-    # Try to compute the temperature ladder using the van der Spoel algorithm
-    try:
-        temperatures = tremd_temperature_ladder(
-            Tlow=Tlow,
-            Thigh=Thigh,
-            Pdes=Pdes,
-            Nw=water_residues,
-            Np=protein_residues,
-            Hff=0,      # Assume no hydrogen force field correction
-            Vs=0,       # Assume no virtual sites
-            PC=1,       # Protein correction mode
-            WC=0,       # No water correction
-            Tol=0.0005  # Convergence tolerance
-        )
-
-        # In debug mode, print the temperature ladder to the console
-        if debug:
-            print("[DEBUG MODE] TREMD temperature ladder:")
-            for i, temp in enumerate(temperatures):
-                print(f"Replica {i + 1}: {temp:.2f} K")
-
-        # Otherwise, save it to a file
-        else:
-            out_file = "TREMD_temp_ranges.txt"
-            with open(out_file, 'w') as f:
+        try:
+            temperatures = tremd_temperature_ladder(Tlow, Thigh, Pdes, water_residues, protein_residues, Hff=0, Vs=0, PC=1, WC=0, Tol=0.0005)
+            if self.debug:
                 for i, temp in enumerate(temperatures):
-                    f.write(f"Replica {i + 1}: {temp:.2f} K\n")
-            print(f"[#] Temperature ladder saved to {out_file}")
+                    print(f"Replica {i + 1}: {temp:.2f} K")
+            else:
+                with open("TREMD_temp_ranges.txt", 'w') as f:
+                    for i, temp in enumerate(temperatures):
+                        f.write(f"Replica {i + 1}: {temp:.2f} K\n")
+                print("[#] Temperature ladder saved to TREMD_temp_ranges.txt")
+        except Exception as e:
+            print(f"[!] Temperature calculation failed: {e}")
 
-    # Catch any errors during calculation or file I/O
-    except Exception as e:
-        print(f"[!] Temperature calculation failed: {e}")
+    def _run_stage(self, basename, arg, default_mdp, suffix, tprname):
+        base = basename if basename else "PLACEHOLDER"
+        print(f"[#] Running stage for {base} using {default_mdp}...")
+
+        parts = arg.strip().split(maxsplit=3)
+        mdpfile = parts[0] if len(parts) > 0 else str(files("yagwip.templates").joinpath(default_mdp))
+        suffix = parts[1] if len(parts) > 1 else suffix
+        tprname = parts[2] if len(parts) > 2 else tprname
+        mdrun_suffix = parts[3] if len(parts) > 3 else ""
+
+        input_gro = f"{base}{suffix}.gro"
+        tpr_file = f"{tprname}.tpr"
+
+        grompp_cmd = f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
+        mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
+
+        self._execute(grompp_cmd)
+        self._execute(mdrun_cmd)
+
+    def _execute(self, command):
+        if self.debug:
+            print(f"[RUNNING] {command}")
+            print("[DEBUG MODE] Command not executed.")
+        else:
+            run_gromacs_command(command, debug=self.debug, logger=self.logger)

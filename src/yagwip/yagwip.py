@@ -5,16 +5,6 @@ Portions copyright (c) 2025 the Authors.
 Authors: Nathan Levinzon, Olivier Mailhot
 Contributors:
 
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -24,8 +14,8 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from .build import Builder
-from .sim import run_em, run_nvt, run_npt, run_production, run_tremd
+from .build import Builder, Modeller
+from .sim import Sim
 from .utils import *
 from importlib.resources import files
 import importlib.metadata
@@ -57,8 +47,10 @@ class GromacsCLI(cmd.Cmd):
         self.basename = None                                # Base PDB filename (without extension)
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
-        self.editor = Editor()                              # Initialize the Editor class from utils.py
+        self.editor = Editor()                              # Initialize the file Editor class from utils.py
+        self.modeller = Modeller()  # Initialize the Editor class from utils.py
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+        self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
@@ -205,6 +197,7 @@ class GromacsCLI(cmd.Cmd):
         # Always rewrite the protein portion with HIS substitutions
         protein_file = 'protein.pdb'
 
+
         if hetatm_lines:
             # If ligand atoms were found, prepare a separate ligand file
             ligand_file = 'ligand.pdb'
@@ -310,7 +303,7 @@ class GromacsCLI(cmd.Cmd):
         """
         if not self._require_pdb(): return
 
-        run_em(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
+        self.sim.run_em(self.basename, arg=arg)
 
     def do_nvt(self, arg):
         """
@@ -319,7 +312,7 @@ class GromacsCLI(cmd.Cmd):
         """
         if not self._require_pdb(): return
 
-        run_nvt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
+        self.sim.run_nvt(self.basename, arg=arg)
 
     def do_npt(self, arg):
         """
@@ -328,7 +321,7 @@ class GromacsCLI(cmd.Cmd):
         """
         if not self._require_pdb(): return
 
-        run_npt(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
+        self.sim.run_npt(self.basename, arg=arg)
 
     def do_production(self, arg):
         """
@@ -337,7 +330,7 @@ class GromacsCLI(cmd.Cmd):
         """
         if not self._require_pdb(): return
 
-        run_production(self.gmx_path, self.basename, arg=arg, debug=self.debug, logger=self.logger)
+        self.sim.run_production(self.basename, arg=arg)
 
     def complete_tremd(self, text, line, begidx, endidx):
         """Adds tab completion for .solv.ions.gro for use in TREMD replica calculations"""
@@ -355,7 +348,7 @@ class GromacsCLI(cmd.Cmd):
 
         Usage: "tremd calc X.solv.ions.gro"
         """
-        run_tremd(self.gmx_path, self.basename, arg=arg, debug=self.debug)
+        self.sim.run_tremd(self.basename, arg=arg)
 
     def do_source(self, arg):
         """

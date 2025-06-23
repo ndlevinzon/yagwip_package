@@ -1,5 +1,9 @@
 from .utils import run_gromacs_command
 from importlib.resources import files
+import shutil
+import re
+from Bio.PDB import PDBParser
+from Bio.PDB.Polypeptide import one_to_three
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
@@ -99,3 +103,85 @@ class Builder:
         else:
             for cmd in default_cmds:
                 run_gromacs_command(cmd, pipe_input=ion_pipe_input, debug=self.debug, logger=self.logger)
+
+
+class Modeller:
+    def __init__(self, pdb, logger=None, debug=False, output_file="protein.pdb"):
+        self.logger = logger
+        self.debug = debug
+        self.pdb = pdb
+        self.output_file = output_file
+
+    def _log(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
+
+    def find_missing_residues(self):
+        """
+        Identifies missing internal residues by checking for gaps in residue numbering.
+        Returns a list of gaps as (chain_id, last_res_before_gap, first_res_after_gap).
+        """
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure("pdb", self.pdb)
+        gaps = []
+
+        for model in structure:
+            for chain in model:
+                last_res = None
+                for res in chain:
+                    if last_res:
+                        expected = last_res.id[1] + 1
+                        current = res.id[1]
+                        if current != expected:
+                            gaps.append((chain.id, last_res.id[1], res.id[1]))
+                    last_res = res
+
+        self._log(f"[#] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
+        return gaps
+
+    def fill_missing_loops(self):
+        """
+        Placeholder for loop modeling. If gaps are detected, just copies the original to output.
+        If no gaps, returns the original PDB.
+        """
+        gaps = self.find_missing_residues()
+        if not gaps:
+            self._log("[#] No missing loops to fill.")
+            return self.pdb
+
+        self._log(f"[#] Copying PDB to {self.output_file} (loop modeling not implemented).")
+        if not self.debug:
+            shutil.copyfile(self.pdb, self.output_file)
+        return self.output_file
+
+    def mutate_residue(self, mutation_string):
+        """
+        Mutates a single residue in the protein structure.
+        Mutation format: "123T" or "A123T" (chain optional).
+        Always writes to self.output_file.
+        """
+        match = re.match(r"([A-Za-z]?)(\d+)([A-Z])", mutation_string)
+        if not match:
+            raise ValueError(f"[!] Invalid mutation format: {mutation_string}")
+
+        chain = match.group(1) if match.group(1) else "A"
+        res_id = int(match.group(2))
+        new_res = one_to_three(match.group(3).upper())
+
+        self._log(f"[#] Applying mutation: {chain}{res_id} -> {new_res}")
+
+        with open(self.pdb, 'r') as fin, open(self.output_file, 'w') as fout:
+            for line in fin:
+                if line.startswith(("ATOM", "HETATM")):
+                    line_chain = line[21].strip()
+                    line_resid = int(line[22:26])
+                    if line_chain == chain and line_resid == res_id:
+                        line = line[:17] + f"{new_res:>3}" + line[20:]
+                fout.write(line)
+
+        if self.debug:
+            self._log(f"[DEBUG] Mutation would have written to {self.output_file}")
+
+        return self.output_file
