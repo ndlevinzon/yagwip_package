@@ -48,7 +48,7 @@ class GromacsCLI(cmd.Cmd):
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
         self.editor = Editor()                              # Initialize the file Editor class from utils.py
-        self.modeller = Modeller()  # Initialize the Editor class from utils.py
+        self.modeller = Modeller(pdb="protein.pdb", debug=self.debug, logger=self.logger)  # Initialize the Editor class from utils.py
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
@@ -196,7 +196,8 @@ class GromacsCLI(cmd.Cmd):
 
         # Always rewrite the protein portion with HIS substitutions
         protein_file = 'protein.pdb'
-
+        self.modeller.find_missing_residues()
+        self.modeller.fill_missing_loops()
 
         if hetatm_lines:
             # If ligand atoms were found, prepare a separate ligand file
