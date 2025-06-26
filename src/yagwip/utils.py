@@ -40,8 +40,8 @@ def validate_gromacs_installation(gmx_path="gmx"):
     """
     if not check_gromacs_availability(gmx_path):
         raise RuntimeError(
-            f"GROMACS ({gmx_path}) is not available or cannot be executed. "
-            f"Please ensure GROMACS is installed and available in your PATH. "
+            f"GROMACS ({gmx_path}) is not available or cannot be executed. \n"
+            f"Please ensure GROMACS is installed and available in your PATH. \n"
             f"You can check this by running '{gmx_path} --version' in your terminal."
         )
 
