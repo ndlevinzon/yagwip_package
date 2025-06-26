@@ -20,6 +20,7 @@ import sys
 from .utils import *
 from importlib.resources import files
 import importlib.metadata
+import random
 
 __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
