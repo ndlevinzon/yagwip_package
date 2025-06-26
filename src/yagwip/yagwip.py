@@ -281,7 +281,7 @@ class YAGWIP_shell(cmd.Cmd):
             self.editor.append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
         else:
-            shutil.copy(output_gro, "complex.gro")  # only protein
+            shutil.copy(str(output_gro), "complex.gro")  # only protein
 
     def do_solvate(self, arg):
         """
@@ -450,7 +450,7 @@ class YAGWIP_shell(cmd.Cmd):
             slurm_content = re.sub(r'__BASE__', self.basename, slurm_content)
 
             # Replace init variable in SLURM script
-            slurm_content = re.sub(r'init="[^"]+"', f'init="{init_gro}"', slurm_content)
+            slurm_content = re.sub(r'__BASE__', self.basename or "PLACEHOLDER", slurm_content)
 
             # Write modified SLURM script
             out_slurm = f"{slurm_tpl_name}"
