@@ -48,9 +48,15 @@ class GromacsCLI(cmd.Cmd):
         self.print_banner()                                 # Prints intro banner to command line
         self.user_itp_paths = []                            # Stores user input paths for do_source
         self.editor = Editor()                              # Initialize the file Editor class from utils.py
-        self.modeller = Modeller(pdb="protein.pdb", debug=self.debug, logger=self.logger)  # Initialize the Editor class from utils.py
-        self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+
+        # Initialize the Editor class from utils.py
+        self.modeller = Modeller(pdb="protein.pdb", debug=self.debug, logger=self.logger)
+
+        # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+
+        # Initialize the Builder and Sim classes from build.py and sim.py
+        self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
