@@ -1,4 +1,4 @@
-from .utils import run_gromacs_command
+from .utils import run_gromacs_command, LoggingMixin
 from importlib.resources import files
 
 # Constants for GROMACS command inputs
@@ -9,7 +9,7 @@ PIPE_INPUTS = {
 }
 
 
-class Builder:
+class Builder(LoggingMixin):
     def __init__(self, gmx_path, debug=False, logger=None):
         self.gmx_path = gmx_path
         self.debug = debug
@@ -24,12 +24,6 @@ class Builder:
                 print(msg)
             return None
         return basename if basename else "PLACEHOLDER"
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
 
     def run_pdb2gmx(self, basename, custom_command=None):
         base = self._resolve_basename(basename)
@@ -108,18 +102,12 @@ class Builder:
                 run_gromacs_command(cmd, pipe_input=ion_pipe_input, debug=self.debug, logger=self.logger)
 
 
-class Modeller:
+class Modeller(LoggingMixin):
     def __init__(self, pdb, logger=None, debug=False, output_file="protein_test.pdb"):
         self.logger = logger
         self.debug = debug
         self.pdb = pdb
         self.output_file = output_file
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
 
     def find_missing_residues(self):
         """

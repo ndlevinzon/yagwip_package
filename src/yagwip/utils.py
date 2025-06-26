@@ -6,6 +6,7 @@ import time
 import os
 import re
 
+
 def check_gromacs_availability(gmx_path="gmx"):
     """
     Check if GROMACS is available and can be executed.
@@ -44,6 +45,7 @@ def validate_gromacs_installation(gmx_path="gmx"):
             f"Please ensure GROMACS is installed and available in your PATH. \n"
             f"You can check this by running '{gmx_path} --version' in your terminal."
         )
+
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     """
@@ -177,6 +179,18 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         else:
             print(f"[!] Failed to run command: {e}")
         return False
+
+
+class LoggingMixin:
+    """Mixin class to provide consistent logging functionality across all classes."""
+
+    def _log(self, msg):
+        """Log message using logger or print if no logger available."""
+        logger = getattr(self, 'logger', None)
+        if logger:
+            logger.info(msg)
+        else:
+            print(msg)
 
 
 def setup_logger(debug_mode=False):
@@ -394,17 +408,11 @@ def tremd_temperature_ladder(Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0,
     return temps
 
 
-class Editor:
+class Editor(LoggingMixin):
     def __init__(self, ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
-        self.logger = logger
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
+        self.logger = None
 
     def append_ligand_atomtypes_to_forcefield(self):
         if not os.path.isfile(self.ligand_itp):

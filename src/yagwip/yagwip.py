@@ -31,7 +31,7 @@ __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class YAGWIP_shell(cmd.Cmd):
+class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
     # Intro message and prompt for the interactive CLI
     intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
@@ -72,12 +72,6 @@ class YAGWIP_shell(cmd.Cmd):
             "solvate": "",
             "genions": "",
         }
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
 
     def _require_pdb(self):
         if not self.current_pdb_path and not self.debug:
@@ -455,7 +449,7 @@ class YAGWIP_shell(cmd.Cmd):
                 slurm_content = f.read()
 
             # Replace BASE variable in SLURM script with basename
-            slurm_content = re.sub(r'__BASE__', self.basename, slurm_content)
+            slurm_content = re.sub(r'__BASE__', self.basename or "PLACEHOLDER", slurm_content)
 
             # Replace init variable in SLURM script
             slurm_content = re.sub(r'__BASE__', self.basename or "PLACEHOLDER", slurm_content)
