@@ -105,7 +105,7 @@ class Sim:
 
     def _execute(self, command):
         if self.debug:
-            print(f"[RUNNING] {command}`")
-            print("[DEBUG MODE] Command not executed.")
+            print(f"[DEBUG] {command}`")
+            print("[DEBUG] Command not executed.")
         else:
             run_gromacs_command(command, debug=self.debug, logger=self.logger)
