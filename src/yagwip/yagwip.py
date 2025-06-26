@@ -31,7 +31,7 @@ __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class GromacsCLI(cmd.Cmd):
+class YAGWIP_shell(cmd.Cmd):
 
     # Intro message and prompt for the interactive CLI
     intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
@@ -71,7 +71,7 @@ class GromacsCLI(cmd.Cmd):
             return False
         return True
 
-    def default(self, line):
+    def _default(line):
         """Throws error when command is not recognized"""
         print(f"[!] Unknown command: {line}")
 
@@ -85,11 +85,11 @@ class GromacsCLI(cmd.Cmd):
 
         arg = arg.lower().strip()
 
-        # Parse input to determine new debug state
+        # Parse input to determine new debug state, toggle if no explicit argument
         if arg == "on":
             self.debug = True
         elif arg == "off":
-            self.debug = False          # Toggle if no explicit argument
+            self.debug = False
         else:
             self.debug = not self.debug
 
@@ -98,13 +98,14 @@ class GromacsCLI(cmd.Cmd):
 
         print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
+
     def print_banner(self):
         """
         Prints YAGWIP Banner Logo on Start
-        Banner: src/yagwip/assets/banner.txt
+        Banner: src/yagwip/assets/yagwip_banner.txt
         """
         try:
-            banner_path = files("yagwip.assets").joinpath("banner.txt")
+            banner_path = files("yagwip.assets").joinpath("yagwip_banner.txt")
             with open(str(banner_path), 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
@@ -485,7 +486,7 @@ def main():
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
 
     args = parser.parse_args()
-    cli = GromacsCLI("gmx")
+    cli = YAGWIP_shell("gmx")
 
     if args.file:
         # Batch mode: read and execute commands from file

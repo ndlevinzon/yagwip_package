@@ -20,6 +20,7 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "yagwip = yagwip.yagwip:main",
+            "yagtraj = yagwip.yagtraj:main",
         ],
     },
     include_package_data=True,
