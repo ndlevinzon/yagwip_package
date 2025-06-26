@@ -6,6 +6,44 @@ import time
 import os
 import re
 
+def check_gromacs_availability(gmx_path="gmx"):
+    """
+    Check if GROMACS is available and can be executed.
+
+    Parameters:
+        gmx_path (str): The GROMACS executable name/path to check.
+
+    Returns:
+        bool: True if GROMACS is available, False otherwise.
+    """
+    try:
+        result = subprocess.run(
+            [gmx_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+        return False
+
+
+def validate_gromacs_installation(gmx_path="gmx"):
+    """
+    Validate GROMACS installation and raise an error if not available.
+
+    Parameters:
+        gmx_path (str): The GROMACS executable name/path to check.
+
+    Raises:
+        RuntimeError: If GROMACS is not available or cannot be executed.
+    """
+    if not check_gromacs_availability(gmx_path):
+        raise RuntimeError(
+            f"GROMACS ({gmx_path}) is not available or cannot be executed. "
+            f"Please ensure GROMACS is installed and available in your PATH. "
+            f"You can check this by running '{gmx_path} --version' in your terminal."
+        )
 
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     """

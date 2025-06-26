@@ -40,6 +40,14 @@ class YAGTRAJ_shell(cmd.Cmd):
         self.current_traj = None  # Current trajectory file
         self.print_banner()  # Prints intro banner to command line
 
+        # Validate GROMACS installation
+        try:
+            validate_gromacs_installation(gmx_path)
+        except RuntimeError as e:
+            print(f"[!] GROMACS Validation Error: {e}")
+            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            sys.exit(1)
+
     def _log(self, msg):
         """Log message using logger or print if no logger available."""
         if self.logger:

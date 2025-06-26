@@ -58,6 +58,14 @@ class YAGWIP_shell(cmd.Cmd):
         # Initialize the Builder and Sim classes from build.py and sim.py
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
+        # Validate GROMACS installation
+        try:
+            validate_gromacs_installation(gmx_path)
+        except RuntimeError as e:
+            print(f"[!] GROMACS Validation Error: {e}")
+            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            sys.exit(1)
+
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
             "pdb2gmx": "",
