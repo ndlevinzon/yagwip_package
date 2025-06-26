@@ -64,7 +64,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             with open(str(quote_path), "r", encoding="utf-8") as f:
                 quotes = [line.strip() for line in f if line.strip()]
             if quotes:
-                print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
+                print(f"\nYAGTRAJ Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
             print(f"([!] Unable to load quotes: {e})")
 
