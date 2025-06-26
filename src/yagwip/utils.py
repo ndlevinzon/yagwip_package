@@ -360,10 +360,17 @@ class Editor:
     def __init__(self, ligand_itp='ligand.itp', ffnonbonded_itp='./amber14sb.ff/ffnonbonded.itp'):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
+        self.logger = logger
+
+    def _log(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
 
     def append_ligand_atomtypes_to_forcefield(self):
         if not os.path.isfile(self.ligand_itp):
-            print(f"[!] {self.ligand_itp} not found.")
+            self._log(f"[!] {self.ligand_itp} not found.")
             return
 
         with open(self.ligand_itp, 'r') as f:
@@ -387,30 +394,30 @@ class Editor:
 
         with open(self.ligand_itp, 'w') as fout:
             fout.writelines(new_ligand_lines)
-        print("[#] Removed [ atomtypes ] section from ligand.itp")
+        self._log("[#] Removed [ atomtypes ] section from ligand.itp")
 
         if not atomtypes_block:
-            print("[#] No atomtypes section found in ligand.itp. Skipping...")
+            self._log("[#] No atomtypes section found in ligand.itp. Skipping...")
             return
 
         if not os.path.isfile(self.ffnonbonded_itp):
-            print(f"[!] {self.ffnonbonded_itp} not found.")
+            self._log(f"[!] {self.ffnonbonded_itp} not found.")
             return
 
         with open(self.ffnonbonded_itp, 'r') as f:
             if ";ligand" in f.read():
-                print("[#] Ligand section already exists in ffnonbonded.itp. Skipping...")
+                self._log("[#] Ligand section already exists in ffnonbonded.itp. Skipping...")
                 return
 
         with open(self.ffnonbonded_itp, 'a') as f:
             f.write("\n;ligand\n")
             f.writelines(atomtypes_block)
 
-        print(f"[#] Appended ligand atomtypes to {self.ffnonbonded_itp}")
+        self._log(f"[#] Appended ligand atomtypes to {self.ffnonbonded_itp}")
 
     def modify_improper_dihedrals_in_ligand_itp(self):
         if not os.path.isfile(self.ligand_itp):
-            print(f"[!] {self.ligand_itp} not found.")
+            self._log(f"[!] {self.ligand_itp} not found.")
             return
 
         with open(self.ligand_itp, 'r') as f:
@@ -448,13 +455,13 @@ class Editor:
                 output_lines.append(line)
 
         if not modified:
-            print("[#] No impropers with func=4 found to modify. Skipping...")
+            self._log("[#] No impropers with func=4 found to modify. Skipping...")
             return
 
         with open(self.ligand_itp, 'w') as f:
             f.writelines(output_lines)
 
-        print(f"[#] Improper dihedrals converted to func=2 in {self.ligand_itp}.")
+        self._log(f"[#] Improper dihedrals converted to func=2 in {self.ligand_itp}.")
 
     def rename_residue_in_itp_atoms_section(self, old_resname="MOL", new_resname="LIG"):
         with open(self.ligand_itp, 'r') as f:
@@ -509,7 +516,7 @@ class Editor:
         with open(self.ligand_itp, 'w') as f:
             f.writelines(modified_lines)
 
-        print(f"[#] Updated residue names in {self.ligand_itp}: {old_resname} -> {new_resname}")
+        self._log(f"[#] Updated residue names in {self.ligand_itp}: {old_resname} -> {new_resname}")
 
     def append_ligand_coordinates_to_gro(self, protein_gro, ligand_pdb, combined_gro="complex.gro"):
         coords = []
@@ -540,7 +547,7 @@ class Editor:
                     f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x / 10:8.3f}{y / 10:8.3f}{z / 10:8.3f}\n")
             fout.write(box)
 
-        print(f"[#] Wrote combined coordinates to {combined_gro}")
+        self._log(f"[#] Wrote combined coordinates to {combined_gro}")
 
     def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
         with open(topol_top, 'r') as f:
@@ -588,7 +595,7 @@ class Editor:
         with open(topol_top, 'w') as f:
             f.writelines(new_lines)
 
-        print(f"[#] Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
+        self._log(f"[#] Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
 
     def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
         """
@@ -634,4 +641,4 @@ class Editor:
             with open(top_file, 'w') as f:
                 f.writelines(new_lines)
 
-            print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")
+            self._log(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")

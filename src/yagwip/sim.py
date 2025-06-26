@@ -9,6 +9,12 @@ class Sim:
         self.debug = debug
         self.logger = logger
 
+    def _log(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
+
     def run_em(self, basename, arg=""):
         self._run_stage(basename, arg, default_mdp="em.mdp", suffix=".solv.ions", tprname="em")
 
@@ -80,7 +86,7 @@ class Sim:
 
     def _run_stage(self, basename, arg, default_mdp, suffix, tprname):
         base = basename if basename else "PLACEHOLDER"
-        print(f"[#] Running stage for {base} using {default_mdp}...")
+        self._log(f"[#] Running stage for {base} using {default_mdp}...")
 
         parts = arg.strip().split(maxsplit=3)
         mdpfile = parts[0] if len(parts) > 0 else str(files("yagwip.templates").joinpath(default_mdp))
@@ -99,7 +105,7 @@ class Sim:
 
     def _execute(self, command):
         if self.debug:
-            print(f"[RUNNING] {command}")
+            print(f"[RUNNING] {command}`")
             print("[DEBUG MODE] Command not executed.")
         else:
             run_gromacs_command(command, debug=self.debug, logger=self.logger)

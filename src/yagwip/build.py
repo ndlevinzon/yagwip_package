@@ -25,6 +25,12 @@ class Builder:
             return None
         return basename if basename else "PLACEHOLDER"
 
+    def _log(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
+
     def run_pdb2gmx(self, basename, custom_command=None):
         base = self._resolve_basename(basename)
         if base is None:
@@ -38,7 +44,7 @@ class Builder:
             print(f"[DEBUG] Command: {command}")
             return
 
-        print(f"[#] Running pdb2gmx for {base}.pdb...")
+        self._log(f"[#] Running pdb2gmx for {base}.pdb...")
         run_gromacs_command(command, pipe_input=PIPE_INPUTS['pdb2gmx'], debug=self.debug, logger=self.logger)
 
     def run_solvate(self, basename, arg="", custom_command=None):
@@ -63,7 +69,7 @@ class Builder:
             return
 
         if custom_command:
-            print("[CUSTOM] Using custom solvate command")
+            self._log("[CUSTOM] Using custom solvate command")
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
         else:
             for cmd in default_cmds:
@@ -87,14 +93,15 @@ class Builder:
             f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
         ]
 
-        print(f"[#] Running genion for {base}...")
         if self.debug:
             for cmd in default_cmds:
                 print(f"[DEBUG] Command: {cmd}")
             return
 
+        self._log(f"[#] Running genion for {base}...")
+
         if custom_command:
-            print("[CUSTOM] Using custom genion command")
+            self._log("[CUSTOM] Using custom genion command")
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
         else:
             for cmd in default_cmds:

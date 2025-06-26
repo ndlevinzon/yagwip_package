@@ -65,15 +65,21 @@ class YAGWIP_shell(cmd.Cmd):
             "genions": "",
         }
 
+    def _log(self, msg):
+        if self.logger:
+            self.logger.info(msg)
+        else:
+            print(msg)
+
     def _require_pdb(self):
         if not self.current_pdb_path and not self.debug:
-            print("[!] No PDB loaded.")
+            self._log("[!] No PDB loaded.")
             return False
         return True
 
-    def _default(line):
+    def default(self, line):
         """Throws error when command is not recognized"""
-        print(f"[!] Unknown command: {line}")
+        self._log(f"[!] Unknown command: {line}")
 
     def do_debug(self, arg):
         """
@@ -96,8 +102,7 @@ class YAGWIP_shell(cmd.Cmd):
         # Update logger and simulation mode
         self.logger = setup_logger(debug_mode=self.debug)
 
-        print(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
-
+        self._log(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
         """
@@ -109,13 +114,13 @@ class YAGWIP_shell(cmd.Cmd):
             with open(str(banner_path), 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
-            print("[!] Could not load banner:", e)
+            self._log("[!] Could not load banner:", e)
 
     def do_show(self, arg):
         """Show current custom or default commands."""
         for k in ["pdb2gmx", "solvate", "genions"]:
             cmd = self.custom_cmds.get(k)
-            print(f"{k}: {cmd if cmd else '[DEFAULT]'}")
+            self._log(f"{k}: {cmd if cmd else '[DEFAULT]'}")
 
     def do_set(self, arg):
         """
@@ -153,20 +158,20 @@ class YAGWIP_shell(cmd.Cmd):
 
         # Show current value
         current = self.custom_cmds.get(cmd_key) or default
-        print(f"[EDIT {cmd_key}] Current command:\n{current}")
-        print("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
+        self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
+        self._log("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
 
         # Prompt user
         new_cmd = input("New command: ").strip()
         if new_cmd.lower() == "quit":
-            print("[SET] Edit canceled.")
+            self._log("[SET] Edit canceled.")
             return
         elif new_cmd == "":
             self.custom_cmds[cmd_key] = current
-            print(f"[SET] Keeping existing command.")
+            self._log(f"[SET] Keeping existing command.")
         else:
             self.custom_cmds[cmd_key] = new_cmd
-            print(f"[SET] Updated command for {cmd_key}.")
+            self._log(f"[SET] Updated command for {cmd_key}.")
 
     def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
         return complete_filename(text, ".pdb", line, begidx, endidx)
@@ -185,14 +190,14 @@ class YAGWIP_shell(cmd.Cmd):
 
         full_path = os.path.abspath(filename)
         if not os.path.isfile(full_path):
-            print(f"[!] '{filename}' not found.")
+            self._log(f"[!] '{filename}' not found.")
             return
 
         # Store the full path and basename for later use in the build pipeline
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
 
-        print(f"[#] PDB file loaded: {full_path}")
+        self._log(f"[#] PDB file loaded: {full_path}")
 
         # Read all lines from the PDB file
         with open(full_path, 'r') as f:
@@ -222,7 +227,7 @@ class YAGWIP_shell(cmd.Cmd):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
 
-            print(f"[#] Detected ligand. Split into: {protein_file}, {ligand_file}")
+            self._log(f"[#] Detected ligand. Split into: {protein_file}, {ligand_file}")
 
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
             has_hydrogens = any(
@@ -230,7 +235,7 @@ class YAGWIP_shell(cmd.Cmd):
                 for line in hetatm_lines
             )
             if not has_hydrogens:
-                print("[!] Ligand appears to lack hydrogen atoms. Check hydrogens and verify valences.")
+                self._log("[!] Ligand appears to lack hydrogen atoms. Check hydrogens and verify valences.")
                 return
 
             # Check that the ligand.itp file exists and preprocess it if so
@@ -252,7 +257,7 @@ class YAGWIP_shell(cmd.Cmd):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
 
-            print("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
+            self._log("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
         self.modeller.find_missing_residues()
 
     def do_pdb2gmx(self, arg):
@@ -268,7 +273,7 @@ class YAGWIP_shell(cmd.Cmd):
         self.builder.run_pdb2gmx(protein_pdb,custom_command=self.custom_cmds["pdb2gmx"])
 
         if not os.path.isfile(output_gro):
-            print(f"[!] Expected {output_gro} was not created.")
+            self._log(f"[!] Expected {output_gro} was not created.")
             return
 
         # Combine ligand coordinates
@@ -367,25 +372,25 @@ class YAGWIP_shell(cmd.Cmd):
         itp_path = arg.strip()
 
         if not itp_path.endswith('.itp'):
-            print("[!] Must provide a path to a .itp file.")
+            self._log("[!] Must provide a path to a .itp file.")
             return
 
         if not os.path.isfile(itp_path):
-            print(f"[!] File '{itp_path}' not found.")
+            self._log(f"[!] File '{itp_path}' not found.")
             return
 
         # Add new path to list (no duplicates)
         if itp_path not in self.user_itp_paths:
             self.user_itp_paths.append(itp_path)
-            print(f"[#] Added custom .itp include: {itp_path}")
+            self._log(f"[#] Added custom .itp include: {itp_path}")
         else:
-            print(f"[!] Path already in include list: {itp_path}")
+            self._log(f"[!] Path already in include list: {itp_path}")
 
         # Apply all includes to all topol.top files
         self.editor.insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
 
         # Display all tracked includes
-        print("\nCurrent custom ITP includes:")
+        self._log("\nCurrent custom ITP includes:")
         for p in self.user_itp_paths:
             print(f'  #include "{p}"')
 
@@ -416,23 +421,23 @@ class YAGWIP_shell(cmd.Cmd):
         for f in template_dir.iterdir():
             if f.name.endswith(".mdp") and f.name != exclude:
                 shutil.copy(str(f), os.getcwd())
-        print(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
+        self._log(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
 
         # Copy analysis SLURM file for tremd
         if sim_type == "tremd":
             analysis_slurm = template_dir / "run_tremd_analysis.slurm"
             if analysis_slurm.is_file():
                 shutil.copy(str(analysis_slurm), os.getcwd())
-                print("[#] Copied run_tremd_analysis.slurm.")
+                self._log("[#] Copied run_tremd_analysis.slurm.")
             else:
-                print("[!] run_tremd_analysis.slurm not found in template directory.")
+                self._log("[!] run_tremd_analysis.slurm not found in template directory.")
 
         # Determine input SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
         slurm_tpl_path = template_dir / slurm_tpl_name
 
         if not slurm_tpl_path.is_file():
-            print(f"[!] SLURM template not found: {slurm_tpl_name}")
+            self._log(f"[!] SLURM template not found: {slurm_tpl_name}")
             return
 
         init_gro = "complex.solv.ions" if self.ligand_pdb_path else "protein.solv.ions"
@@ -452,9 +457,9 @@ class YAGWIP_shell(cmd.Cmd):
             with open(out_slurm, "w") as f:
                 f.write(slurm_content)
 
-            print(f"[#] Customized SLURM script written: {out_slurm}")
+            self._log(f"[#] Customized SLURM script written: {out_slurm}")
         except Exception as e:
-            print(f"[!] Failed to configure SLURM script: {e}")
+            self._log(f"[!] Failed to configure SLURM script: {e}")
 
     def print_random_quote(self):
         """
@@ -468,7 +473,7 @@ class YAGWIP_shell(cmd.Cmd):
             if quotes:
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
-            print(f"([!] Unable to load quotes: {e})")
+            self._log(f"([!] Unable to load quotes: {e})")
 
     def do_quit(self, _):
         """
