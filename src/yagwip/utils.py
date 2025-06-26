@@ -590,48 +590,48 @@ class Editor:
 
         print(f"[#] Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
 
-        def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
-            """
-            Rewrite all topol.top files to include only the provided list of ITP paths,
-            removing any existing non-user-specified includes. Used for the SOURCE command.
+    def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
+        """
+        Rewrite all topol.top files to include only the provided list of ITP paths,
+        removing any existing non-user-specified includes. Used for the SOURCE command.
 
-            Parameters:
-                itp_path_list (list): List of ITP file paths (strings) to include in the topology files.
-                root_dir (str): Root directory to search for topol.top files (default: current directory).
-            """
-            top_files = []
+        Parameters:
+            itp_path_list (list): List of ITP file paths (strings) to include in the topology files.
+            root_dir (str): Root directory to search for topol.top files (default: current directory).
+        """
+        top_files = []
 
-            for root, dirs, files in os.walk(root_dir):
-                for file in files:
-                    if file == "topol.top":
-                        top_files.append(os.path.join(root, file))
+        for root, dirs, files in os.walk(root_dir):
+            for file in files:
+                if file == "topol.top":
+                    top_files.append(os.path.join(root, file))
 
-            for top_file in top_files:
-                with open(top_file, 'r') as f:
-                    lines = f.readlines()
+        for top_file in top_files:
+            with open(top_file, 'r') as f:
+                lines = f.readlines()
 
-                new_lines = []
-                inserted = False
+            new_lines = []
+            inserted = False
 
-                for line in lines:
-                    # Remove all #include lines that aren't forcefield.itp
-                    if line.strip().startswith("#include") and "forcefield" not in line:
-                        continue
-                    new_lines.append(line)
+            for line in lines:
+                # Remove all #include lines that aren't forcefield.itp
+                if line.strip().startswith("#include") and "forcefield" not in line:
+                    continue
+                new_lines.append(line)
 
-                # Find insertion point (after forcefield include)
-                insert_idx = 0
-                for i, line in enumerate(new_lines):
-                    if "#include" in line and "forcefield" in line:
-                        insert_idx = i + 1
-                        break
+            # Find insertion point (after forcefield include)
+            insert_idx = 0
+            for i, line in enumerate(new_lines):
+                if "#include" in line and "forcefield" in line:
+                    insert_idx = i + 1
+                    break
 
-                # Inject all custom includes
-                include_lines = [f'#include "{path}"\n' for path in itp_path_list]
-                new_lines[insert_idx:insert_idx] = include_lines
+            # Inject all custom includes
+            include_lines = [f'#include "{path}"\n' for path in itp_path_list]
+            new_lines[insert_idx:insert_idx] = include_lines
 
-                # Write updated file
-                with open(top_file, 'w') as f:
-                    f.writelines(new_lines)
+            # Write updated file
+            with open(top_file, 'w') as f:
+                f.writelines(new_lines)
 
-                print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")
+            print(f"[#] Injected {len(itp_path_list)} custom includes into {top_file}")

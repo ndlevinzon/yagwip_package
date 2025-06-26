@@ -54,9 +54,9 @@ class GromacsCLI(cmd.Cmd):
 
         # Dictionary of custom command overrides set by the user, not implemented yet
         self.custom_cmds = {
-            "pdb2gmx": None,
-            "solvate": None,
-            "genions": None,
+            "pdb2gmx": "",
+            "solvate": "",
+            "genions": "",
         }
 
     def _require_pdb(self):
@@ -99,7 +99,7 @@ class GromacsCLI(cmd.Cmd):
         """
         try:
             banner_path = files("yagwip.assets").joinpath("banner.txt")
-            with open(banner_path, 'r', encoding='utf-8') as f:
+            with open(str(banner_path), 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
             print("[!] Could not load banner:", e)
@@ -223,7 +223,7 @@ class GromacsCLI(cmd.Cmd):
                 for line in hetatm_lines
             )
             if not has_hydrogens:
-                print("[!] Ligand appears to lack hydrogen atoms. Please add hydrogens and verify valences.")
+                print("[!] Ligand appears to lack hydrogen atoms. Check hydrogens and verify valences.")
                 return
 
             # Check that the ligand.itp file exists and preprocess it if so
@@ -408,14 +408,14 @@ class GromacsCLI(cmd.Cmd):
         # Copy only relevant .mdp files
         for f in template_dir.iterdir():
             if f.name.endswith(".mdp") and f.name != exclude:
-                shutil.copy(f, os.getcwd())
+                shutil.copy(str(f), os.getcwd())
         print(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
 
         # Copy analysis SLURM file for tremd
         if sim_type == "tremd":
             analysis_slurm = template_dir / "run_tremd_analysis.slurm"
             if analysis_slurm.is_file():
-                shutil.copy(analysis_slurm, os.getcwd())
+                shutil.copy(str(analysis_slurm), os.getcwd())
                 print("[#] Copied run_tremd_analysis.slurm.")
             else:
                 print("[!] run_tremd_analysis.slurm not found in template directory.")
@@ -431,7 +431,7 @@ class GromacsCLI(cmd.Cmd):
         init_gro = "complex.solv.ions" if self.ligand_pdb_path else "protein.solv.ions"
 
         try:
-            with open(slurm_tpl_path, "r") as f:
+            with open(str(slurm_tpl_path), "r") as f:
                 slurm_content = f.read()
 
             # Replace BASE variable in SLURM script with basename
@@ -456,7 +456,7 @@ class GromacsCLI(cmd.Cmd):
         """
         try:
             quote_path = files("yagwip.assets").joinpath("quotes.txt")
-            with open(quote_path, "r", encoding="utf-8") as f:
+            with open(str(quote_path), "r", encoding="utf-8") as f:
                 quotes = [line.strip() for line in f if line.strip()]
             if quotes:
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
