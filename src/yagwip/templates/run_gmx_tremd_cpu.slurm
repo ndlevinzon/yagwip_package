@@ -92,7 +92,7 @@ mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
     srun gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${mini_prefix}
+    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -rdd 2.5 -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
 fi
@@ -103,7 +103,7 @@ fi
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     srun gmx_mpi grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${nvt_prefix}
+    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -rdd 2.5 -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -114,7 +114,7 @@ fi
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
     srun gmx_mpi grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${npt_prefix}
+    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -rdd 2.5 -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -167,14 +167,10 @@ done
 echo "Job ran for 55 minutes. Resubmitting self..."
 sbatch run_gmx_tremd_cpu.slurm
 
-#      ___          _____
-#     /__/\        /  /::\
-#     \  \:\      /  /:/\:\
-#      \  \:\    /  /:/  \:\   ___     ___
-#  _____\__\:\  /__/:/ \__\:| /__/\   /  /\
-# /__/::::::::\ \  \:\ /  /:/ \  \:\ /  /:/
-# \  \:\~~\~~\/  \  \:\  /:/   \  \:\  /:/
-#  \  \:\  ~~~    \  \:\/:/     \  \:\/:/
-#   \  \:\         \  \::/       \  \::/
-#    \  \:\         \__\/         \__\/
-#     \__\/
+#--------------------------------------
+#__  _____   _______       __________
+#\ \/ /   | / ____/ |     / /  _/ __ \
+# \  / /| |/ / __ | | /| / // // /_/ /
+# / / ___ / /_/ / | |/ |/ // // ____/
+#/_/_/  |_\____/  |__/|__/___/_/
+#--------------------------------------
