@@ -275,10 +275,6 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                     if mol2_file is None:
                         self._log("[Ligand_Pipeline][ERROR] MOL2 generation failed. Aborting ligand pipeline.")
                         return
-                    # Read MOL2 into DataFrame (reuse the same parsing as in convert_pdb_to_mol2)
-                    df_atoms = pd.read_csv(mol2_file, comment='#', delim_whitespace=True, header=None,
-                                           skiprows=lambda x: not x or '@<TRIPOS>ATOM' in open(mol2_file).readlines()[
-                                               x - 1], nrows=None)
                     # Find the start and end of the ATOM section
                     with open(mol2_file) as f:
                         lines = f.readlines()
@@ -297,7 +293,7 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                         atom_end = len(lines)
                     atom_lines = lines[atom_start:atom_end]
                     # Parse atom lines into DataFrame
-                    df_atoms = pd.read_csv(io.StringIO(''.join(atom_lines)), delim_whitespace=True, header=None,
+                    df_atoms = pd.read_csv(io.StringIO(''.join(atom_lines)), sep='\s+', header=None,
                                            names=['atom_id', 'atom_name', 'x', 'y', 'z', 'atom_type', 'subst_id',
                                                   'subst_name', 'charge', 'status_bit'])
                     # Generate ORCA input
