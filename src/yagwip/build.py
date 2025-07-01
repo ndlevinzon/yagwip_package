@@ -364,7 +364,7 @@ class Ligand_Pipeline(LoggingMixin):
         with open(output_file, "w") as f:
             f.write(f"! {theory} {basis} TightSCF\n\n")
             f.write("%scf\n")
-            f.write("  TightSCF true\n")
+            f.write("  Convergence Tight\n")
             f.write("end\n\n")
             f.write("%guess\n")
             f.write(f"  guessfile = \"{os.path.basename(gbw_file)}\"\n")
