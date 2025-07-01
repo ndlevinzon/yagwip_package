@@ -298,20 +298,23 @@ class Ligand_Pipeline(LoggingMixin):
         self._log(f"[Ligand_Pipeline] ORCA input written to: {output_file}")
 
     def check_orca_available(self):
-        if shutil.which("orca") is None:
+        orca_path = shutil.which("orca")
+        if orca_path is None:
             self._log(
                 "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it "
                 "is available.")
-            return False
-        return True
+            return None
+        self._log(f"[Ligand_Pipeline] ORCA executable found: {orca_path}")
+        return orca_path
 
     def run_orca(self, input_file, output_file=None):
+        orca_path = self.check_orca_available()
+        if orca_path is None:
+            return False
         if output_file is None:
             output_file = input_file.rsplit('.', 1)[0] + '.out'
-        if not self.check_orca_available():
-            return False
         try:
-            result = subprocess.run(["orca", input_file], capture_output=True, text=True)
+            result = subprocess.run([orca_path, input_file], capture_output=True, text=True)
             with open(output_file, "w") as f:
                 f.write(result.stdout)
                 if result.stderr:
