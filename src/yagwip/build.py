@@ -341,39 +341,60 @@ class Ligand_Pipeline(LoggingMixin):
             self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA: {e}")
             return False
 
-    def mol2_dataframe_to_orca_mk_charge_input(self, df_atoms, gbw_file, output_file, charge=0, multiplicity=1,
-                                               theory="HF", basis="6-31G*"):
+    def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge=0, multiplicity=1,
+                                         method="-XTBOptPBE", nprocs=4):
         """
-        Generate an ORCA input file for MK charge calculation using the optimized geometry and previous wavefunction.
+        Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS.
 
         Parameters:
-            df_atoms (pd.DataFrame): DataFrame with columns ['atom_type', 'x', 'y', 'z']
-            gbw_file (str): Path to the ORCA .gbw file from the prior optimization
-            output_file (str): Name of the ORCA input file to write (will be placed in ./orca/)
-            charge (int): Total molecular charge
-            multiplicity (int): Spin multiplicity
-            theory (str): QM theory level (e.g., HF)
-            basis (str): Basis set (e.g., 6-31G*)
+            xyz_file (str): The name of the XYZ file (should be in /orca/ directory).
+            charge (int): Total molecular charge.
+            multiplicity (int): Spin multiplicity.
+            method (str): Charge generation method. Options include:
+                          -XTBOpt, -PBEOpt, -XTBOptPBE, -noChargeCalc, etc.
+            nprocs (int): Number of processors to use.
+
+        Returns:
+            True if successful, False otherwise.
         """
         orca_dir = "orca"
-        if not os.path.exists(orca_dir):
-            os.makedirs(orca_dir)
-        output_file = os.path.join(orca_dir, os.path.basename(output_file))
+        xyz_path = os.path.join(orca_dir, xyz_file)
 
-        with open(output_file, "w") as f:
-            f.write(f"! {theory} {basis} TightSCF\n\n")
-            f.write("%scf\n")
-            f.write("  Convergence Tight\n")
-            f.write("  MOInp \"ligand.gbw\"\n")
-            f.write("end\n\n")
-            f.write("%mkcharge\n")
-            f.write("  ngridpoints 1000\n")
-            f.write("end\n\n")
-            f.write("* xyz {charge} {multiplicity}\n")
-            for _, row in df_atoms.iterrows():
-                element = row['atom_type']
-                f.write(f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n")
-            f.write("*\n")
+        if not os.path.exists(xyz_path):
+            self._log(f"[Ligand_Pipeline][ERROR] XYZ file not found: {xyz_path}")
+            return False
 
-        self._log(f"[Ligand_Pipeline] ORCA MK charge input written to: {output_file}")
-        return output_file
+        orca_mm_path = shutil.which("orca_mm")
+        if orca_mm_path is None:
+            self._log("[Ligand_Pipeline][ERROR] orca_mm executable not found in PATH.")
+            return False
+
+        cmd = [
+            orca_mm_path, "-makeff",
+            xyz_path,
+            "-C", str(charge),
+            "-M", str(multiplicity),
+            "-nproc", str(nprocs),
+            method
+        ]
+
+        self._log(f"[Ligand_Pipeline] Running ORCA_MM command:\n  {' '.join(cmd)}")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=orca_dir)
+            log_file = os.path.join(orca_dir, "orca_mm.log")
+            with open(log_file, "w") as f:
+                f.write(result.stdout)
+                if result.stderr:
+                    f.write("\n[STDERR]\n" + result.stderr)
+
+            if result.returncode != 0:
+                self._log(f"[Ligand_Pipeline][ERROR] ORCA_MM failed. See {log_file} for details.")
+                return False
+
+            self._log(f"[Ligand_Pipeline] ORCA_MM force field generation complete. Log written to: {log_file}")
+            return True
+        except Exception as e:
+            self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA_MM: {e}")
+            return False
+

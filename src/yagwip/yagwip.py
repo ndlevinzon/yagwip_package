@@ -303,11 +303,10 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
 
-                    # Generate ORCA Geometry Optimization input
-                    orca_charge_input = ligand_pipeline.mol2_dataframe_to_orca_mk_charge_input(df_atoms, gbw_file="optimized_structure.gbw",
-                                                       output_file="mkcharge.inp", charge=0, multiplicity=1)
-                    # Run ORCA MK Charge
-                    ligand_pipeline.run_orca(orca_charge_input)
+                    # Generate ligand.itp from ORCA output
+                    ligand_pipeline.generate_forcefield_with_orca_mm(xyz_file="orca/ligand.xyz", charge=charge,
+                                                                     multiplicity=multiplicity, method="-XTBOptPBE",
+                                                                     nprocs=4)
                     return
                 else:
                     self._log("[!] ligand.itp not found. Exiting.")
