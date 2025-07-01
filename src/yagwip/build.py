@@ -267,7 +267,8 @@ class Ligand_Pipeline(LoggingMixin):
         return mol2_file
 
     def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF",
-                                              basis="6-31G*", maxcycle=512):
+                                              basis="6-31G*",
+                                              maxcycle=512):
         """
         Generate an ORCA input file from a DataFrame of atomic coordinates.
 
@@ -284,7 +285,7 @@ class Ligand_Pipeline(LoggingMixin):
         orca_dir = "orca"
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        output_file = os.path.join(orca_dir, "gmopt.inp")
+        output_file = os.path.join(orca_dir, os.path.basename(output_file))
 
         if not {'atom_type', 'x', 'y', 'z'}.issubset(df_atoms.columns):
             raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
@@ -357,13 +358,16 @@ class Ligand_Pipeline(LoggingMixin):
         orca_dir = "orca"
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        output_file = os.path.join(orca_dir, "mkcharge.inp")
+        output_file = os.path.join(orca_dir, os.path.basename(output_file))
 
         with open(output_file, "w") as f:
             f.write(f"! {theory} {basis} TightSCF\n\n")
             f.write("%scf\n")
             f.write("  Convergence Tight\n")
-            f.write("  AutoStart true\n")
+            f.write("  guessfile = ligand.gbw\n")
+            f.write("end\n\n")
+            f.write("%geom\n")
+            f.write("  GeomInput Read\n")
             f.write("end\n\n")
             f.write("%mkcharge\n")
             f.write("  ngridpoints 1000\n")
