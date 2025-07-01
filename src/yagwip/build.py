@@ -4,6 +4,8 @@ import pandas as pd
 import os
 from datetime import date
 import numpy as np
+import subprocess
+import shutil
 
 
 # Constants for GROMACS command inputs
@@ -296,7 +298,6 @@ class Ligand_Pipeline(LoggingMixin):
         self._log(f"[Ligand_Pipeline] ORCA input written to: {output_file}")
 
     def check_orca_available(self):
-        import shutil
         if shutil.which("orca") is None:
             self._log(
                 "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it "
@@ -305,7 +306,6 @@ class Ligand_Pipeline(LoggingMixin):
         return True
 
     def run_orca(self, input_file, output_file=None):
-        import subprocess
         if output_file is None:
             output_file = input_file.rsplit('.', 1)[0] + '.out'
         if not self.check_orca_available():
