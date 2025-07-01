@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yagwip"
+version = "1.8.0"
+description = "Yet Another Gromacs Wrapper In Python"
+authors = [
+  { name = "Gregor Patof, NDL" }
+]
+requires-python = ">=3.6"
+dependencies = [
+  "numpy"
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+[project.scripts]
+yagwip = "yagwip.yagwip:main"
+yagtraj = "yagwip.yagtraj:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+yagwip = [
+  "assets/*.txt",
+  "templates/*.mdp",
+  "templates/*.slurm",
+  "templates/amber14sb.ff/*"
+]
