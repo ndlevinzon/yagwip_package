@@ -146,6 +146,108 @@ class Modeller(LoggingMixin):
         self._log(f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
         return gaps
 
+    def fill_missing_residues(self, sequence_map=None, output_file=None):
+        """
+        Fill in missing residues in the PDB file by detecting gaps in residue numbering and inserting placeholder residues.
+        Optionally, a sequence_map can be provided as {chain_id: [residue_names]} to guide the filling.
+        Writes the new PDB to output_file (default: self.output_file).
+        """
+        if output_file is None:
+            output_file = self.output_file
+        # Read all lines and group by chain and residue
+        with open(self.pdb, 'r') as f:
+            lines = f.readlines()
+        chain_residues = {}
+        atom_lines = []
+        for line in lines:
+            if line.startswith(("ATOM", "HETATM")):
+                chain_id = line[21].strip() or "A"
+                res_id = int(line[22:26].strip())
+                res_name = line[17:20]
+                if chain_id not in chain_residues:
+                    chain_residues[chain_id] = {}
+                if res_id not in chain_residues[chain_id]:
+                    chain_residues[chain_id][res_id] = []
+                chain_residues[chain_id][res_id].append(line)
+                atom_lines.append(line)
+        # Detect gaps and fill
+        new_lines = []
+        for chain_id, residues in chain_residues.items():
+            sorted_ids = sorted(residues.keys())
+            for i, res_id in enumerate(sorted_ids):
+                new_lines.extend(residues[res_id])
+                if i < len(sorted_ids) - 1:
+                    next_id = sorted_ids[i + 1]
+                    if next_id > res_id + 1:
+                        # Gap detected
+                        for missing_id in range(res_id + 1, next_id):
+                            # Use sequence_map if provided, else use 'GLY' as placeholder
+                            if sequence_map and chain_id in sequence_map and len(sequence_map[chain_id]) >= missing_id:
+                                missing_res_name = sequence_map[chain_id][missing_id - 1]
+                            else:
+                                missing_res_name = 'GLY'
+                            # Insert a placeholder CA atom for the missing residue
+                            # Interpolate coordinates between previous and next CA if possible
+                            prev_ca = None
+                            next_ca = None
+                            for l in residues[res_id]:
+                                if l[12:16].strip() == 'CA':
+                                    prev_ca = l
+                                    break
+                            for l in residues[next_id]:
+                                if l[12:16].strip() == 'CA':
+                                    next_ca = l
+                                    break
+                            if prev_ca and next_ca:
+                                # Interpolate coordinates
+                                prev_xyz = np.array(
+                                    [float(prev_ca[30:38]), float(prev_ca[38:46]), float(prev_ca[46:54])])
+                                next_xyz = np.array(
+                                    [float(next_ca[30:38]), float(next_ca[38:46]), float(next_ca[46:54])])
+                                frac = (missing_id - res_id) / (next_id - res_id)
+                                interp_xyz = prev_xyz + frac * (next_xyz - prev_xyz)
+                                ca_line = prev_ca[:17] + missing_res_name + prev_ca[
+                                                                            20:22] + f"{missing_id:4d}" + prev_ca[
+                                                                                                          26:30] + \
+                                          f"{interp_xyz[0]:8.3f}{interp_xyz[1]:8.3f}{interp_xyz[2]:8.3f}" + prev_ca[54:]
+                            else:
+                                # Fallback: copy previous CA and change residue info
+                                ca_line = prev_ca[:17] + missing_res_name + prev_ca[
+                                                                            20:22] + f"{missing_id:4d}" + prev_ca[26:]
+                            new_lines.append(ca_line)
+                            self._log(
+                                f"[Modeller] Inserted missing residue {missing_res_name} {missing_id} in chain {chain_id}")
+        # Write new PDB
+        with open(output_file, 'w') as f:
+            for line in new_lines:
+                f.write(line)
+        self._log(f"[Modeller] Missing residues filled and written to {output_file}")
+
+    def mutate_residues(self, mutations, output_file=None):
+        """
+        Mutate residues in the PDB file. Mutations should be a list of tuples: (chain_id, res_id, new_res_name).
+        Writes the mutated PDB to output_file (default: self.output_file).
+        """
+        if output_file is None:
+            output_file = self.output_file
+        with open(self.pdb, 'r') as f:
+            lines = f.readlines()
+        mutation_map = {(chain, int(res_id)): new_res for chain, res_id, new_res in mutations}
+        new_lines = []
+        for line in lines:
+            if line.startswith(("ATOM", "HETATM")):
+                chain_id = line[21].strip() or "A"
+                res_id = int(line[22:26].strip())
+                if (chain_id, res_id) in mutation_map:
+                    new_res = mutation_map[(chain_id, res_id)]
+                    line = line[:17] + new_res.ljust(3) + line[20:]
+                    self._log(f"[Modeller] Mutated residue {chain_id} {res_id} to {new_res}")
+            new_lines.append(line)
+        with open(output_file, 'w') as f:
+            for line in new_lines:
+                f.write(line)
+        self._log(f"[Modeller] Residue mutations written to {output_file}")
+
 
 class Ligand_Pipeline(LoggingMixin):
     def __init__(self, logger=None, debug=False):
