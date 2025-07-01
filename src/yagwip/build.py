@@ -2,6 +2,7 @@ from .utils import run_gromacs_command, LoggingMixin
 from importlib.resources import files
 import pandas as pd
 import os
+from datetime import date
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
