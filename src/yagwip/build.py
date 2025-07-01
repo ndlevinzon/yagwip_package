@@ -5,6 +5,7 @@ import os
 from datetime import date
 import numpy as np
 
+
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
     'pdb2gmx': '1\n',
