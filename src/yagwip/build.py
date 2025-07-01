@@ -282,10 +282,10 @@ class Ligand_Pipeline(LoggingMixin):
             maxcycle (int): Max SCF iterations
         All files are written to the 'orca' subdirectory.
         """
-        orca_dir = "orca"
+        orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        output_file = os.path.join(orca_dir, os.path.basename(output_file))
+        output_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(output_file)))
 
         if not {'atom_type', 'x', 'y', 'z'}.issubset(df_atoms.columns):
             raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
@@ -315,17 +315,17 @@ class Ligand_Pipeline(LoggingMixin):
         return orca_path
 
     def run_orca(self, input_file, output_file=None):
-        orca_dir = "orca"
+        orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        input_file = os.path.join(orca_dir, os.path.basename(input_file))
+        input_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(input_file)))
         orca_path = self.check_orca_available()
         if orca_path is None:
             return False
         if output_file is None:
             output_file = os.path.splitext(input_file)[0] + '.out'
         else:
-            output_file = os.path.join(orca_dir, os.path.basename(output_file))
+            output_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(output_file)))
         try:
             result = subprocess.run([orca_path, input_file], capture_output=True, text=True)
             with open(output_file, "w") as f:
@@ -357,8 +357,8 @@ class Ligand_Pipeline(LoggingMixin):
         Returns:
             True if successful, False otherwise.
         """
-        orca_dir = "orca"
-        xyz_path = os.path.join(orca_dir, xyz_file)
+        orca_dir = os.path.abspath("orca")
+        xyz_path = os.path.abspath(os.path.join(orca_dir, xyz_file))
 
         if not os.path.exists(xyz_path):
             self._log(f"[Ligand_Pipeline][ERROR] XYZ file not found: {xyz_path}")
@@ -382,7 +382,7 @@ class Ligand_Pipeline(LoggingMixin):
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=orca_dir)
-            log_file = os.path.join(orca_dir, "orca_mm.log")
+            log_file = os.path.abspath(os.path.join(orca_dir, "orca_mm.log"))
             with open(log_file, "w") as f:
                 f.write(result.stdout)
                 if result.stderr:
