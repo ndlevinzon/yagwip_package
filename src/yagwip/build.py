@@ -283,8 +283,12 @@ class Ligand_Pipeline(LoggingMixin):
             raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
 
         with open(output_file, "w") as f:
-            f.write(f"! {theory} {basis} Opt SCF(XQC,MaxIter={maxcycle})\n")
-            f.write(f"%pal nprocs 4 end\n")
+            f.write(f"! {theory} {basis} Opt TightSCF\n")
+            f.write("%scf\n")
+            f.write(f"  MaxIter {maxcycle}\n")
+            f.write("  ConvAlgorithm Slow\n")
+            f.write("end\n")
+            f.write("%pal nprocs 4 end\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
                 element = row['atom_type']
@@ -296,7 +300,8 @@ class Ligand_Pipeline(LoggingMixin):
         import shutil
         if shutil.which("orca") is None:
             self._log(
-                "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it is available.")
+                "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it "
+                "is available.")
             return False
         return True
 
