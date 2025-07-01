@@ -146,86 +146,80 @@ class Ligand_Pipeline(LoggingMixin):
         self.logger = logger
         self.debug = debug
 
-    class Ligand_Pipeline(LoggingMixin):
-        def __init__(self, logger=None, debug=False):
-            self.logger = logger
-            self.debug = debug
+    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
+        """
+        Converts a ligand PDB file to a MOL2 file using a custom parser and writer (no OpenBabel).
+        Only ATOM section is supported, no bonds.
+        """
+        import pandas as pd
+        import os
+        from datetime import date
 
-        def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
-            """
-            Converts a ligand PDB file to a MOL2 file using a custom parser and writer (no OpenBabel).
-            Only ATOM section is supported, no bonds.
-            """
-            import pandas as pd
-            import os
-            from datetime import date
+        if mol2_file is None:
+            mol2_file = pdb_file.replace('.pdb', '.mol2')
 
-            if mol2_file is None:
-                mol2_file = pdb_file.replace('.pdb', '.mol2')
+        # Efficiently parse ATOM/HETATM lines from PDB
+        atom_records = []
+        with open(pdb_file, 'r') as f:
+            for line in f:
+                if line.startswith(('ATOM', 'HETATM')):
+                    atom_id = int(line[6:11])
+                    atom_name = line[12:16].strip()
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    element = line[76:78].strip() if len(line) >= 78 else ''
+                    res_name = line[17:20].strip()
+                    res_id = int(line[22:26])
+                    chain_id = line[21].strip() or 'A'
+                    atom_records.append({
+                        'atom_id': atom_id,
+                        'atom_name': atom_name,
+                        'x': x,
+                        'y': y,
+                        'z': z,
+                        'atom_type': element or atom_name[0],
+                        'subst_id': 1,
+                        'subst_name': res_name,
+                        'charge': 0.0,
+                        'status_bit': '',
+                    })
+        if not atom_records:
+            self._log(f"[Ligand_Pipeline][ERROR] No atoms found in {pdb_file}.")
+            return None
+        df_atoms = pd.DataFrame(atom_records)
 
-            # Efficiently parse ATOM/HETATM lines from PDB
-            atom_records = []
-            with open(pdb_file, 'r') as f:
-                for line in f:
-                    if line.startswith(('ATOM', 'HETATM')):
-                        atom_id = int(line[6:11])
-                        atom_name = line[12:16].strip()
-                        x = float(line[30:38])
-                        y = float(line[38:46])
-                        z = float(line[46:54])
-                        element = line[76:78].strip() if len(line) >= 78 else ''
-                        res_name = line[17:20].strip()
-                        res_id = int(line[22:26])
-                        chain_id = line[21].strip() or 'A'
-                        atom_records.append({
-                            'atom_id': atom_id,
-                            'atom_name': atom_name,
-                            'x': x,
-                            'y': y,
-                            'z': z,
-                            'atom_type': element or atom_name[0],
-                            'subst_id': 1,
-                            'subst_name': res_name,
-                            'charge': 0.0,
-                            'status_bit': '',
-                        })
-            if not atom_records:
-                self._log(f"[Ligand_Pipeline][ERROR] No atoms found in {pdb_file}.")
-                return None
-            df_atoms = pd.DataFrame(atom_records)
+        # Build minimal MOL2 dict
+        mol2 = {}
+        mol2['MOLECULE'] = pd.DataFrame([{
+            'mol_name': os.path.splitext(os.path.basename(pdb_file))[0],
+            'num_atoms': len(df_atoms),
+            'num_bonds': 0,
+            'num_subst': 1,
+            'num_feat': 0,
+            'num_sets': 0,
+            'mol_type': 'SMALL',
+            'charge_type': 'NO_CHARGES',
+        }])
+        mol2['ATOM'] = df_atoms
+        # Bonds can be added here if needed in the future
 
-            # Build minimal MOL2 dict
-            mol2 = {}
-            mol2['MOLECULE'] = pd.DataFrame([{
-                'mol_name': os.path.splitext(os.path.basename(pdb_file))[0],
-                'num_atoms': len(df_atoms),
-                'num_bonds': 0,
-                'num_subst': 1,
-                'num_feat': 0,
-                'num_sets': 0,
-                'mol_type': 'SMALL',
-                'charge_type': 'NO_CHARGES',
-            }])
-            mol2['ATOM'] = df_atoms
-            # Bonds can be added here if needed in the future
-
-            # Write MOL2 file
-            with open(mol2_file, "w", encoding="utf-8") as out_file:
-                out_file.write("###\n")
-                today = date.today().strftime("%Y-%m-%d")
-                out_file.write(f"### Created by Ligand_Pipeline {today}\n")
-                out_file.write("###\n\n")
-                out_file.write("@<TRIPOS>MOLECULE\n")
-                m = mol2['MOLECULE'].iloc[0]
-                out_file.write(f"{m['mol_name']}\n")
-                out_file.write(f" {m['num_atoms']} {m['num_bonds']} {m['num_subst']} {m['num_feat']} {m['num_sets']}\n")
-                out_file.write(f"{m['mol_type']}\n")
-                out_file.write(f"{m['charge_type']}\n\n")
-                out_file.write("@<TRIPOS>ATOM\n")
-                for _, row in mol2['ATOM'].iterrows():
-                    out_file.write(
-                        f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n")
-                # No bonds for now
-            self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. MOL2 written to {mol2_file}.")
-            return mol2_file
-
+        # Write MOL2 file
+        with open(mol2_file, "w", encoding="utf-8") as out_file:
+            out_file.write("###\n")
+            today = date.today().strftime("%Y-%m-%d")
+            out_file.write(f"### Created by Ligand_Pipeline {today}\n")
+            out_file.write("###\n\n")
+            out_file.write("@<TRIPOS>MOLECULE\n")
+            m = mol2['MOLECULE'].iloc[0]
+            out_file.write(f"{m['mol_name']}\n")
+            out_file.write(f" {m['num_atoms']} {m['num_bonds']} {m['num_subst']} {m['num_feat']} {m['num_sets']}\n")
+            out_file.write(f"{m['mol_type']}\n")
+            out_file.write(f"{m['charge_type']}\n\n")
+            out_file.write("@<TRIPOS>ATOM\n")
+            for _, row in mol2['ATOM'].iterrows():
+                out_file.write(
+                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n")
+            # No bonds for now
+        self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. MOL2 written to {mol2_file}.")
+        return mol2_file
