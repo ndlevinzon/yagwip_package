@@ -280,7 +280,13 @@ class Ligand_Pipeline(LoggingMixin):
             theory (str): QM theory level (e.g., HF)
             basis (str): Basis set (e.g., 6-31G*)
             maxcycle (int): Max SCF iterations
+        All files are written to the 'orca' subdirectory.
         """
+        orca_dir = "orca"
+        if not os.path.exists(orca_dir):
+            os.makedirs(orca_dir)
+        output_file = os.path.join(orca_dir, os.path.basename(output_file))
+
         if not {'atom_type', 'x', 'y', 'z'}.issubset(df_atoms.columns):
             raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
 
@@ -296,6 +302,7 @@ class Ligand_Pipeline(LoggingMixin):
                 f.write(f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n")
             f.write("*\n")
         self._log(f"[Ligand_Pipeline] ORCA input written to: {output_file}")
+        return output_file
 
     def check_orca_available(self):
         orca_path = shutil.which("orca")
@@ -308,11 +315,17 @@ class Ligand_Pipeline(LoggingMixin):
         return orca_path
 
     def run_orca(self, input_file, output_file=None):
+        orca_dir = "orca"
+        if not os.path.exists(orca_dir):
+            os.makedirs(orca_dir)
+        input_file = os.path.join(orca_dir, os.path.basename(input_file))
         orca_path = self.check_orca_available()
         if orca_path is None:
             return False
         if output_file is None:
-            output_file = input_file.rsplit('.', 1)[0] + '.out'
+            output_file = os.path.splitext(input_file)[0] + '.out'
+        else:
+            output_file = os.path.join(orca_dir, os.path.basename(output_file))
         try:
             result = subprocess.run([orca_path, input_file], capture_output=True, text=True)
             with open(output_file, "w") as f:
