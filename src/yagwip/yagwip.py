@@ -304,7 +304,7 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                     ligand_pipeline.run_orca(orca_geom_input)
 
                     # Generate ligand.itp from ORCA output
-                    ligand_pipeline.generate_forcefield_with_orca_mm(xyz_file="orca/ligand.xyz", charge=charge,
+                    ligand_pipeline.generate_forcefield_with_orca_mm(xyz_file="ligand.xyz", charge=charge,
                                                                      multiplicity=multiplicity, method="-XTBOptPBE",
                                                                      nprocs=4)
                     return
