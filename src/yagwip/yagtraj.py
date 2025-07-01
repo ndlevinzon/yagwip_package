@@ -33,12 +33,12 @@ class YAGTRAJ_shell(cmd.Cmd):
 
     def __init__(self, gmx_path):
         super().__init__()
-        self.debug = False  # Toggle debug mode
-        self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)  # Initialize logging
-        self.current_tpr = None  # Current TPR file
-        self.current_traj = None  # Current trajectory file
-        self.print_banner()  # Prints intro banner to command line
+        self.debug = False                                  # Toggle debug mode
+        self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
+        self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
+        self.current_tpr = None                             # Current TPR file
+        self.current_traj = None                            # Current trajectory file
+        self.print_banner()                                 # Prints intro banner to command line
 
         # Validate GROMACS installation
         try:

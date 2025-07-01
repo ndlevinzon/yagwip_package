@@ -242,12 +242,12 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
-                print("[#] Checking ligand.itp...")
+                self._log("[#] Checking ligand.itp...")
                 self.editor.append_ligand_atomtypes_to_forcefield()
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
             else:
-                print("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
+                self._log("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
                 return
         else:
             # If no HETATM lines are found, treat entire file as protein

@@ -15,7 +15,6 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=[
         "numpy",
-        "biopython",
     ],
     entry_points={
         "console_scripts": [
