@@ -22,6 +22,12 @@ In your Python environment, simply run:
 ```python
 pip install git+https://github.com/ndlevinzon/yagwip_package.git
 ```
+or:
+```python
+git clone https://github.com/ndlevinzon/yagwip_package.git
+cd yagwip
+pip install -e .
+```
 
 # Usage
 Once installed, YAGWIP can be run either interactively or via input file for easy high-throughput functionality:
