@@ -3,6 +3,7 @@ from importlib.resources import files
 import pandas as pd
 import os
 from datetime import date
+import numpy as np
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
@@ -155,6 +156,13 @@ class Ligand_Pipeline(LoggingMixin):
         Only ATOM section is supported, no bonds.
         """
 
+        # Covalent radii in Ångstroms for common elements (extend as needed)
+        covalent_radii = {
+            'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57, 'P': 1.07, 'S': 1.05, 'CL': 1.02, 'BR': 1.20,
+            'I': 1.39
+        }
+        bond_tolerance = 0.45  # Ångstroms
+
         if mol2_file is None:
             mol2_file = pdb_file.replace('.pdb', '.mol2')
 
@@ -168,7 +176,10 @@ class Ligand_Pipeline(LoggingMixin):
                     x = float(line[30:38])
                     y = float(line[38:46])
                     z = float(line[46:54])
-                    element = line[76:78].strip() if len(line) >= 78 else ''
+                    element = line[76:78].strip().upper() if len(line) >= 78 else ''
+                    if not element:
+                        # Fallback: use first letter of atom_name
+                        element = atom_name[0].upper()
                     res_name = line[17:20].strip()
                     res_id = int(line[22:26])
                     chain_id = line[21].strip() or 'A'
@@ -178,7 +189,7 @@ class Ligand_Pipeline(LoggingMixin):
                         'x': x,
                         'y': y,
                         'z': z,
-                        'atom_type': element or atom_name[0],
+                        'atom_type': element,
                         'subst_id': 1,
                         'subst_name': res_name,
                         'charge': 0.0,
@@ -189,12 +200,37 @@ class Ligand_Pipeline(LoggingMixin):
             return None
         df_atoms = pd.DataFrame(atom_records)
 
+        # Bond detection
+        coords = df_atoms[['x', 'y', 'z']].values
+        elements = df_atoms['atom_type'].values
+        n_atoms = len(df_atoms)
+        bonds = []
+        bond_id = 1
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                elem_i = elements[i]
+                elem_j = elements[j]
+                r_cov_i = covalent_radii.get(elem_i, 0.77)  # Default to C radius if unknown
+                r_cov_j = covalent_radii.get(elem_j, 0.77)
+                max_bond = r_cov_i + r_cov_j + bond_tolerance
+                dist = np.linalg.norm(coords[i] - coords[j])
+                if 0.4 < dist < max_bond:
+                    bonds.append({
+                        'bond_id': bond_id,
+                        'origin_atom_id': int(df_atoms.iloc[i]['atom_id']),
+                        'target_atom_id': int(df_atoms.iloc[j]['atom_id']),
+                        'bond_type': '1',  # single bond for now
+                        'status_bit': ''
+                    })
+                    bond_id += 1
+        df_bonds = pd.DataFrame(bonds)
+
         # Build minimal MOL2 dict
         mol2 = {}
         mol2['MOLECULE'] = pd.DataFrame([{
             'mol_name': os.path.splitext(os.path.basename(pdb_file))[0],
             'num_atoms': len(df_atoms),
-            'num_bonds': 0,
+            'num_bonds': len(df_bonds),
             'num_subst': 1,
             'num_feat': 0,
             'num_sets': 0,
@@ -202,7 +238,7 @@ class Ligand_Pipeline(LoggingMixin):
             'charge_type': 'NO_CHARGES',
         }])
         mol2['ATOM'] = df_atoms
-        # Bonds can be added here if needed in the future
+        mol2['BOND'] = df_bonds
 
         # Write MOL2 file
         with open(mol2_file, "w", encoding="utf-8") as out_file:
@@ -220,6 +256,10 @@ class Ligand_Pipeline(LoggingMixin):
             for _, row in mol2['ATOM'].iterrows():
                 out_file.write(
                     f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n")
-            # No bonds for now
-        self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. MOL2 written to {mol2_file}.")
+            if len(df_bonds) > 0:
+                out_file.write("@<TRIPOS>BOND\n")
+                for _, row in mol2['BOND'].iterrows():
+                    out_file.write(
+                        f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n")
+        self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
         return mol2_file
