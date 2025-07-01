@@ -364,7 +364,7 @@ class Ligand_Pipeline(LoggingMixin):
             f.write(f"! {theory} {basis} TightSCF\n\n")
             f.write("%scf\n")
             f.write("  Convergence Tight\n")
-            f.write("  guessfile = ligand.gbw\n")
+            f.write("  MOInp \"ligand.gbw\"\n")
             f.write("end\n\n")
             f.write("%mkcharge\n")
             f.write("  ngridpoints 1000\n")
