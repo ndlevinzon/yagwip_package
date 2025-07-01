@@ -154,8 +154,7 @@ class Ligand_Pipeline(LoggingMixin):
 
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
         """
-        Converts a ligand PDB file to a MOL2 file using a custom parser and writer (no OpenBabel).
-        Only ATOM section is supported, no bonds.
+        Converts a ligand PDB file to a MOL2 file using a custom parser and writer.
         """
 
         # Covalent radii in Ångstroms for common elements (extend as needed)
@@ -315,6 +314,7 @@ class Ligand_Pipeline(LoggingMixin):
         return orca_path
 
     def run_orca(self, input_file, output_file=None):
+        "Requires ORCA and OPENMPI"
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
