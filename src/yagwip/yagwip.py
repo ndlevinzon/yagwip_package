@@ -296,12 +296,18 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                     df_atoms = pd.read_csv(io.StringIO(''.join(atom_lines)), sep='\s+', header=None,
                                            names=['atom_id', 'atom_name', 'x', 'y', 'z', 'atom_type', 'subst_id',
                                                   'subst_name', 'charge', 'status_bit'])
-                    # Generate ORCA input
-                    orca_input = mol2_file.replace('.mol2', '.inp')
-                    ligand_pipeline.mol2_dataframe_to_orca_input(df_atoms, orca_input, charge=charge,
-                                                                 multiplicity=multiplicity)
-                    # Run ORCA
-                    ligand_pipeline.run_orca(orca_input)
+                    # Generate ORCA Geometry Optimization input
+                    orca_geom_input = mol2_file.replace('.mol2', '.inp')
+                    ligand_pipeline.mol2_dataframe_to_orca_geom_opt_input(df_atoms, orca_geom_input, charge=charge,
+                                                                          multiplicity=multiplicity)
+                    # Run ORCA Geometry Optimization
+                    ligand_pipeline.run_orca(orca_geom_input)
+
+                    # Generate ORCA Geometry Optimization input
+                    orca_charge_input = ligand_pipeline.mol2_dataframe_to_orca_mk_charge_input(df_atoms, gbw_file="optimized_structure.gbw",
+                                                       output_file="mkcharge.inp", charge=0, multiplicity=1)
+                    # Run ORCA MK Charge
+                    ligand_pipeline.run_orca(orca_charge_input)
                     return
                 else:
                     self._log("[!] ligand.itp not found. Exiting.")
