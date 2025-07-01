@@ -14,7 +14,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
-from .build import Builder, Modeller
+from .build import Builder, Modeller, Ligand_Pipeline
 from .sim import Sim
 from .utils import *
 from importlib.resources import files
@@ -116,7 +116,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
             with open(str(banner_path), 'r', encoding='utf-8') as f:
                 print(f.read())
         except Exception as e:
-            self._log("[!] Could not load banner:", e)
+            self._log(f"[!] Could not load banner: {e}")
 
     def do_show(self, arg):
         """Show current custom or default commands."""
@@ -180,15 +180,17 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
     def do_loadpdb(self, arg):
         """
-        Loads .pdb path for further building steps. This command should be run first.
-        Usage: "loadpdb X.pdb"
+        Usage: "loadpdb X.pdb [--ligand_builder]"
+        --ligand_builder: Run the ligand building pipeline if ligand.itp is missing.
         """
 
-        # Clean and validate the provided file path
-        filename = arg.strip()
-        if not filename:
-            print("Usage: loadpdb <filename.pdb>")
+        # Parse arguments
+        args = arg.strip().split()
+        if not args:
+            print("Usage: loadpdb <filename.pdb> [--ligand_builder]")
             return
+        filename = args[0]
+        use_ligand_builder = "--ligand_builder" in args
 
         full_path = os.path.abspath(filename)
         if not os.path.isfile(full_path):
@@ -237,8 +239,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 for line in hetatm_lines
             )
             if not has_hydrogens:
-                self._log("[!] Ligand appears to lack hydrogen atoms. Check hydrogens and verify valences.")
-                return
+                self._log("[!] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences.")
 
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
@@ -247,8 +248,16 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
             else:
-                self._log("[!] ligand.itp not found in the current directory. Please add ligand.itp before proceeding.")
-                return
+                self._log("[!] ligand.itp not found in the current directory.")
+                if use_ligand_builder:
+                    ligand_pipeline = Ligand_Pipeline(logger=self.logger, debug=self.debug)
+                    ligand_pdb = 'ligand.pdb'
+                    ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                    # Further steps would go here
+                    return
+                else:
+                    self._log("[!] ligand.itp not found. Exiting.")
+                    return
         else:
             # If no HETATM lines are found, treat entire file as protein
             self.ligand_pdb_path = None
