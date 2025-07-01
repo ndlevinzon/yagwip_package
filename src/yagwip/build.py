@@ -366,7 +366,7 @@ class Ligand_Pipeline(LoggingMixin):
             f.write("  Convergence Tight\n")
             f.write("end\n\n")
             f.write("%guess\n")
-            f.write(f"  guessfile = {os.path.join(orca_dir, "ligand.gbw")}\n")
+            f.write(f"  guessfile = ligand.gbw\n")
             f.write("end\n\n")
             f.write("%geom\n")
             f.write("  GeomInput Read\n")
