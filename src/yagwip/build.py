@@ -341,7 +341,7 @@ class Ligand_Pipeline(LoggingMixin):
             self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA: {e}")
             return False
 
-    def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge, multiplicity,
+    def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge=0, multiplicity=1,
                                          method="-XTBOptPBE", nprocs=4):
         """
         Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS.
