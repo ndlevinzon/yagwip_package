@@ -7,7 +7,6 @@ import numpy as np
 import subprocess
 import shutil
 
-
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
     'pdb2gmx': '1\n',
@@ -267,7 +266,8 @@ class Ligand_Pipeline(LoggingMixin):
         self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
         return mol2_file
 
-    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF", basis="6-31G*",
+    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF",
+                                              basis="6-31G*",
                                               maxcycle=512):
         """
         Generate an ORCA input file from a DataFrame of atomic coordinates.
@@ -359,7 +359,6 @@ class Ligand_Pipeline(LoggingMixin):
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
         output_file = os.path.join(orca_dir, os.path.basename(output_file))
-        gbw_file = os.path.join(orca_dir, os.path.basename(gbw_file))
 
         with open(output_file, "w") as f:
             f.write(f"! {theory} {basis} TightSCF\n\n")
@@ -367,7 +366,7 @@ class Ligand_Pipeline(LoggingMixin):
             f.write("  Convergence Tight\n")
             f.write("end\n\n")
             f.write("%guess\n")
-            f.write(f"  guessfile = \"{os.path.basename(gbw_file)}\"\n")
+            f.write(f"  guessfile = {os.path.join(orca_dir, "ligand.gbw")}\n")
             f.write("end\n\n")
             f.write("%geom\n")
             f.write("  GeomInput Read\n")
@@ -383,4 +382,3 @@ class Ligand_Pipeline(LoggingMixin):
 
         self._log(f"[Ligand_Pipeline] ORCA MK charge input written to: {output_file}")
         return output_file
-
