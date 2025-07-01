@@ -26,6 +26,10 @@ import sys
 import random
 import shutil
 import re
+import pandas as pd
+import io
+import shlex
+
 
 __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
@@ -180,17 +184,32 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
     def do_loadpdb(self, arg):
         """
-        Usage: "loadpdb X.pdb [--ligand_builder]"
+Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requires ORCA)."
         --ligand_builder: Run the ligand building pipeline if ligand.itp is missing.
+        --c: Set the total charge for QM input (default 0)
+        --m: Set the multiplicity for QM input (default 1)
         """
 
         # Parse arguments
-        args = arg.strip().split()
+        # Parse arguments
+        args = shlex.split(arg)
         if not args:
-            print("Usage: loadpdb <filename.pdb> [--ligand_builder]")
+            print("Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]")
             return
         filename = args[0]
         use_ligand_builder = "--ligand_builder" in args
+        charge = 0
+        multiplicity = 1
+        if "--c" in args:
+            try:
+                charge = int(args[args.index("--c") + 1])
+            except Exception:
+                self._log("[!] Invalid value for --c (charge). Using default 0.")
+        if "--m" in args:
+            try:
+                multiplicity = int(args[args.index("--m") + 1])
+            except Exception:
+                self._log("[!] Invalid value for --m (multiplicity). Using default 1.")
 
         full_path = os.path.abspath(filename)
         if not os.path.isfile(full_path):
@@ -252,8 +271,41 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 if use_ligand_builder:
                     ligand_pipeline = Ligand_Pipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = 'ligand.pdb'
-                    ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
-                    # Further steps would go here
+                    mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                    if mol2_file is None:
+                        self._log("[Ligand_Pipeline][ERROR] MOL2 generation failed. Aborting ligand pipeline.")
+                        return
+                    # Read MOL2 into DataFrame (reuse the same parsing as in convert_pdb_to_mol2)
+                    df_atoms = pd.read_csv(mol2_file, comment='#', delim_whitespace=True, header=None,
+                                           skiprows=lambda x: not x or '@<TRIPOS>ATOM' in open(mol2_file).readlines()[
+                                               x - 1], nrows=None)
+                    # Find the start and end of the ATOM section
+                    with open(mol2_file) as f:
+                        lines = f.readlines()
+                    atom_start = None
+                    atom_end = None
+                    for i, line in enumerate(lines):
+                        if line.strip() == '@<TRIPOS>ATOM':
+                            atom_start = i + 1
+                        elif line.strip().startswith('@<TRIPOS>BOND') and atom_start is not None:
+                            atom_end = i
+                            break
+                    if atom_start is None:
+                        self._log("[Ligand_Pipeline][ERROR] Could not find ATOM section in MOL2 file.")
+                        return
+                    if atom_end is None:
+                        atom_end = len(lines)
+                    atom_lines = lines[atom_start:atom_end]
+                    # Parse atom lines into DataFrame
+                    df_atoms = pd.read_csv(io.StringIO(''.join(atom_lines)), delim_whitespace=True, header=None,
+                                           names=['atom_id', 'atom_name', 'x', 'y', 'z', 'atom_type', 'subst_id',
+                                                  'subst_name', 'charge', 'status_bit'])
+                    # Generate ORCA input
+                    orca_input = mol2_file.replace('.mol2', '.inp')
+                    ligand_pipeline.mol2_dataframe_to_orca_input(df_atoms, orca_input, charge=charge,
+                                                                 multiplicity=multiplicity)
+                    # Run ORCA
+                    ligand_pipeline.run_orca(orca_input)
                     return
                 else:
                     self._log("[!] ligand.itp not found. Exiting.")

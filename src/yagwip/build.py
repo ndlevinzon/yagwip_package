@@ -264,3 +264,59 @@ class Ligand_Pipeline(LoggingMixin):
                         f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n")
         self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
         return mol2_file
+
+    def mol2_dataframe_to_orca_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF", basis="6-31G*",
+                                     maxcycle=512):
+        """
+        Generate an ORCA input file from a DataFrame of atomic coordinates.
+
+        Parameters:
+            df_atoms (pd.DataFrame): DataFrame with columns ['atom_type', 'x', 'y', 'z']
+            output_file (str): Path to write the ORCA .inp file
+            charge (int): Total molecular charge
+            multiplicity (int): Spin multiplicity
+            theory (str): QM theory level (e.g., HF)
+            basis (str): Basis set (e.g., 6-31G*)
+            maxcycle (int): Max SCF iterations
+        """
+        if not {'atom_type', 'x', 'y', 'z'}.issubset(df_atoms.columns):
+            raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
+
+        with open(output_file, "w") as f:
+            f.write(f"! {theory} {basis} Opt SCF(XQC,MaxIter={maxcycle})\n")
+            f.write(f"%pal nprocs 4 end\n")
+            f.write(f"* xyz {charge} {multiplicity}\n")
+            for _, row in df_atoms.iterrows():
+                element = row['atom_type']
+                f.write(f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n")
+            f.write("*\n")
+        self._log(f"[Ligand_Pipeline] ORCA input written to: {output_file}")
+
+    def check_orca_available(self):
+        import shutil
+        if shutil.which("orca") is None:
+            self._log(
+                "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it is available.")
+            return False
+        return True
+
+    def run_orca(self, input_file, output_file=None):
+        import subprocess
+        if output_file is None:
+            output_file = input_file.rsplit('.', 1)[0] + '.out'
+        if not self.check_orca_available():
+            return False
+        try:
+            result = subprocess.run(["orca", input_file], capture_output=True, text=True)
+            with open(output_file, "w") as f:
+                f.write(result.stdout)
+                if result.stderr:
+                    f.write("\n[STDERR]\n" + result.stderr)
+            if result.returncode != 0:
+                self._log(f"[Ligand_Pipeline][ERROR] ORCA execution failed. See {output_file} for details.")
+                return False
+            self._log(f"[Ligand_Pipeline] ORCA calculation completed. Output: {output_file}")
+            return True
+        except Exception as e:
+            self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA: {e}")
+            return False
