@@ -1,5 +1,7 @@
 from .utils import run_gromacs_command, LoggingMixin
 from importlib.resources import files
+import pandas as pd
+import os
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {
@@ -151,9 +153,6 @@ class Ligand_Pipeline(LoggingMixin):
         Converts a ligand PDB file to a MOL2 file using a custom parser and writer (no OpenBabel).
         Only ATOM section is supported, no bonds.
         """
-        import pandas as pd
-        import os
-        from datetime import date
 
         if mol2_file is None:
             mol2_file = pdb_file.replace('.pdb', '.mol2')
