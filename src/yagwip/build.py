@@ -286,7 +286,6 @@ class Ligand_Pipeline(LoggingMixin):
             f.write(f"! {theory} {basis} Opt TightSCF\n")
             f.write("%scf\n")
             f.write(f"  MaxIter {maxcycle}\n")
-            f.write("  ConvAlgorithm Slow\n")
             f.write("end\n")
             f.write("%pal nprocs 4 end\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
