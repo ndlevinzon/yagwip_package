@@ -7,26 +7,60 @@ import os
 import re
 
 
-def check_gromacs_availability(gmx_path="gmx"):
+class ToolChecker:
     """
-    Check if GROMACS is available and can be executed.
-
-    Parameters:
-        gmx_path (str): The GROMACS executable name/path to check.
-
-    Returns:
-        bool: True if GROMACS is available, False otherwise.
+    Utility class for checking the availability of external tools required by YAGWIP.
+    Preferred interface for tool availability checks (replaces standalone functions).
     """
-    try:
-        result = subprocess.run(
-            [gmx_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
-        return False
+    @staticmethod
+    def check_orca_available():
+        """
+        Check if ORCA is available in the system PATH.
+        Returns the path to the ORCA executable if found, else None.
+        """
+        import shutil
+        orca_path = shutil.which("orca")
+        if orca_path is None:
+            print("[ToolChecker][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it is available.")
+            return None
+        print(f"[ToolChecker] ORCA executable found: {orca_path}")
+        return orca_path
+
+    @staticmethod
+    def check_openmpi_available():
+        """
+        Check if OpenMPI (mpirun) is available in the system PATH.
+        Returns the path to the mpirun executable if found, else None.
+        """
+        import shutil
+        mpirun_path = shutil.which("mpirun")
+        if mpirun_path is None:
+            print("[ToolChecker][ERROR] OpenMPI executable 'mpirun' not found in PATH. Please install OpenMPI and ensure it is available.")
+            return None
+        print(f"[ToolChecker] OpenMPI executable found: {mpirun_path}")
+        return mpirun_path
+
+    @staticmethod
+    def check_gromacs_availabile(gmx_path="gmx"):
+        """
+        Check if GROMACS is available and can be executed.
+        Preferred interface (replaces standalone function).
+        Parameters:
+            gmx_path (str): The GROMACS executable name/path to check.
+        Returns:
+            bool: True if GROMACS is available, False otherwise.
+        """
+        import subprocess
+        try:
+            result = subprocess.run(
+                [gmx_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            return False
 
 
 def validate_gromacs_installation(gmx_path="gmx"):
@@ -39,7 +73,7 @@ def validate_gromacs_installation(gmx_path="gmx"):
     Raises:
         RuntimeError: If GROMACS is not available or cannot be executed.
     """
-    if not check_gromacs_availability(gmx_path):
+    if not ToolChecker.check_gromacs_availabile(gmx_path):
         raise RuntimeError(
             f"GROMACS ({gmx_path}) is not available or cannot be executed. \n"
             f"Please ensure GROMACS is installed and available in your PATH. \n"

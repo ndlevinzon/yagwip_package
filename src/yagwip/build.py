@@ -1,4 +1,4 @@
-from .utils import run_gromacs_command, LoggingMixin
+from .utils import run_gromacs_command, LoggingMixin, ToolChecker
 from importlib.resources import files
 import pandas as pd
 import os
@@ -146,108 +146,6 @@ class Modeller(LoggingMixin):
         self._log(f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
         return gaps
 
-    def fill_missing_residues(self, sequence_map=None, output_file=None):
-        """
-        Fill in missing residues in the PDB file by detecting gaps in residue numbering and inserting placeholder residues.
-        Optionally, a sequence_map can be provided as {chain_id: [residue_names]} to guide the filling.
-        Writes the new PDB to output_file (default: self.output_file).
-        """
-        if output_file is None:
-            output_file = self.output_file
-        # Read all lines and group by chain and residue
-        with open(self.pdb, 'r') as f:
-            lines = f.readlines()
-        chain_residues = {}
-        atom_lines = []
-        for line in lines:
-            if line.startswith(("ATOM", "HETATM")):
-                chain_id = line[21].strip() or "A"
-                res_id = int(line[22:26].strip())
-                res_name = line[17:20]
-                if chain_id not in chain_residues:
-                    chain_residues[chain_id] = {}
-                if res_id not in chain_residues[chain_id]:
-                    chain_residues[chain_id][res_id] = []
-                chain_residues[chain_id][res_id].append(line)
-                atom_lines.append(line)
-        # Detect gaps and fill
-        new_lines = []
-        for chain_id, residues in chain_residues.items():
-            sorted_ids = sorted(residues.keys())
-            for i, res_id in enumerate(sorted_ids):
-                new_lines.extend(residues[res_id])
-                if i < len(sorted_ids) - 1:
-                    next_id = sorted_ids[i + 1]
-                    if next_id > res_id + 1:
-                        # Gap detected
-                        for missing_id in range(res_id + 1, next_id):
-                            # Use sequence_map if provided, else use 'GLY' as placeholder
-                            if sequence_map and chain_id in sequence_map and len(sequence_map[chain_id]) >= missing_id:
-                                missing_res_name = sequence_map[chain_id][missing_id - 1]
-                            else:
-                                missing_res_name = 'GLY'
-                            # Insert a placeholder CA atom for the missing residue
-                            # Interpolate coordinates between previous and next CA if possible
-                            prev_ca = None
-                            next_ca = None
-                            for l in residues[res_id]:
-                                if l[12:16].strip() == 'CA':
-                                    prev_ca = l
-                                    break
-                            for l in residues[next_id]:
-                                if l[12:16].strip() == 'CA':
-                                    next_ca = l
-                                    break
-                            if prev_ca and next_ca:
-                                # Interpolate coordinates
-                                prev_xyz = np.array(
-                                    [float(prev_ca[30:38]), float(prev_ca[38:46]), float(prev_ca[46:54])])
-                                next_xyz = np.array(
-                                    [float(next_ca[30:38]), float(next_ca[38:46]), float(next_ca[46:54])])
-                                frac = (missing_id - res_id) / (next_id - res_id)
-                                interp_xyz = prev_xyz + frac * (next_xyz - prev_xyz)
-                                ca_line = prev_ca[:17] + missing_res_name + prev_ca[
-                                                                            20:22] + f"{missing_id:4d}" + prev_ca[
-                                                                                                          26:30] + \
-                                          f"{interp_xyz[0]:8.3f}{interp_xyz[1]:8.3f}{interp_xyz[2]:8.3f}" + prev_ca[54:]
-                            else:
-                                # Fallback: copy previous CA and change residue info
-                                ca_line = prev_ca[:17] + missing_res_name + prev_ca[
-                                                                            20:22] + f"{missing_id:4d}" + prev_ca[26:]
-                            new_lines.append(ca_line)
-                            self._log(
-                                f"[Modeller] Inserted missing residue {missing_res_name} {missing_id} in chain {chain_id}")
-        # Write new PDB
-        with open(output_file, 'w') as f:
-            for line in new_lines:
-                f.write(line)
-        self._log(f"[Modeller] Missing residues filled and written to {output_file}")
-
-    def mutate_residues(self, mutations, output_file=None):
-        """
-        Mutate residues in the PDB file. Mutations should be a list of tuples: (chain_id, res_id, new_res_name).
-        Writes the mutated PDB to output_file (default: self.output_file).
-        """
-        if output_file is None:
-            output_file = self.output_file
-        with open(self.pdb, 'r') as f:
-            lines = f.readlines()
-        mutation_map = {(chain, int(res_id)): new_res for chain, res_id, new_res in mutations}
-        new_lines = []
-        for line in lines:
-            if line.startswith(("ATOM", "HETATM")):
-                chain_id = line[21].strip() or "A"
-                res_id = int(line[22:26].strip())
-                if (chain_id, res_id) in mutation_map:
-                    new_res = mutation_map[(chain_id, res_id)]
-                    line = line[:17] + new_res.ljust(3) + line[20:]
-                    self._log(f"[Modeller] Mutated residue {chain_id} {res_id} to {new_res}")
-            new_lines.append(line)
-        with open(output_file, 'w') as f:
-            for line in new_lines:
-                f.write(line)
-        self._log(f"[Modeller] Residue mutations written to {output_file}")
-
 
 class Ligand_Pipeline(LoggingMixin):
     def __init__(self, logger=None, debug=False):
@@ -299,7 +197,7 @@ class Ligand_Pipeline(LoggingMixin):
                         'status_bit': '',
                     })
         if not atom_records:
-            self._log(f"[Ligand_Pipeline][ERROR] No atoms found in {pdb_file}.")
+            self._log(f"[!] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
 
@@ -364,7 +262,7 @@ class Ligand_Pipeline(LoggingMixin):
                 for _, row in mol2['BOND'].iterrows():
                     out_file.write(
                         f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n")
-        self._log(f"[Ligand_Pipeline] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
+        self._log(f"[#] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
         return mol2_file
 
     def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF",
@@ -402,18 +300,8 @@ class Ligand_Pipeline(LoggingMixin):
                 element = row['atom_type']
                 f.write(f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n")
             f.write("*\n")
-        self._log(f"[Ligand_Pipeline] ORCA input written to: {output_file}")
+        self._log(f"[#] ORCA input written to: {output_file}")
         return output_file
-
-    def check_orca_available(self):
-        orca_path = shutil.which("orca")
-        if orca_path is None:
-            self._log(
-                "[Ligand_Pipeline][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it "
-                "is available.")
-            return None
-        self._log(f"[Ligand_Pipeline] ORCA executable found: {orca_path}")
-        return orca_path
 
     def run_orca(self, input_file, output_file=None):
         "Requires ORCA and OPENMPI"
@@ -421,7 +309,7 @@ class Ligand_Pipeline(LoggingMixin):
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
         input_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(input_file)))
-        orca_path = self.check_orca_available()
+        orca_path = ToolChecker.check_orca_available()
         if orca_path is None:
             return False
         if output_file is None:
@@ -435,12 +323,12 @@ class Ligand_Pipeline(LoggingMixin):
                 if result.stderr:
                     f.write("\n[STDERR]\n" + result.stderr)
             if result.returncode != 0:
-                self._log(f"[Ligand_Pipeline][ERROR] ORCA execution failed. See {output_file} for details.")
+                self._log(f"[!] ORCA execution failed. See {output_file} for details.")
                 return False
-            self._log(f"[Ligand_Pipeline] ORCA calculation completed. Output: {output_file}")
+            self._log(f"[#] ORCA calculation completed. Output: {output_file}")
             return True
         except Exception as e:
-            self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA: {e}")
+            self._log(f"[!] Failed to run ORCA: {e}")
             return False
 
     def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge=0, multiplicity=1,
@@ -468,7 +356,7 @@ class Ligand_Pipeline(LoggingMixin):
 
         orca_mm_path = shutil.which("orca_mm")
         if orca_mm_path is None:
-            self._log("[Ligand_Pipeline][ERROR] orca_mm executable not found in PATH.")
+            self._log("[!] orca_mm executable not found in PATH.")
             return False
 
         cmd = [
@@ -480,7 +368,7 @@ class Ligand_Pipeline(LoggingMixin):
             method
         ]
 
-        self._log(f"[Ligand_Pipeline] Running ORCA_MM command:\n  {' '.join(cmd)}")
+        self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=orca_dir)
@@ -491,12 +379,12 @@ class Ligand_Pipeline(LoggingMixin):
                     f.write("\n[STDERR]\n" + result.stderr)
 
             if result.returncode != 0:
-                self._log(f"[Ligand_Pipeline][ERROR] ORCA_MM failed. See {log_file} for details.")
+                self._log(f"[!] ORCA_MM failed. See {log_file} for details.")
                 return False
 
-            self._log(f"[Ligand_Pipeline] ORCA_MM force field generation complete. Log written to: {log_file}")
+            self._log(f"[#] ORCA_MM force field generation complete. Log written to: {log_file}")
             return True
         except Exception as e:
-            self._log(f"[Ligand_Pipeline][ERROR] Failed to run ORCA_MM: {e}")
+            self._log(f"[!] Failed to run ORCA_MM: {e}")
             return False
 
