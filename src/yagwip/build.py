@@ -334,10 +334,10 @@ class LigandPipeline(LoggingMixin):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        orca_path = ToolChecker.check_orca_available()      # Check if ORCA is available
+        orca_path = ToolChecker.check_orca_available()          # Check if ORCA is available
         if orca_path is None:
             return False
-        openmpi_path = ToolChecker.check_orca_available()   # Check if OpenMPI is available
+        openmpi_path = ToolChecker.check_openmpi_available()    # Check if OpenMPI is available
         if openmpi_path is None:
             return False
         if output_file is None:
@@ -357,7 +357,7 @@ class LigandPipeline(LoggingMixin):
             if result.returncode != 0:
                 self._log(f"[!] ORCA execution failed. See {output_file} for details.")
                 return False
-            self._log(f"[#] ORCA calculation completed. Output: {output_file}")
+            self._log(f"[#] ORCA Geometry Optimization Calculation completed. Output: {output_file}")
             return True
         except Exception as e:
             self._log(f"[!] Failed to run ORCA: {e}")
@@ -368,7 +368,6 @@ class LigandPipeline(LoggingMixin):
         xyz_file="ligand.xyz",
         charge=0,
         multiplicity=1,
-        method="-XTBOpt",
         nprocs=4,
     ):
         """Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS."""
@@ -391,7 +390,7 @@ class LigandPipeline(LoggingMixin):
             str(multiplicity),
             "-nproc",
             str(nprocs),
-            method,
+            "-XTBOpt",
         ]
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
         try:
