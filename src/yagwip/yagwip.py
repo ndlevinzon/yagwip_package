@@ -3,7 +3,6 @@ yagwip.py: (Y)et (A)nother (G)ROMACS (W)rapper (I)n (P)ython
 
 Portions copyright (c) 2025 the Authors.
 Authors: Nathan Levinzon, Olivier Mailhot
-Contributors:
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -14,34 +13,44 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
+# === Standard Library Imports ===
+import io
+import os
+import re
+import cmd
+import sys
+import shlex
+import shutil
+import random
+import argparse
+import importlib.metadata
+from importlib.resources import files
+
+# === Third-Party Imports ===
+import pandas as pd
+
+# === Local Imports ===
 from .build import Builder, Modeller, Ligand_Pipeline
 from .sim import Sim
-from .utils import *
-from importlib.resources import files
-import importlib.metadata
-import cmd
-import os
-import argparse
-import sys
-import random
-import shutil
-import re
-import pandas as pd
-import io
-import shlex
-
+from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename
 
 __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class YAGWIP_shell(cmd.Cmd, LoggingMixin):
-
+class YagwipShell(cmd.Cmd, LoggingMixin):
+    """
+    Interactive shell for YAGWIP: Yet Another GROMACS Wrapper In Python.
+    Provides a command-line interface for molecular simulation workflows.
+    """
     # Intro message and prompt for the interactive CLI
-    intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
+    intro = (
+        f"Welcome to YAGWIP v{__version__}. Type help to list commands."
+    )
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
+        """Initialize the YAGWIP shell with GROMACS path."""
         super().__init__()
         self.debug = False  # Toggle debug mode
         self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
@@ -84,13 +93,14 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
         }
 
     def _require_pdb(self):
+        """Check if a PDB file is loaded."""
         if not self.current_pdb_path and not self.debug:
             self._log("[!] No PDB loaded.")
             return False
         return True
 
     def default(self, line):
-        """Throws error when command is not recognized"""
+        """Throws error when command is not recognized."""
         self._log(f"[!] Unknown command: {line}")
 
     def do_debug(self, arg):
@@ -100,10 +110,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
         Usage: Toggle with 'debug', 'debug on', or 'debug off'"
         """
-
         arg = arg.lower().strip()
-
-        # Parse input to determine new debug state, toggle if no explicit argument
         if arg == "on":
             self.debug = True
         elif arg == "off":
@@ -117,10 +124,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
         self._log(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
-        """
-        Prints YAGWIP Banner Logo on Start
-        Banner: src/yagwip/assets/yagwip_banner.txt
-        """
+        """Prints YAGWIP Banner Logo on Start."""
         try:
             banner_path = files("yagwip.assets").joinpath("yagwip_banner.txt")
             with open(str(banner_path), "r", encoding="utf-8") as f:
@@ -131,29 +135,25 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
     def do_show(self, arg):
         """Show current custom or default commands."""
         for k in ["pdb2gmx", "solvate", "genions"]:
-            cmd = self.custom_cmds.get(k)
-            self._log(f"{k}: {cmd if cmd else '[DEFAULT]'}")
+            cmd_str = self.custom_cmds.get(k)
+            self._log(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
 
     def do_set(self, arg):
         """
         Edit the default command string for pdb2gmx, solvate, or genions.
-
         Usage:
             set pdb2gmx
             set solvate
             set genions
-
         The user is shown the current command and can modify it inline.
         Press ENTER to accept the modified command.
         Type 'quit' to cancel.
         """
         valid_keys = ["pdb2gmx", "solvate", "genions"]
         cmd_key = arg.strip().lower()
-
         if cmd_key not in valid_keys:
             print(f"[!] Usage: set <{'|'.join(valid_keys)}>")
             return
-
         # Get the default command string
         if cmd_key == "pdb2gmx":
             base = self.basename if self.basename else "PLACEHOLDER"
@@ -173,27 +173,25 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && "
                 f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
             )
-
         # Show current value
         current = self.custom_cmds.get(cmd_key) or default
         self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
         self._log(
             "Type new command or press ENTER to keep current. Type 'quit' to cancel."
         )
-
-        # Prompt user
         new_cmd = input("New command: ").strip()
         if new_cmd.lower() == "quit":
             self._log("[SET] Edit canceled.")
             return
-        elif new_cmd == "":
+        if new_cmd == "":
             self.custom_cmds[cmd_key] = current
-            self._log(f"[SET] Keeping existing command.")
-        else:
-            self.custom_cmds[cmd_key] = new_cmd
-            self._log(f"[SET] Updated command for {cmd_key}.")
+            self._log("[SET] Keeping existing command.")
+            return
+        self.custom_cmds[cmd_key] = new_cmd
+        self._log(f"[SET] Updated command for {cmd_key}.")
 
     def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
+        """Tab completion for .pdb files."""
         return complete_filename(text, ".pdb", line, begidx, endidx)
 
     def do_loadpdb(self, arg):
@@ -203,9 +201,6 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 --c: Set the total charge for QM input (default 0)
                 --m: Set the multiplicity for QM input (default 1)
         """
-
-        # Parse arguments
-        # Parse arguments
         args = shlex.split(arg)
         if not args:
             print(
@@ -231,30 +226,25 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
         if not os.path.isfile(full_path):
             self._log(f"[!] '{filename}' not found.")
             return
-
         # Store the full path and basename for later use in the build pipeline
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
-
         self._log(f"[#] PDB file loaded: {full_path}")
-
         # Read all lines from the PDB file
         with open(full_path, "r") as f:
             lines = f.readlines()
-
         # Extract all lines representing heteroatoms (typically ligands or cofactors)
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
-
         # Always rewrite the protein portion with HIS substitutions
         protein_file = "protein.pdb"
-
         if hetatm_lines:
             # If ligand atoms were found, prepare a separate ligand file
             ligand_file = "ligand.pdb"
             self.ligand_pdb_path = os.path.abspath(ligand_file)
-
             # Open output files for writing protein and ligand portions
-            with open(protein_file, "w") as prot_out, open(ligand_file, "w") as lig_out:
+            with open(protein_file, "w", encoding="utf-8") as prot_out, open(
+                    ligand_file, "w", encoding="utf-8"
+            ) as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
                         # Replace ligand residue name with LIG
@@ -265,9 +255,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                         if line[17:20] in ("HSP", "HSD"):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
-
             self._log(f"[#] Detected ligand. Split into: {protein_file}, {ligand_file}")
-
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
             has_hydrogens = any(
                 line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
@@ -277,7 +265,6 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                 self._log(
                     "[!] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
                 )
-
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
                 self._log("[#] Checking ligand.itp...")
@@ -298,7 +285,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                         )
                         return
                     # Find the start and end of the ATOM section
-                    with open(mol2_file) as f:
+                    with open(mol2_file, encoding="utf-8") as f:
                         lines = f.readlines()
                     atom_start = None
                     atom_end = None
@@ -322,7 +309,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                     # Parse atom lines into DataFrame
                     df_atoms = pd.read_csv(
                         io.StringIO("".join(atom_lines)),
-                        sep="\s+",
+                        sep=r"\s+",
                         header=None,
                         names=[
                             "atom_id",
@@ -347,7 +334,6 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                     )
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
-
                     # Generate ligand.itp from ORCA output
                     ligand_pipeline.generate_forcefield_with_orca_mm(
                         xyz_file="ligand.xyz",
@@ -357,19 +343,17 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
                         nprocs=4,
                     )
                     return
-                else:
-                    self._log("[!] ligand.itp not found. Exiting.")
-                    return
+                self._log("[!] ligand.itp not found. Exiting.")
+                return
         else:
             # If no HETATM lines are found, treat entire file as protein
             self.ligand_pdb_path = None
-            with open(protein_file, "w") as prot_out:
+            with open(protein_file, "w", encoding="utf-8") as prot_out:
                 for line in lines:
                     # Normalize histidine variants to 'HIS'
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
-
             self._log(
                 "[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
             )
@@ -626,31 +610,27 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
 
 def main():
+    """Main entry point for YAGWIP CLI."""
     parser = argparse.ArgumentParser(description="YAGWIP - GROMACS CLI interface")
     parser.add_argument(
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
     )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
-
     args = parser.parse_args()
-    cli = YAGWIP_shell("gmx")
-
+    cli = YagwipShell("gmx")
     if args.file:
         # Batch mode: read and execute commands from file
         try:
-            with open(args.file, "r") as f:
+            with open(args.file, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith(
-                        "#"
-                    ):  # skip empty lines and comments
+                    if line and not line.startswith("#"):
                         print(f"YAGWIP> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:
             print(f"[!] File '{args.file}' not found.")
             sys.exit(1)
     else:
-        # Interactive mode
         cli.cmdloop()
 
 
