@@ -334,8 +334,11 @@ class LigandPipeline(LoggingMixin):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        orca_path = ToolChecker.check_orca_available()
+        orca_path = ToolChecker.check_orca_available()      # Check if ORCA is available
         if orca_path is None:
+            return False
+        openmpi_path = ToolChecker.check_orca_available()   # Check if OpenMPI is available
+        if openmpi_path is None:
             return False
         if output_file is None:
             output_file = os.path.splitext(input_file)[0] + ".out"
@@ -365,7 +368,7 @@ class LigandPipeline(LoggingMixin):
         xyz_file="ligand.xyz",
         charge=0,
         multiplicity=1,
-        method="-XTBOptPBE",
+        method="-XTBOpt",
         nprocs=4,
     ):
         """Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS."""
