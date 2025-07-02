@@ -33,19 +33,21 @@ class YAGTRAJ_shell(cmd.Cmd):
 
     def __init__(self, gmx_path):
         super().__init__()
-        self.debug = False                                  # Toggle debug mode
-        self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
-        self.current_tpr = None                             # Current TPR file
-        self.current_traj = None                            # Current trajectory file
-        self.print_banner()                                 # Prints intro banner to command line
+        self.debug = False  # Toggle debug mode
+        self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
+        self.logger = setup_logger(debug_mode=self.debug)  # Initialize logging
+        self.current_tpr = None  # Current TPR file
+        self.current_traj = None  # Current trajectory file
+        self.print_banner()  # Prints intro banner to command line
 
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             print(f"[!] GROMACS Validation Error: {e}")
-            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            print(
+                "[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+            )
             sys.exit(1)
 
     def _log(self, msg):
@@ -88,7 +90,7 @@ class YAGTRAJ_shell(cmd.Cmd):
         """
         try:
             banner_path = files("yagwip.assets").joinpath("yagtraj_banner.txt")
-            with open(str(banner_path), 'r', encoding='utf-8') as f:
+            with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
             self._log(f"[!] Could not load banner: {e}")
@@ -150,7 +152,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="4\n4\n",  # Select backbone for both reference and fit
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
@@ -179,11 +181,13 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="1\n",  # Select protein
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
-            self._log(f"[RGYR] Radius of gyration calculation completed. Output: {output_file}")
+            self._log(
+                f"[RGYR] Radius of gyration calculation completed. Output: {output_file}"
+            )
         else:
             self._log("[!] Radius of gyration calculation failed.")
 
@@ -208,7 +212,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="1\n",  # Select protein
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
@@ -237,11 +241,13 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="1\n1\n",  # Select protein for both donor and acceptor
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
-            self._log(f"[HBOND] Hydrogen bond calculation completed. Output: {output_file}")
+            self._log(
+                f"[HBOND] Hydrogen bond calculation completed. Output: {output_file}"
+            )
         else:
             self._log("[!] Hydrogen bond calculation failed.")
 
@@ -267,17 +273,21 @@ class YAGTRAJ_shell(cmd.Cmd):
             command += f" -f {self.current_traj}"
         command += f" -o {output_file}"
 
-        self._log(f"[DISTANCE] Calculating distance between groups {group1} and {group2}...")
+        self._log(
+            f"[DISTANCE] Calculating distance between groups {group1} and {group2}..."
+        )
 
         success = run_gromacs_command(
             command=command,
             pipe_input=f"{group1}\n{group2}\n",
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
-            self._log(f"[DISTANCE] Distance calculation completed. Output: {output_file}")
+            self._log(
+                f"[DISTANCE] Distance calculation completed. Output: {output_file}"
+            )
         else:
             self._log("[!] Distance calculation failed.")
 
@@ -306,7 +316,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="10\n11\n0\n",  # Select potential and kinetic energy, then quit
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
@@ -349,11 +359,13 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command,
             pipe_input="1\n",  # Select protein
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success:
-            self._log(f"[TRJCONV] Trajectory conversion completed. Output: {output_traj}")
+            self._log(
+                f"[TRJCONV] Trajectory conversion completed. Output: {output_traj}"
+            )
         else:
             self._log("[!] Trajectory conversion failed.")
 
@@ -367,12 +379,14 @@ class YAGTRAJ_shell(cmd.Cmd):
 
         # Count replica directories
         replica_dirs = []
-        for item in os.listdir('.'):
+        for item in os.listdir("."):
             if os.path.isdir(item) and item.isdigit():
                 replica_dirs.append(int(item))
 
         if not replica_dirs:
-            self._log("[!] No replica directories found (directories named with digits only)")
+            self._log(
+                "[!] No replica directories found (directories named with digits only)"
+            )
             return
 
         replica_dirs.sort()
@@ -396,17 +410,18 @@ class YAGTRAJ_shell(cmd.Cmd):
             if os.path.exists(log_file):
                 if not self.debug:
                     import shutil
+
                     shutil.copy(log_file, f"{log_tmp}/remd_{replica}.log")
             else:
                 self._log(f"[!] Warning: {log_file} not found")
 
         # Concatenate logs
         if not self.debug:
-            with open(f"{log_tmp}/REMD.log", 'w') as outfile:
+            with open(f"{log_tmp}/REMD.log", "w") as outfile:
                 for replica in replica_dirs:
                     log_file = f"{log_tmp}/remd_{replica}.log"
                     if os.path.exists(log_file):
-                        with open(log_file, 'r') as infile:
+                        with open(log_file, "r") as infile:
                             outfile.write(infile.read())
 
         # Run demux.pl (if available) or use gmx demux
@@ -415,9 +430,7 @@ class YAGTRAJ_shell(cmd.Cmd):
         # Try to use demux.pl first, fallback to gmx demux
         demux_command = f"demux.pl {log_tmp}/REMD.log"
         success = run_gromacs_command(
-            command=demux_command,
-            debug=self.debug,
-            logger=self.logger
+            command=demux_command, debug=self.debug, logger=self.logger
         )
 
         if not success:
@@ -425,16 +438,15 @@ class YAGTRAJ_shell(cmd.Cmd):
             self._log("[TREMD] demux.pl not found, trying gmx demux...")
             demux_command = f"{self.gmx_path} demux {log_tmp}/REMD.log"
             success = run_gromacs_command(
-                command=demux_command,
-                debug=self.debug,
-                logger=self.logger
+                command=demux_command, debug=self.debug, logger=self.logger
             )
 
         if success and not self.debug:
             # Move generated files to analysis directory
-            for file in ['replica_index.xvg', 'replica_temp.xvg']:
+            for file in ["replica_index.xvg", "replica_temp.xvg"]:
                 if os.path.exists(file):
                     import shutil
+
                     shutil.move(file, f"{analysis_dir}/{file}")
 
         # Demultiplex trajectories
@@ -454,9 +466,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             trjcat_command = f"{self.gmx_path} trjcat -f {' '.join(traj_files)} -demux {analysis_dir}/replica_index.xvg"
 
             success = run_gromacs_command(
-                command=trjcat_command,
-                debug=self.debug,
-                logger=self.logger
+                command=trjcat_command, debug=self.debug, logger=self.logger
             )
 
             if success and not self.debug:
@@ -467,12 +477,15 @@ class YAGTRAJ_shell(cmd.Cmd):
                         replica_dir = f"{analysis_dir}/replica_{replica}"
                         os.makedirs(replica_dir, exist_ok=True)
                         import shutil
+
                         shutil.move(trajout_file, f"{replica_dir}/{trajout_file}")
 
                         # Copy corresponding TPR file
                         tpr_file = f"{replica}/{base_name}.tpr"
                         if os.path.exists(tpr_file):
-                            shutil.copy(tpr_file, f"{replica_dir}/demuxed_{replica}.tpr")
+                            shutil.copy(
+                                tpr_file, f"{replica_dir}/demuxed_{replica}.tpr"
+                            )
 
         self._log(f"[TREMD] Demultiplexing completed. Results in {analysis_dir}/")
 
@@ -492,13 +505,17 @@ class YAGTRAJ_shell(cmd.Cmd):
         # Find replica directories
         replica_dirs = []
         for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(os.path.join(analysis_dir, item)):
+            if item.startswith("replica_") and os.path.isdir(
+                os.path.join(analysis_dir, item)
+            ):
                 replica_num = item.split("_")[1]
                 if replica_num.isdigit():
                     replica_dirs.append(int(replica_num))
 
         if not replica_dirs:
-            self._log("[!] No replica analysis directories found. Run 'tremd demux' first.")
+            self._log(
+                "[!] No replica analysis directories found. Run 'tremd demux' first."
+            )
             return
 
         replica_dirs.sort()
@@ -522,7 +539,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command,
                 pipe_input="4\n4\n",  # Select backbone for both reference and fit
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if success:
@@ -546,13 +563,17 @@ class YAGTRAJ_shell(cmd.Cmd):
         # Find replica directories
         replica_dirs = []
         for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(os.path.join(analysis_dir, item)):
+            if item.startswith("replica_") and os.path.isdir(
+                os.path.join(analysis_dir, item)
+            ):
                 replica_num = item.split("_")[1]
                 if replica_num.isdigit():
                     replica_dirs.append(int(replica_num))
 
         if not replica_dirs:
-            self._log("[!] No replica analysis directories found. Run 'tremd demux' first.")
+            self._log(
+                "[!] No replica analysis directories found. Run 'tremd demux' first."
+            )
             return
 
         replica_dirs.sort()
@@ -576,7 +597,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command,
                 pipe_input="4\n",  # Select backbone
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if success:
@@ -600,13 +621,17 @@ class YAGTRAJ_shell(cmd.Cmd):
         # Find replica directories
         replica_dirs = []
         for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(os.path.join(analysis_dir, item)):
+            if item.startswith("replica_") and os.path.isdir(
+                os.path.join(analysis_dir, item)
+            ):
                 replica_num = item.split("_")[1]
                 if replica_num.isdigit():
                     replica_dirs.append(int(replica_num))
 
         if not replica_dirs:
-            self._log("[!] No replica analysis directories found. Run 'tremd demux' first.")
+            self._log(
+                "[!] No replica analysis directories found. Run 'tremd demux' first."
+            )
             return
 
         replica_dirs.sort()
@@ -631,7 +656,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command1,
                 pipe_input="0\n0\n",  # Select system for centering
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if not success1:
@@ -646,7 +671,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command2,
                 pipe_input="0\n0\n",  # Select system for fitting
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if not success2:
@@ -662,7 +687,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command3,
                 pipe_input="4\n4\n",  # Select backbone for covariance
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if not success3:
@@ -677,7 +702,7 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command4,
                 pipe_input="4\n4\n",  # Select backbone for projection
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if success4:
@@ -701,13 +726,17 @@ class YAGTRAJ_shell(cmd.Cmd):
         # Find replica directories
         replica_dirs = []
         for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(os.path.join(analysis_dir, item)):
+            if item.startswith("replica_") and os.path.isdir(
+                os.path.join(analysis_dir, item)
+            ):
                 replica_num = item.split("_")[1]
                 if replica_num.isdigit():
                     replica_dirs.append(int(replica_num))
 
         if not replica_dirs:
-            self._log("[!] No replica analysis directories found. Run 'tremd demux' first.")
+            self._log(
+                "[!] No replica analysis directories found. Run 'tremd demux' first."
+            )
             return
 
         replica_dirs.sort()
@@ -720,12 +749,15 @@ class YAGTRAJ_shell(cmd.Cmd):
             output_temp = f"{replica_dir}/temp.xvg"
 
             if not os.path.exists(original_edr):
-                self._log(f"[!] Warning: {original_edr} not found for replica {replica}")
+                self._log(
+                    f"[!] Warning: {original_edr} not found for replica {replica}"
+                )
                 continue
 
             # Copy energy file to analysis directory
             if not self.debug:
                 import shutil
+
                 shutil.copy(original_edr, output_edr)
 
             # Extract temperature
@@ -737,11 +769,13 @@ class YAGTRAJ_shell(cmd.Cmd):
                 command=command,
                 pipe_input="Temperature\n",  # Select temperature
                 debug=self.debug,
-                logger=self.logger
+                logger=self.logger,
             )
 
             if success:
-                self._log(f"[TREMD] Replica {replica} temperature completed: {output_temp}")
+                self._log(
+                    f"[TREMD] Replica {replica} temperature completed: {output_temp}"
+                )
             else:
                 self._log(f"[!] Replica {replica} temperature extraction failed")
 
@@ -760,7 +794,7 @@ class YAGTRAJ_shell(cmd.Cmd):
 
         # Find all energy files
         energy_files = []
-        for item in os.listdir('.'):
+        for item in os.listdir("."):
             if os.path.isdir(item) and item.isdigit():
                 edr_file = f"{item}/{base_name}.edr"
                 if os.path.exists(edr_file):
@@ -775,14 +809,14 @@ class YAGTRAJ_shell(cmd.Cmd):
 
         # Combine energy files
         combined_edr = f"{analysis_dir}/combined.edr"
-        command1 = f"{self.gmx_path} eneconv -f {' '.join(energy_files)} -o {combined_edr}"
+        command1 = (
+            f"{self.gmx_path} eneconv -f {' '.join(energy_files)} -o {combined_edr}"
+        )
 
         self._log("[TREMD] Combining energy files...")
 
         success1 = run_gromacs_command(
-            command=command1,
-            debug=self.debug,
-            logger=self.logger
+            command=command1, debug=self.debug, logger=self.logger
         )
 
         if not success1:
@@ -799,7 +833,7 @@ class YAGTRAJ_shell(cmd.Cmd):
             command=command2,
             pipe_input="Potential\n",  # Select potential energy
             debug=self.debug,
-            logger=self.logger
+            logger=self.logger,
         )
 
         if success2:
@@ -841,7 +875,9 @@ class YAGTRAJ_shell(cmd.Cmd):
 
 def main():
     parser = argparse.ArgumentParser(description="YAGTRAJ - GROMACS MD Analysis")
-    parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive CLI")
+    parser.add_argument(
+        "-i", "--interactive", action="store_true", help="Run interactive CLI"
+    )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
 
     args = parser.parse_args()
@@ -853,7 +889,9 @@ def main():
             with open(args.file, "r") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith("#"):  # skip empty lines and comments
+                    if line and not line.startswith(
+                        "#"
+                    ):  # skip empty lines and comments
                         print(f"YAGTRAJ> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:

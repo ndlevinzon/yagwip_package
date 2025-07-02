@@ -16,13 +16,19 @@ class Sim:
             print(msg)
 
     def run_em(self, basename, arg=""):
-        self._run_stage(basename, arg, default_mdp="em.mdp", suffix=".solv.ions", tprname="em")
+        self._run_stage(
+            basename, arg, default_mdp="em.mdp", suffix=".solv.ions", tprname="em"
+        )
 
     def run_nvt(self, basename, arg=""):
-        self._run_stage(basename, arg, default_mdp="nvt.mdp", suffix=".em", tprname="nvt")
+        self._run_stage(
+            basename, arg, default_mdp="nvt.mdp", suffix=".em", tprname="nvt"
+        )
 
     def run_npt(self, basename, arg=""):
-        self._run_stage(basename, arg, default_mdp="npt.mdp", suffix=".nvt", tprname="npt")
+        self._run_stage(
+            basename, arg, default_mdp="npt.mdp", suffix=".nvt", tprname="npt"
+        )
 
     def run_production(self, basename, arg=""):
         parts = arg.strip().split(maxsplit=3)
@@ -54,7 +60,9 @@ class Sim:
 
         try:
             protein_residues, water_residues = count_residues_in_gro(gro_path)
-            print(f"[#] Found {protein_residues} protein residues and {water_residues} water residues.")
+            print(
+                f"[#] Found {protein_residues} protein residues and {water_residues} water residues."
+            )
         except Exception as e:
             print(f"[!] Failed to parse .gro file: {e}")
             return
@@ -72,12 +80,23 @@ class Sim:
             return
 
         try:
-            temperatures = tremd_temperature_ladder(Tlow, Thigh, Pdes, water_residues, protein_residues, Hff=0, Vs=0, PC=1, WC=0, Tol=0.0005)
+            temperatures = tremd_temperature_ladder(
+                Tlow,
+                Thigh,
+                Pdes,
+                water_residues,
+                protein_residues,
+                Hff=0,
+                Vs=0,
+                PC=1,
+                WC=0,
+                Tol=0.0005,
+            )
             if self.debug:
                 for i, temp in enumerate(temperatures):
                     print(f"Replica {i + 1}: {temp:.2f} K")
             else:
-                with open("TREMD_temp_ranges.txt", 'w') as f:
+                with open("TREMD_temp_ranges.txt", "w") as f:
                     for i, temp in enumerate(temperatures):
                         f.write(f"Replica {i + 1}: {temp:.2f} K\n")
                 print("[#] Temperature ladder saved to TREMD_temp_ranges.txt")
@@ -89,7 +108,11 @@ class Sim:
         self._log(f"[#] Running stage for {base} using {default_mdp}...")
 
         parts = arg.strip().split(maxsplit=3)
-        mdpfile = parts[0] if len(parts) > 0 else str(files("yagwip.templates").joinpath(default_mdp))
+        mdpfile = (
+            parts[0]
+            if len(parts) > 0
+            else str(files("yagwip.templates").joinpath(default_mdp))
+        )
         suffix = parts[1] if len(parts) > 1 else suffix
         tprname = parts[2] if len(parts) > 2 else tprname
         mdrun_suffix = parts[3] if len(parts) > 3 else ""

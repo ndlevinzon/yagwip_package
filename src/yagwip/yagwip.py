@@ -43,31 +43,37 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
     def __init__(self, gmx_path):
         super().__init__()
-        self.debug = False                                  # Toggle debug mode
-        self.gmx_path = gmx_path                            # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)   # Initialize logging
-        self.current_pdb_path = None                        # Full path to the loaded PDB file
-        self.ligand_pdb_path = None                         # Full path to the ligand PDB file, if any
-        self.basename = None                                # Base PDB filename (without extension)
-        self.print_banner()                                 # Prints intro banner to command line
-        self.user_itp_paths = []                            # Stores user input paths for do_source
-        self.editor = Editor()                              # Initialize the file Editor class from utils.py
+        self.debug = False  # Toggle debug mode
+        self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
+        self.logger = setup_logger(debug_mode=self.debug)  # Initialize logging
+        self.current_pdb_path = None  # Full path to the loaded PDB file
+        self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
+        self.basename = None  # Base PDB filename (without extension)
+        self.print_banner()  # Prints intro banner to command line
+        self.user_itp_paths = []  # Stores user input paths for do_source
+        self.editor = Editor()  # Initialize the file Editor class from utils.py
 
         # Initialize the Editor class from utils.py
-        self.modeller = Modeller(pdb="protein.pdb", debug=self.debug, logger=self.logger)
+        self.modeller = Modeller(
+            pdb="protein.pdb", debug=self.debug, logger=self.logger
+        )
 
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Initialize the Builder and Sim classes from build.py and sim.py
-        self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+        self.builder = Builder(
+            gmx_path=self.gmx_path, debug=self.debug, logger=self.logger
+        )
 
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             print(f"[!] GROMACS Validation Error: {e}")
-            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            print(
+                "[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+            )
             sys.exit(1)
 
         # Dictionary of custom command overrides set by the user, not implemented yet
@@ -117,7 +123,7 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
         """
         try:
             banner_path = files("yagwip.assets").joinpath("yagwip_banner.txt")
-            with open(str(banner_path), 'r', encoding='utf-8') as f:
+            with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
             self._log(f"[!] Could not load banner: {e}")
@@ -151,21 +157,29 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
         # Get the default command string
         if cmd_key == "pdb2gmx":
             base = self.basename if self.basename else "PLACEHOLDER"
-            default = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+            default = (
+                f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+            )
         elif cmd_key == "solvate":
             base = self.basename if self.basename else "PLACEHOLDER"
-            default = f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && " \
-                      f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs spc216.gro -o {base}.solv.gro -p topol.top"
+            default = (
+                f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && "
+                f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs spc216.gro -o {base}.solv.gro -p topol.top"
+            )
         elif cmd_key == "genions":
             base = self.basename if self.basename else "PLACEHOLDER"
             ions_mdp = "ions.mdp"  # assuming it's copied to current dir already
-            default = f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && " \
-                      f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
+            default = (
+                f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && "
+                f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
+            )
 
         # Show current value
         current = self.custom_cmds.get(cmd_key) or default
         self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
-        self._log("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
+        self._log(
+            "Type new command or press ENTER to keep current. Type 'quit' to cancel."
+        )
 
         # Prompt user
         new_cmd = input("New command: ").strip()
@@ -184,17 +198,19 @@ class YAGWIP_shell(cmd.Cmd, LoggingMixin):
 
     def do_loadpdb(self, arg):
         """
-Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requires ORCA)."
-        --ligand_builder: Run the ligand building pipeline if ligand.itp is missing.
-        --c: Set the total charge for QM input (default 0)
-        --m: Set the multiplicity for QM input (default 1)
+        Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requires ORCA)."
+                --ligand_builder: Run the ligand building pipeline if ligand.itp is missing.
+                --c: Set the total charge for QM input (default 0)
+                --m: Set the multiplicity for QM input (default 1)
         """
 
         # Parse arguments
         # Parse arguments
         args = shlex.split(arg)
         if not args:
-            print("Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]")
+            print(
+                "Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]"
+            )
             return
         filename = args[0]
         use_ligand_builder = "--ligand_builder" in args
@@ -223,22 +239,22 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         self._log(f"[#] PDB file loaded: {full_path}")
 
         # Read all lines from the PDB file
-        with open(full_path, 'r') as f:
+        with open(full_path, "r") as f:
             lines = f.readlines()
 
         # Extract all lines representing heteroatoms (typically ligands or cofactors)
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
 
         # Always rewrite the protein portion with HIS substitutions
-        protein_file = 'protein.pdb'
+        protein_file = "protein.pdb"
 
         if hetatm_lines:
             # If ligand atoms were found, prepare a separate ligand file
-            ligand_file = 'ligand.pdb'
+            ligand_file = "ligand.pdb"
             self.ligand_pdb_path = os.path.abspath(ligand_file)
 
             # Open output files for writing protein and ligand portions
-            with open(protein_file, 'w') as prot_out, open(ligand_file, 'w') as lig_out:
+            with open(protein_file, "w") as prot_out, open(ligand_file, "w") as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
                         # Replace ligand residue name with LIG
@@ -254,11 +270,13 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
 
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
             has_hydrogens = any(
-                line[76:78].strip() == 'H' or line[12:16].strip().startswith('H')
+                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
                 for line in hetatm_lines
             )
             if not has_hydrogens:
-                self._log("[!] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences.")
+                self._log(
+                    "[!] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
+                )
 
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
@@ -269,11 +287,15 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
             else:
                 self._log("[!] ligand.itp not found in the current directory.")
                 if use_ligand_builder:
-                    ligand_pipeline = Ligand_Pipeline(logger=self.logger, debug=self.debug)
-                    ligand_pdb = 'ligand.pdb'
+                    ligand_pipeline = Ligand_Pipeline(
+                        logger=self.logger, debug=self.debug
+                    )
+                    ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                     if mol2_file is None:
-                        self._log("[Ligand_Pipeline][ERROR] MOL2 generation failed. Aborting ligand pipeline.")
+                        self._log(
+                            "[Ligand_Pipeline][ERROR] MOL2 generation failed. Aborting ligand pipeline."
+                        )
                         return
                     # Find the start and end of the ATOM section
                     with open(mol2_file) as f:
@@ -281,32 +303,59 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                     atom_start = None
                     atom_end = None
                     for i, line in enumerate(lines):
-                        if line.strip() == '@<TRIPOS>ATOM':
+                        if line.strip() == "@<TRIPOS>ATOM":
                             atom_start = i + 1
-                        elif line.strip().startswith('@<TRIPOS>BOND') and atom_start is not None:
+                        elif (
+                            line.strip().startswith("@<TRIPOS>BOND")
+                            and atom_start is not None
+                        ):
                             atom_end = i
                             break
                     if atom_start is None:
-                        self._log("[Ligand_Pipeline][ERROR] Could not find ATOM section in MOL2 file.")
+                        self._log(
+                            "[Ligand_Pipeline][ERROR] Could not find ATOM section in MOL2 file."
+                        )
                         return
                     if atom_end is None:
                         atom_end = len(lines)
                     atom_lines = lines[atom_start:atom_end]
                     # Parse atom lines into DataFrame
-                    df_atoms = pd.read_csv(io.StringIO(''.join(atom_lines)), sep='\s+', header=None,
-                                           names=['atom_id', 'atom_name', 'x', 'y', 'z', 'atom_type', 'subst_id',
-                                                  'subst_name', 'charge', 'status_bit'])
+                    df_atoms = pd.read_csv(
+                        io.StringIO("".join(atom_lines)),
+                        sep="\s+",
+                        header=None,
+                        names=[
+                            "atom_id",
+                            "atom_name",
+                            "x",
+                            "y",
+                            "z",
+                            "atom_type",
+                            "subst_id",
+                            "subst_name",
+                            "charge",
+                            "status_bit",
+                        ],
+                    )
                     # Generate ORCA Geometry Optimization input
-                    orca_geom_input = mol2_file.replace('.mol2', '.inp')
-                    ligand_pipeline.mol2_dataframe_to_orca_geom_opt_input(df_atoms, orca_geom_input, charge=charge,
-                                                                          multiplicity=multiplicity)
+                    orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                    ligand_pipeline.mol2_dataframe_to_orca_geom_opt_input(
+                        df_atoms,
+                        orca_geom_input,
+                        charge=charge,
+                        multiplicity=multiplicity,
+                    )
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
 
                     # Generate ligand.itp from ORCA output
-                    ligand_pipeline.generate_forcefield_with_orca_mm(xyz_file="ligand.xyz", charge=charge,
-                                                                     multiplicity=multiplicity, method="-XTBOptPBE",
-                                                                     nprocs=4)
+                    ligand_pipeline.generate_forcefield_with_orca_mm(
+                        xyz_file="ligand.xyz",
+                        charge=charge,
+                        multiplicity=multiplicity,
+                        method="-XTBOptPBE",
+                        nprocs=4,
+                    )
                     return
                 else:
                     self._log("[!] ligand.itp not found. Exiting.")
@@ -314,14 +363,16 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         else:
             # If no HETATM lines are found, treat entire file as protein
             self.ligand_pdb_path = None
-            with open(protein_file, 'w') as prot_out:
+            with open(protein_file, "w") as prot_out:
                 for line in lines:
                     # Normalize histidine variants to 'HIS'
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
 
-            self._log("[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
+            self._log(
+                "[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
+            )
         self.modeller.find_missing_residues()
 
     def do_pdb2gmx(self, arg):
@@ -329,12 +380,15 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         Run pdb2gmx. If ligand is present, treat protein and ligand separately.
         Usage: "pdb2gmx"
         """
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
 
-        self.builder.run_pdb2gmx(protein_pdb,custom_command=self.custom_cmds["pdb2gmx"])
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds["pdb2gmx"]
+        )
 
         if not os.path.isfile(output_gro):
             self._log(f"[!] Expected {output_gro} was not created.")
@@ -342,7 +396,9 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
 
         # Combine ligand coordinates
         if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            self.editor.append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+            self.editor.append_ligand_coordinates_to_gro(
+                output_gro, "ligand.pdb", "complex.gro"
+            )
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
         else:
             shutil.copy(str(output_gro), "complex.gro")  # only protein
@@ -356,9 +412,12 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
 
         complex_pdb = "complex" if self.ligand_pdb_path else "protein"
 
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
-        self.builder.run_solvate(complex_pdb, custom_command=self.custom_cmds["solvate"])
+        self.builder.run_solvate(
+            complex_pdb, custom_command=self.custom_cmds["solvate"]
+        )
 
     def do_genions(self, arg):
         """
@@ -368,16 +427,20 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         """
         solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
 
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
-        self.builder.run_genions(solvated_pdb, custom_command=self.custom_cmds["genions"])
+        self.builder.run_genions(
+            solvated_pdb, custom_command=self.custom_cmds["genions"]
+        )
 
     def do_em(self, arg):
         """
         Runs default energy minimization on the command line
         Usage: "em"
         """
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
         self.sim.run_em(self.basename, arg=arg)
 
@@ -386,7 +449,8 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         Runs default NVT equilibration on the command line
         Usage: "em"
         """
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
         self.sim.run_nvt(self.basename, arg=arg)
 
@@ -395,7 +459,8 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         Runs default NPT equilibration on the command line
         Usage: "npt"
         """
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
         self.sim.run_npt(self.basename, arg=arg)
 
@@ -404,7 +469,8 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         Runs default production-phase MD on the command line
         Usage: "production"
         """
-        if not self._require_pdb(): return
+        if not self._require_pdb():
+            return
 
         self.sim.run_production(self.basename, arg=arg)
 
@@ -435,7 +501,7 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         """
         itp_path = arg.strip()
 
-        if not itp_path.endswith('.itp'):
+        if not itp_path.endswith(".itp"):
             self._log("[!] Must provide a path to a .itp file.")
             return
 
@@ -471,7 +537,11 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
         Copies template .mdp files and SLURM script to the current directory based on options.
         """
         args = arg.strip().lower().split()
-        if len(args) != 2 or args[0] not in ["md", "tremd"] or args[1] not in ["cpu", "gpu"]:
+        if (
+            len(args) != 2
+            or args[0] not in ["md", "tremd"]
+            or args[1] not in ["cpu", "gpu"]
+        ):
             print("[!] Usage: slurm <md|tremd> <cpu|gpu>")
             return
 
@@ -494,7 +564,9 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                 shutil.copy(str(analysis_slurm), os.getcwd())
                 self._log("[#] Copied run_tremd_analysis.slurm.")
             else:
-                self._log("[!] run_tremd_analysis.slurm not found in template directory.")
+                self._log(
+                    "[!] run_tremd_analysis.slurm not found in template directory."
+                )
 
         # Determine input SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
@@ -511,10 +583,14 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
                 slurm_content = f.read()
 
             # Replace BASE variable in SLURM script with basename
-            slurm_content = re.sub(r'__BASE__', self.basename or "PLACEHOLDER", slurm_content)
+            slurm_content = re.sub(
+                r"__BASE__", self.basename or "PLACEHOLDER", slurm_content
+            )
 
             # Replace init variable in SLURM script
-            slurm_content = re.sub(r'__BASE__', self.basename or "PLACEHOLDER", slurm_content)
+            slurm_content = re.sub(
+                r"__BASE__", self.basename or "PLACEHOLDER", slurm_content
+            )
 
             # Write modified SLURM script
             out_slurm = f"{slurm_tpl_name}"
@@ -551,7 +627,9 @@ Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requir
 
 def main():
     parser = argparse.ArgumentParser(description="YAGWIP - GROMACS CLI interface")
-    parser.add_argument("-i", "--interactive", action="store_true", help="Run interactive CLI")
+    parser.add_argument(
+        "-i", "--interactive", action="store_true", help="Run interactive CLI"
+    )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
 
     args = parser.parse_args()
@@ -563,7 +641,9 @@ def main():
             with open(args.file, "r") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith("#"):  # skip empty lines and comments
+                    if line and not line.startswith(
+                        "#"
+                    ):  # skip empty lines and comments
                         print(f"YAGWIP> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:

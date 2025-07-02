@@ -8,11 +8,7 @@ import subprocess
 import shutil
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {
-    'pdb2gmx': '1\n',
-    'genion_prot': '13\n',
-    'genion_complex': '15\n'
-}
+PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
 
 
 class Builder(LoggingMixin):
@@ -45,7 +41,12 @@ class Builder(LoggingMixin):
             return
 
         self._log(f"[#] Running pdb2gmx for {base}.pdb...")
-        run_gromacs_command(command, pipe_input=PIPE_INPUTS['pdb2gmx'], debug=self.debug, logger=self.logger)
+        run_gromacs_command(
+            command,
+            pipe_input=PIPE_INPUTS["pdb2gmx"],
+            debug=self.debug,
+            logger=self.logger,
+        )
 
     def run_solvate(self, basename, arg="", custom_command=None):
         base = self._resolve_basename(basename)
@@ -60,7 +61,7 @@ class Builder(LoggingMixin):
 
         default_cmds = [
             f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{box_options}",
-            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top"
+            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top",
         ]
 
         if self.debug:
@@ -86,11 +87,15 @@ class Builder(LoggingMixin):
         tpr_out = "ions.tpr"
         ion_options = "-pname NA -nname CL -conc 0.150 -neutral"
         grompp_opts = ""
-        ion_pipe_input = PIPE_INPUTS['genion_prot'] if base.endswith('protein') else PIPE_INPUTS['genion_complex']
+        ion_pipe_input = (
+            PIPE_INPUTS["genion_prot"]
+            if base.endswith("protein")
+            else PIPE_INPUTS["genion_complex"]
+        )
 
         default_cmds = [
             f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
-            f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}"
+            f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}",
         ]
 
         if self.debug:
@@ -105,7 +110,9 @@ class Builder(LoggingMixin):
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
         else:
             for cmd in default_cmds:
-                run_gromacs_command(cmd, pipe_input=ion_pipe_input, debug=self.debug, logger=self.logger)
+                run_gromacs_command(
+                    cmd, pipe_input=ion_pipe_input, debug=self.debug, logger=self.logger
+                )
 
 
 class Modeller(LoggingMixin):
@@ -122,7 +129,7 @@ class Modeller(LoggingMixin):
         Only uses simple string parsing, no Biopython dependency.
         """
         residue_map = {}  # {chain_id: sorted list of residue IDs}
-        with open(self.pdb, 'r') as f:
+        with open(self.pdb, "r") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     chain_id = line[21].strip() or "A"
@@ -143,7 +150,11 @@ class Modeller(LoggingMixin):
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
 
-        self._log(f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found.")
+        self._log(
+            f"[!] Found missing residue ranges: {gaps}"
+            if gaps
+            else "[#] No gaps found."
+        )
         return gaps
 
 
@@ -159,51 +170,61 @@ class Ligand_Pipeline(LoggingMixin):
 
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
-            'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66, 'F': 0.57, 'P': 1.07, 'S': 1.05, 'CL': 1.02, 'BR': 1.20,
-            'I': 1.39
+            "H": 0.31,
+            "C": 0.76,
+            "N": 0.71,
+            "O": 0.66,
+            "F": 0.57,
+            "P": 1.07,
+            "S": 1.05,
+            "CL": 1.02,
+            "BR": 1.20,
+            "I": 1.39,
         }
         bond_tolerance = 0.45  # Ångstroms
 
         if mol2_file is None:
-            mol2_file = pdb_file.replace('.pdb', '.mol2')
+            mol2_file = pdb_file.replace(".pdb", ".mol2")
 
         # Efficiently parse ATOM/HETATM lines from PDB
         atom_records = []
-        with open(pdb_file, 'r') as f:
+        with open(pdb_file, "r") as f:
             for line in f:
-                if line.startswith(('ATOM', 'HETATM')):
+                if line.startswith(("ATOM", "HETATM")):
                     atom_id = int(line[6:11])
                     atom_name = line[12:16].strip()
                     x = float(line[30:38])
                     y = float(line[38:46])
                     z = float(line[46:54])
-                    element = line[76:78].strip().upper() if len(line) >= 78 else ''
+                    element = line[76:78].strip().upper() if len(line) >= 78 else ""
                     if not element:
                         # Fallback: use first letter of atom_name
                         element = atom_name[0].upper()
                     res_name = line[17:20].strip()
                     res_id = int(line[22:26])
-                    chain_id = line[21].strip() or 'A'
-                    atom_records.append({
-                        'atom_id': atom_id,
-                        'atom_name': atom_name,
-                        'x': x,
-                        'y': y,
-                        'z': z,
-                        'atom_type': element,
-                        'subst_id': 1,
-                        'subst_name': res_name,
-                        'charge': 0.0,
-                        'status_bit': '',
-                    })
+                    chain_id = line[21].strip() or "A"
+                    atom_records.append(
+                        {
+                            "atom_id": atom_id,
+                            "atom_name": atom_name,
+                            "x": x,
+                            "y": y,
+                            "z": z,
+                            "atom_type": element,
+                            "subst_id": 1,
+                            "subst_name": res_name,
+                            "charge": 0.0,
+                            "status_bit": "",
+                        }
+                    )
         if not atom_records:
             self._log(f"[!] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
 
         # Bond detection
-        coords = df_atoms[['x', 'y', 'z']].values
-        elements = df_atoms['atom_type'].values
+        coords = df_atoms[["x", "y", "z"]].values
+        elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
         bonds = []
         bond_id = 1
@@ -211,35 +232,43 @@ class Ligand_Pipeline(LoggingMixin):
             for j in range(i + 1, n_atoms):
                 elem_i = elements[i]
                 elem_j = elements[j]
-                r_cov_i = covalent_radii.get(elem_i, 0.77)  # Default to C radius if unknown
+                r_cov_i = covalent_radii.get(
+                    elem_i, 0.77
+                )  # Default to C radius if unknown
                 r_cov_j = covalent_radii.get(elem_j, 0.77)
                 max_bond = r_cov_i + r_cov_j + bond_tolerance
                 dist = np.linalg.norm(coords[i] - coords[j])
                 if 0.4 < dist < max_bond:
-                    bonds.append({
-                        'bond_id': bond_id,
-                        'origin_atom_id': int(df_atoms.iloc[i]['atom_id']),
-                        'target_atom_id': int(df_atoms.iloc[j]['atom_id']),
-                        'bond_type': '1',  # single bond for now
-                        'status_bit': ''
-                    })
+                    bonds.append(
+                        {
+                            "bond_id": bond_id,
+                            "origin_atom_id": int(df_atoms.iloc[i]["atom_id"]),
+                            "target_atom_id": int(df_atoms.iloc[j]["atom_id"]),
+                            "bond_type": "1",  # single bond for now
+                            "status_bit": "",
+                        }
+                    )
                     bond_id += 1
         df_bonds = pd.DataFrame(bonds)
 
         # Build minimal MOL2 dict
         mol2 = {}
-        mol2['MOLECULE'] = pd.DataFrame([{
-            'mol_name': os.path.splitext(os.path.basename(pdb_file))[0],
-            'num_atoms': len(df_atoms),
-            'num_bonds': len(df_bonds),
-            'num_subst': 1,
-            'num_feat': 0,
-            'num_sets': 0,
-            'mol_type': 'SMALL',
-            'charge_type': 'NO_CHARGES',
-        }])
-        mol2['ATOM'] = df_atoms
-        mol2['BOND'] = df_bonds
+        mol2["MOLECULE"] = pd.DataFrame(
+            [
+                {
+                    "mol_name": os.path.splitext(os.path.basename(pdb_file))[0],
+                    "num_atoms": len(df_atoms),
+                    "num_bonds": len(df_bonds),
+                    "num_subst": 1,
+                    "num_feat": 0,
+                    "num_sets": 0,
+                    "mol_type": "SMALL",
+                    "charge_type": "NO_CHARGES",
+                }
+            ]
+        )
+        mol2["ATOM"] = df_atoms
+        mol2["BOND"] = df_bonds
 
         # Write MOL2 file
         with open(mol2_file, "w", encoding="utf-8") as out_file:
@@ -248,26 +277,39 @@ class Ligand_Pipeline(LoggingMixin):
             out_file.write(f"### Created by Ligand_Pipeline {today}\n")
             out_file.write("###\n\n")
             out_file.write("@<TRIPOS>MOLECULE\n")
-            m = mol2['MOLECULE'].iloc[0]
+            m = mol2["MOLECULE"].iloc[0]
             out_file.write(f"{m['mol_name']}\n")
-            out_file.write(f" {m['num_atoms']} {m['num_bonds']} {m['num_subst']} {m['num_feat']} {m['num_sets']}\n")
+            out_file.write(
+                f" {m['num_atoms']} {m['num_bonds']} {m['num_subst']} {m['num_feat']} {m['num_sets']}\n"
+            )
             out_file.write(f"{m['mol_type']}\n")
             out_file.write(f"{m['charge_type']}\n\n")
             out_file.write("@<TRIPOS>ATOM\n")
-            for _, row in mol2['ATOM'].iterrows():
+            for _, row in mol2["ATOM"].iterrows():
                 out_file.write(
-                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n")
+                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n"
+                )
             if len(df_bonds) > 0:
                 out_file.write("@<TRIPOS>BOND\n")
-                for _, row in mol2['BOND'].iterrows():
+                for _, row in mol2["BOND"].iterrows():
                     out_file.write(
-                        f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n")
-        self._log(f"[#] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}.")
+                        f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n"
+                    )
+        self._log(
+            f"[#] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
+        )
         return mol2_file
 
-    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="HF",
-                                              basis="6-31G*",
-                                              maxcycle=512):
+    def mol2_dataframe_to_orca_geom_opt_input(
+        self,
+        df_atoms,
+        output_file,
+        charge=0,
+        multiplicity=1,
+        theory="HF",
+        basis="6-31G*",
+        maxcycle=512,
+    ):
         """
         Generate an ORCA input file from a DataFrame of atomic coordinates.
 
@@ -284,10 +326,14 @@ class Ligand_Pipeline(LoggingMixin):
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        output_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(output_file)))
+        output_file = os.path.abspath(
+            os.path.join(orca_dir, os.path.basename(output_file))
+        )
 
-        if not {'atom_type', 'x', 'y', 'z'}.issubset(df_atoms.columns):
-            raise ValueError("df_atoms must contain 'atom_type', 'x', 'y', 'z' columns.")
+        if not {"atom_type", "x", "y", "z"}.issubset(df_atoms.columns):
+            raise ValueError(
+                "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
+            )
 
         with open(output_file, "w") as f:
             f.write(f"! {theory} {basis} Opt TightSCF\n")
@@ -297,8 +343,10 @@ class Ligand_Pipeline(LoggingMixin):
             f.write("%pal nprocs 4 end\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
-                element = row['atom_type']
-                f.write(f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n")
+                element = row["atom_type"]
+                f.write(
+                    f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n"
+                )
             f.write("*\n")
         self._log(f"[#] ORCA input written to: {output_file}")
         return output_file
@@ -308,16 +356,22 @@ class Ligand_Pipeline(LoggingMixin):
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
-        input_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(input_file)))
+        input_file = os.path.abspath(
+            os.path.join(orca_dir, os.path.basename(input_file))
+        )
         orca_path = ToolChecker.check_orca_available()
         if orca_path is None:
             return False
         if output_file is None:
-            output_file = os.path.splitext(input_file)[0] + '.out'
+            output_file = os.path.splitext(input_file)[0] + ".out"
         else:
-            output_file = os.path.abspath(os.path.join(orca_dir, os.path.basename(output_file)))
+            output_file = os.path.abspath(
+                os.path.join(orca_dir, os.path.basename(output_file))
+            )
         try:
-            result = subprocess.run([orca_path, input_file], capture_output=True, text=True)
+            result = subprocess.run(
+                [orca_path, input_file], capture_output=True, text=True
+            )
             with open(output_file, "w") as f:
                 f.write(result.stdout)
                 if result.stderr:
@@ -331,8 +385,14 @@ class Ligand_Pipeline(LoggingMixin):
             self._log(f"[!] Failed to run ORCA: {e}")
             return False
 
-    def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge=0, multiplicity=1,
-                                         method="-XTBOptPBE", nprocs=4):
+    def generate_forcefield_with_orca_mm(
+        self,
+        xyz_file="ligand.xyz",
+        charge=0,
+        multiplicity=1,
+        method="-XTBOptPBE",
+        nprocs=4,
+    ):
         """
         Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS.
 
@@ -360,12 +420,16 @@ class Ligand_Pipeline(LoggingMixin):
             return False
 
         cmd = [
-            orca_mm_path, "-makeff",
+            orca_mm_path,
+            "-makeff",
             xyz_path,
-            "-C", str(charge),
-            "-M", str(multiplicity),
-            "-nproc", str(nprocs),
-            method
+            "-C",
+            str(charge),
+            "-M",
+            str(multiplicity),
+            "-nproc",
+            str(nprocs),
+            method,
         ]
 
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
@@ -382,9 +446,10 @@ class Ligand_Pipeline(LoggingMixin):
                 self._log(f"[!] ORCA_MM failed. See {log_file} for details.")
                 return False
 
-            self._log(f"[#] ORCA_MM force field generation complete. Log written to: {log_file}")
+            self._log(
+                f"[#] ORCA_MM force field generation complete. Log written to: {log_file}"
+            )
             return True
         except Exception as e:
             self._log(f"[!] Failed to run ORCA_MM: {e}")
             return False
-
