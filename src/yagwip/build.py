@@ -315,7 +315,7 @@ class LigandPipeline(LoggingMixin):
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
             )
         with open(output_file, "w") as f:
-            f.write(f"! {theory} Opt Tight\n")
+            f.write(f"! {theory} Opt\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
                 element = row["atom_type"]
