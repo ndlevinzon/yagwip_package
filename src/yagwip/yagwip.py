@@ -544,13 +544,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
 
         # Copy analysis SLURM file for tremd
         if sim_type == "tremd":
-            analysis_slurm = template_dir / "run_tremd_analysis.slurm"
+            analysis_slurm = template_dir / "run_gmx_tremd_min_cpu.slurm"
             if analysis_slurm.is_file():
                 shutil.copy(str(analysis_slurm), os.getcwd())
-                self._log("[#] Copied run_tremd_analysis.slurm.")
+                self._log("[#] Copied run_gmx_tremd_min_cpu.slurm.")
             else:
                 self._log(
-                    "[!] run_tremd_analysis.slurm not found in template directory."
+                    "[!] run_gmx_tremd_min_cpu.slurm not found in template directory."
                 )
 
         # Determine input SLURM template

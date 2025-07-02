@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=7r62_536s_fulvestrant_gmx_min
+#SBATCH --job-name=__BASE___gmx_min
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=1              # Number of Nodes
 #SBATCH --ntasks-per-node=1    # Replicas per Node
 #SBATCH --cpus-per-task=64     # CPUs Per Replicas
-#SBATCH --time=12:00:00        # Time limit (12 hour)
+#SBATCH --time=01:00:00        # Time limit (1 hour)
 #SBATCH --exclusive            # Exclusive node allocation
 #SBATCH --mem=0                # Use all available memory
 
@@ -18,13 +18,10 @@ module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 # ------------------------
 # VARIABLES
 # ------------------------
-init="complex.solv.ions"
+init="__INIT_GRO__"
 mini_prefix="em"
 nvt_prefix="nvt"
 npt_prefix="npt"
-prod_prefix="step5_production"
-prod_step="step"
-
 
 # ------------------------
 # ADJUST TOPOL FILE TO CURRENT WORKING DIRECTORY
@@ -112,13 +109,17 @@ else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
 
-# ------------------------
-# Step 3: Production (10 segments)
-# ------------------------
-echo "Starting production MD..."
+echo "Minimization and Equilibration Done. Submitting TREMD..."
+sbatch run_gmx_tremd_cpu.slurm
 
-srun gmx_mpi mdrun -ntomp ${SLURM_CPUS_PER_TASK} -cpt 60 -cpi prod.cpt -maxh 11.92
-
-sbatch run_gmx_parallel.slurm
-
-
+#      ___          _____
+#     /__/\        /  /::\
+#     \  \:\      /  /:/\:\
+#      \  \:\    /  /:/  \:\   ___     ___
+#  _____\__\:\  /__/:/ \__\:| /__/\   /  /\
+# /__/::::::::\ \  \:\ /  /:/ \  \:\ /  /:/
+# \  \:\~~\~~\/  \  \:\  /:/   \  \:\  /:/
+#  \  \:\  ~~~    \  \:\/:/     \  \:\/:/
+#   \  \:\         \  \::/       \  \::/
+#    \  \:\         \__\/         \__\/
+#     \__\/

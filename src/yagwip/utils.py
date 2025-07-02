@@ -1,10 +1,13 @@
-# utils.py -- YAGWIP Utility Functions
+"""
+utils.py -- YAGWIP Utility Functions
+"""
 
 # === Standard Library Imports ===
 import os
 import re
 import math
 import time
+import shutil
 import logging
 import subprocess
 
@@ -13,8 +16,6 @@ import numpy as np
 
 
 # === External Dependency Checker ===
-
-
 class ToolChecker:
     """
     Utility class for checking the availability of external tools required by YAGWIP.
@@ -27,8 +28,6 @@ class ToolChecker:
         Check if ORCA is available in the system PATH.
         Returns the path to the ORCA executable if found, else None.
         """
-        import shutil
-
         orca_path = shutil.which("orca")
         if orca_path is None:
             print(
@@ -44,8 +43,6 @@ class ToolChecker:
         Check if OpenMPI (mpirun) is available in the system PATH.
         Returns the path to the mpirun executable if found, else None.
         """
-        import shutil
-
         mpirun_path = shutil.which("mpirun")
         if mpirun_path is None:
             print(
@@ -65,11 +62,9 @@ class ToolChecker:
         Returns:
             bool: True if GROMACS is available, False otherwise.
         """
-        import subprocess
-
         try:
             result = subprocess.run(
-                [gmx_path, "--version"], capture_output=True, text=True, timeout=10
+                [gmx_path, "--version"], capture_output=True, text=True, timeout=10, check=False
             )
             return result.returncode == 0
         except (
@@ -110,7 +105,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     """
     # Log or print the command about to be executed
     if logger:
-        logger.info(f"[RUNNING] {command}")
+        logger.info("[RUNNING] %s", command)
     else:
         print(f"[RUNNING] {command}")
 
@@ -131,6 +126,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
             shell=True,  # Run command through shell
             capture_output=True,  # Capture both stdout and stderr
             text=True,  # Decode outputs as strings instead of bytes
+            check=False,  # Raise an error if the command fails
         )
 
         # Strip leading/trailing whitespace from stderr and stdout
@@ -148,9 +144,9 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
             if logger:
                 logger.error(err_msg)
                 if stderr:
-                    logger.error(f"[STDERR] {stderr}")
+                    logger.error("[STDERR] %s", stderr)
                 if stdout:
-                    logger.info(f"[STDOUT] {stdout}")
+                    logger.info("[STDOUT] %s", stdout)
             else:
                 print(err_msg)
                 if stderr:
@@ -176,13 +172,12 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     top_path = "./topol.top"
 
                     try:
-                        with open(top_path, "r") as f:
+                        with open(top_path, "r", encoding="utf-8") as f:
                             lines = f.readlines()
-
                         if 0 <= line_num - 1 < len(lines):
                             if not lines[line_num - 1].strip().startswith(";"):
                                 lines[line_num - 1] = f";{lines[line_num - 1]}"
-                                with open(top_path, "w") as f:
+                                with open(top_path, "w", encoding="utf-8") as f:
                                     f.writelines(lines)
 
                                 msg = (
@@ -195,7 +190,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                     print(msg)
 
                                 # Retry the command
-                                retry_msg = f"[#] Rerunning command after modifying topol.top..."
+                                retry_msg = "[#] Rerunning command after modifying topol.top..."
                                 if logger:
                                     logger.info(retry_msg)
                                 else:
@@ -228,7 +223,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
             # If successful, optionally print/log stdout
             if stdout:
                 if logger:
-                    logger.info(f"[STDOUT] {stdout}")
+                    logger.info("[STDOUT] %s", stdout)
                 else:
                     print(stdout)
             return True
@@ -236,7 +231,7 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     except Exception as e:
         # Catch and log any unexpected runtime exceptions (e.g., permission issues)
         if logger:
-            logger.exception(f"[!] Failed to run command: {e}")
+            logger.exception("[!] Failed to run command: %s", e)
         else:
             print(f"[!] Failed to run command: {e}")
         return False
@@ -307,9 +302,9 @@ def setup_logger(debug_mode=False):
 
     # Optional: Notify the user where logs are being written
     if not debug_mode:
-        logger.info(f"Output logged to {logfile}")
+        logger.info("Output logged to %s", logfile)
     else:
-        logger.debug(f"Debug logging active; also writing to {logfile}")
+        logger.debug("Debug logging active; also writing to %s", logfile)
 
     # Return the configured logger object
     return logger
@@ -345,7 +340,7 @@ class Editor(LoggingMixin):
             self._log(f"[!] {self.ligand_itp} not found.")
             return
 
-        with open(self.ligand_itp, "r") as f:
+        with open(self.ligand_itp, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         atomtypes_block = []
@@ -364,7 +359,7 @@ class Editor(LoggingMixin):
             else:
                 new_ligand_lines.append(line)
 
-        with open(self.ligand_itp, "w") as fout:
+        with open(self.ligand_itp, "w", encoding="utf-8") as fout:
             fout.writelines(new_ligand_lines)
         self._log("[#] Removed [ atomtypes ] section from ligand.itp")
 
@@ -376,14 +371,14 @@ class Editor(LoggingMixin):
             self._log(f"[!] {self.ffnonbonded_itp} not found.")
             return
 
-        with open(self.ffnonbonded_itp, "r") as f:
+        with open(self.ffnonbonded_itp, "r", encoding="utf-8") as f:
             if ";ligand" in f.read():
                 self._log(
                     "[#] Ligand section already exists in ffnonbonded.itp. Skipping..."
                 )
                 return
 
-        with open(self.ffnonbonded_itp, "a") as f:
+        with open(self.ffnonbonded_itp, "a", encoding="utf-8") as f:
             f.write("\n;ligand\n")
             f.writelines(atomtypes_block)
 
@@ -394,7 +389,7 @@ class Editor(LoggingMixin):
             self._log(f"[!] {self.ligand_itp} not found.")
             return
 
-        with open(self.ligand_itp, "r") as f:
+        with open(self.ligand_itp, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         output_lines = []
@@ -432,13 +427,13 @@ class Editor(LoggingMixin):
             self._log("[#] No impropers with func=4 found to modify. Skipping...")
             return
 
-        with open(self.ligand_itp, "w") as f:
+        with open(self.ligand_itp, "w", encoding="utf-8") as f:
             f.writelines(output_lines)
 
         self._log(f"[#] Improper dihedrals converted to func=2 in {self.ligand_itp}.")
 
     def rename_residue_in_itp_atoms_section(self, old_resname="MOL", new_resname="LIG"):
-        with open(self.ligand_itp, "r") as f:
+        with open(self.ligand_itp, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         in_atoms = in_moleculetype = False
@@ -487,7 +482,7 @@ class Editor(LoggingMixin):
 
             modified_lines.append(line)
 
-        with open(self.ligand_itp, "w") as f:
+        with open(self.ligand_itp, "w", encoding="utf-8") as f:
             f.writelines(modified_lines)
 
         self._log(
@@ -498,7 +493,7 @@ class Editor(LoggingMixin):
         self, protein_gro, ligand_pdb, combined_gro="complex.gro"
     ):
         coords = []
-        with open(ligand_pdb, "r") as f:
+        with open(ligand_pdb, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     res_id = int(line[23:26].strip())
@@ -510,13 +505,13 @@ class Editor(LoggingMixin):
                     z = float(line[46:54])
                     coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
 
-        with open(protein_gro, "r") as f:
+        with open(protein_gro, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         header, atom_lines, box = lines[:2], lines[2:-1], lines[-1]
         total_atoms = len(atom_lines) + len(coords)
 
-        with open(combined_gro, "w") as fout:
+        with open(combined_gro, "w", encoding="utf-8") as fout:
             fout.write(header[0])
             fout.write(f"{total_atoms}\n")
             fout.writelines(atom_lines)
@@ -529,7 +524,7 @@ class Editor(LoggingMixin):
         self._log(f"[#] Wrote combined coordinates to {combined_gro}")
 
     def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
-        with open(topol_top, "r") as f:
+        with open(topol_top, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         new_lines = []
@@ -575,7 +570,7 @@ class Editor(LoggingMixin):
             molecules_lines.append(f"{ligand_name}    1\n")
             new_lines.extend(molecules_lines)
 
-        with open(topol_top, "w") as f:
+        with open(topol_top, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
 
         self._log(
@@ -599,7 +594,7 @@ class Editor(LoggingMixin):
                     top_files.append(os.path.join(root, file))
 
         for top_file in top_files:
-            with open(top_file, "r") as f:
+            with open(top_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             new_lines = []
@@ -623,7 +618,7 @@ class Editor(LoggingMixin):
             new_lines[insert_idx:insert_idx] = include_lines
 
             # Write updated file
-            with open(top_file, "w") as f:
+            with open(top_file, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
 
             self._log(
