@@ -305,7 +305,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         xyz_file="ligand.xyz",
                         charge=charge,
                         multiplicity=multiplicity,
-                        method="-XTBOptPBE",
+                        method="-XTBOpt",
                         nprocs=4,
                     )
                     return

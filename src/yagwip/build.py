@@ -368,6 +368,7 @@ class LigandPipeline(LoggingMixin):
         xyz_file="ligand.xyz",
         charge=0,
         multiplicity=1,
+        method="-XTBOpt",
         nprocs=4,
     ):
         """Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS."""
@@ -390,7 +391,7 @@ class LigandPipeline(LoggingMixin):
             str(multiplicity),
             "-nproc",
             str(nprocs),
-            "-XTBOpt",
+            method,
         ]
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
         try:
