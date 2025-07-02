@@ -392,6 +392,7 @@ class LigandPipeline(LoggingMixin):
             "-nproc",
             str(nprocs),
             method,
+            "-verbose",
         ]
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
         try:
