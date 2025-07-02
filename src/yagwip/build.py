@@ -301,9 +301,7 @@ class LigandPipeline(LoggingMixin):
         output_file,
         charge=0,
         multiplicity=1,
-        theory="HF",
-        basis="6-31G*",
-        maxcycle=512,
+        theory="xtb2",
     ):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
@@ -317,11 +315,7 @@ class LigandPipeline(LoggingMixin):
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
             )
         with open(output_file, "w") as f:
-            f.write(f"! {theory} {basis} Opt TightSCF\n")
-            f.write("%scf\n")
-            f.write(f"  MaxIter {maxcycle}\n")
-            f.write("end\n")
-            f.write("%pal nprocs 4 end\n")
+            f.write(f"! {theory} Opt Tight\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
                 element = row["atom_type"]
