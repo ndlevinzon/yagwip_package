@@ -30,10 +30,11 @@ from importlib.resources import files
 import pandas as pd
 
 # === Local Imports ===
-from .build import Builder, Modeller, Ligand_Pipeline
+from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
 from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename
 
+# === Metadata ===
 __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
@@ -274,7 +275,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             else:
                 self._log("[!] ligand.itp not found in the current directory.")
                 if use_ligand_builder:
-                    ligand_pipeline = Ligand_Pipeline(
+                    ligand_pipeline = LigandPipeline(
                         logger=self.logger, debug=self.debug
                     )
                     ligand_pdb = "ligand.pdb"

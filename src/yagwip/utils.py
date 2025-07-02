@@ -1,6 +1,4 @@
 # utils.py -- YAGWIP Utility Functions
-# TODO: If this file grows further, consider splitting into multiple modules (e.g., gromacs_utils.py,
-#   logging_utils.py, file_utils.py)
 
 # === Standard Library Imports ===
 import os
