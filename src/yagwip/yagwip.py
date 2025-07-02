@@ -16,7 +16,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 # === Standard Library Imports ===
 import io
 import os
-import re
 import cmd
 import sys
 import shlex
@@ -33,6 +32,7 @@ import pandas as pd
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
 from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename
+from .slurm_writer import SlurmWriter
 
 # === Metadata ===
 __author__ = "NDL, gregorpatof"
@@ -531,60 +531,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             return
 
         sim_type, hardware = args
-        template_dir = files("yagwip.templates")
-
-        # Determine which .mdp file to skip
-        exclude = "production.mdp" if sim_type == "tremd" else "remd_template.mdp"
-
-        # Copy only relevant .mdp files
-        for f in template_dir.iterdir():
-            if f.name.endswith(".mdp") and f.name != exclude:
-                shutil.copy(str(f), os.getcwd())
-        self._log(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
-
-        # Copy analysis SLURM file for tremd
-        if sim_type == "tremd":
-            analysis_slurm = template_dir / "run_gmx_tremd_min_cpu.slurm"
-            if analysis_slurm.is_file():
-                shutil.copy(str(analysis_slurm), os.getcwd())
-                self._log("[#] Copied run_gmx_tremd_min_cpu.slurm.")
-            else:
-                self._log(
-                    "[!] run_gmx_tremd_min_cpu.slurm not found in template directory."
-                )
-
-        # Determine input SLURM template
-        slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
-        slurm_tpl_path = template_dir / slurm_tpl_name
-
-        if not slurm_tpl_path.is_file():
-            self._log(f"[!] SLURM template not found: {slurm_tpl_name}")
-            return
-
-        init_gro = "complex.solv.ions" if self.ligand_pdb_path else "protein.solv.ions"
-
-        try:
-            with open(str(slurm_tpl_path), "r") as f:
-                slurm_content = f.read()
-
-            # Replace BASE variable in SLURM script with basename
-            slurm_content = re.sub(
-                r"__BASE__", self.basename or "PLACEHOLDER", slurm_content
-            )
-
-            # Replace init variable in SLURM script
-            slurm_content = re.sub(
-                r"__BASE__", self.basename or "PLACEHOLDER", slurm_content
-            )
-
-            # Write modified SLURM script
-            out_slurm = f"{slurm_tpl_name}"
-            with open(out_slurm, "w") as f:
-                f.write(slurm_content)
-
-            self._log(f"[#] Customized SLURM script written: {out_slurm}")
-        except Exception as e:
-            self._log(f"[!] Failed to configure SLURM script: {e}")
+        writer = SlurmWriter(logger=self.logger)
+        writer.write_slurm_scripts(
+            sim_type=sim_type,
+            hardware=hardware,
+            basename=self.basename,
+            ligand_pdb_path=self.ligand_pdb_path,
+        )
 
     def print_random_quote(self):
         """
