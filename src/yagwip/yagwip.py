@@ -45,9 +45,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
     Provides a command-line interface for molecular simulation workflows.
     """
     # Intro message and prompt for the interactive CLI
-    intro = (
-        f"Welcome to YAGWIP v{__version__}. Type help to list commands."
-    )
+    intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
     prompt = "YAGWIP> "
 
     def __init__(self, gmx_path):
@@ -62,12 +60,10 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         self.print_banner()  # Prints intro banner to command line
         self.user_itp_paths = []  # Stores user input paths for do_source
         self.editor = Editor()  # Initialize the file Editor class from utils.py
-
         # Initialize the Editor class from utils.py
         self.modeller = Modeller(
             pdb="protein.pdb", debug=self.debug, logger=self.logger
         )
-
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
@@ -75,23 +71,15 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         self.builder = Builder(
             gmx_path=self.gmx_path, debug=self.debug, logger=self.logger
         )
-
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             print(f"[!] GROMACS Validation Error: {e}")
-            print(
-                "[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
-            )
+            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
             sys.exit(1)
-
-        # Dictionary of custom command overrides set by the user, not implemented yet
-        self.custom_cmds = {
-            "pdb2gmx": "",
-            "solvate": "",
-            "genions": "",
-        }
+        # Dictionary of custom command overrides set by the user
+        self.custom_cmds = {k: "" for k in ("pdb2gmx", "solvate", "genions")}
 
     def _require_pdb(self):
         """Check if a PDB file is loaded."""
@@ -118,10 +106,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             self.debug = False
         else:
             self.debug = not self.debug
-
         # Update logger and simulation mode
         self.logger = setup_logger(debug_mode=self.debug)
-
         self._log(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
@@ -156,35 +142,29 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             print(f"[!] Usage: set <{'|'.join(valid_keys)}>")
             return
         # Get the default command string
+        base = self.basename if self.basename else "PLACEHOLDER"
         if cmd_key == "pdb2gmx":
-            base = self.basename if self.basename else "PLACEHOLDER"
-            default = (
-                f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
-            )
+            default = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         elif cmd_key == "solvate":
-            base = self.basename if self.basename else "PLACEHOLDER"
             default = (
                 f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && "
                 f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs spc216.gro -o {base}.solv.gro -p topol.top"
             )
         elif cmd_key == "genions":
-            base = self.basename if self.basename else "PLACEHOLDER"
             ions_mdp = "ions.mdp"  # assuming it's copied to current dir already
             default = (
                 f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && "
                 f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
             )
-        # Show current value
+        # Show current command and prompt for new input
         current = self.custom_cmds.get(cmd_key) or default
         self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
-        self._log(
-            "Type new command or press ENTER to keep current. Type 'quit' to cancel."
-        )
+        self._log("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
         new_cmd = input("New command: ").strip()
         if new_cmd.lower() == "quit":
             self._log("[SET] Edit canceled.")
             return
-        if new_cmd == "":
+        if not new_cmd:
             self.custom_cmds[cmd_key] = current
             self._log("[SET] Keeping existing command.")
             return
@@ -204,25 +184,12 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         args = shlex.split(arg)
         if not args:
-            print(
-                "Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]"
-            )
+            print("Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]")
             return
         filename = args[0]
         use_ligand_builder = "--ligand_builder" in args
-        charge = 0
-        multiplicity = 1
-        if "--c" in args:
-            try:
-                charge = int(args[args.index("--c") + 1])
-            except Exception:
-                self._log("[!] Invalid value for --c (charge). Using default 0.")
-        if "--m" in args:
-            try:
-                multiplicity = int(args[args.index("--m") + 1])
-            except Exception:
-                self._log("[!] Invalid value for --m (multiplicity). Using default 1.")
-
+        charge = int(args[args.index("--c") + 1]) if "--c" in args else 0
+        multiplicity = int(args[args.index("--m") + 1]) if "--m" in args else 1
         full_path = os.path.abspath(filename)
         if not os.path.isfile(full_path):
             self._log(f"[!] '{filename}' not found.")
@@ -243,9 +210,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             ligand_file = "ligand.pdb"
             self.ligand_pdb_path = os.path.abspath(ligand_file)
             # Open output files for writing protein and ligand portions
-            with open(protein_file, "w", encoding="utf-8") as prot_out, open(
-                    ligand_file, "w", encoding="utf-8"
-            ) as lig_out:
+            with open(protein_file, "w", encoding="utf-8") as prot_out, open(ligand_file, "w", encoding="utf-8") as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
                         # Replace ligand residue name with LIG
