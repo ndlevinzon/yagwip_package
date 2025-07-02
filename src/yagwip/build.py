@@ -1,23 +1,38 @@
-from .utils import run_gromacs_command, LoggingMixin, ToolChecker
-from importlib.resources import files
-import pandas as pd
+"""
+build.py: GROMACS and ligand building utilities for YAGWIP.
+"""
+# === Standard Library Imports ===
 import os
-from datetime import date
-import numpy as np
 import subprocess
 import shutil
+from datetime import date
+from importlib.resources import files
+
+# === Third-Party Imports ===
+import pandas as pd
+import numpy as np
+
+# === Local Imports ===
+from .utils import run_gromacs_command, LoggingMixin, ToolChecker
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
+PIPE_INPUTS = {"pdb2gmx": "1\n",
+               "genion_prot": "13\n",
+               "genion_complex": "15\n"
+               }
 
 
 class Builder(LoggingMixin):
+    """Handles GROMACS system building steps."""
+
     def __init__(self, gmx_path, debug=False, logger=None):
+        """Initialize Builder."""
         self.gmx_path = gmx_path
         self.debug = debug
         self.logger = logger
 
     def _resolve_basename(self, basename):
+        """Resolve the basename for file operations."""
         if not basename and not self.debug:
             msg = "[!] No PDB loaded. Use `loadPDB <filename.pdb>` first."
             if self.logger:
@@ -28,18 +43,16 @@ class Builder(LoggingMixin):
         return basename if basename else "PLACEHOLDER"
 
     def run_pdb2gmx(self, basename, custom_command=None):
+        """Run pdb2gmx to generate topology and coordinates."""
         base = self._resolve_basename(basename)
         if base is None:
             return
-
         command = custom_command or (
             f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         )
-
         if self.debug:
             print(f"[DEBUG] Command: {command}")
             return
-
         self._log(f"[#] Running pdb2gmx for {base}.pdb...")
         run_gromacs_command(
             command,
@@ -49,26 +62,23 @@ class Builder(LoggingMixin):
         )
 
     def run_solvate(self, basename, arg="", custom_command=None):
+        """Run solvate to add solvent to the system."""
         base = self._resolve_basename(basename)
         if base is None:
             return
-
         default_box = " -c -d 1.0 -bt cubic"
         default_water = "spc216.gro"
         parts = arg.strip().split()
         box_options = parts[0] if len(parts) > 0 else default_box
         water_model = parts[1] if len(parts) > 1 else default_water
-
         default_cmds = [
             f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{box_options}",
             f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top",
         ]
-
         if self.debug:
             for cmd in default_cmds:
                 print(f"[DEBUG] Command: {cmd}")
             return
-
         if custom_command:
             self._log("[CUSTOM] Using custom solvate command")
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
@@ -77,10 +87,10 @@ class Builder(LoggingMixin):
                 run_gromacs_command(cmd, debug=self.debug, logger=self.logger)
 
     def run_genions(self, basename, custom_command=None):
+        """Run genion to add ions to the system."""
         base = self._resolve_basename(basename)
         if base is None:
             return
-
         default_ions = files("yagwip.templates").joinpath("ions.mdp")
         input_gro = f"{base}.solv.gro"
         output_gro = f"{base}.solv.ions.gro"
@@ -92,19 +102,15 @@ class Builder(LoggingMixin):
             if base.endswith("protein")
             else PIPE_INPUTS["genion_complex"]
         )
-
         default_cmds = [
             f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
             f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}",
         ]
-
         if self.debug:
             for cmd in default_cmds:
                 print(f"[DEBUG] Command: {cmd}")
             return
-
         self._log(f"[#] Running genion for {base}...")
-
         if custom_command:
             self._log("[CUSTOM] Using custom genion command")
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
@@ -116,20 +122,19 @@ class Builder(LoggingMixin):
 
 
 class Modeller(LoggingMixin):
+    """Protein structure modeller for missing residues."""
+
     def __init__(self, pdb, logger=None, debug=False, output_file="protein_test.pdb"):
+        """Initialize Modeller."""
         self.logger = logger
         self.debug = debug
         self.pdb = pdb
         self.output_file = output_file
 
     def find_missing_residues(self):
-        """
-        Identifies missing internal residues by checking for gaps in residue numbering.
-        Returns a list of gaps as (chain_id, last_res_before_gap, first_res_after_gap).
-        Only uses simple string parsing, no Biopython dependency.
-        """
+        """Identifies missing internal residues by checking for gaps in residue numbering."""
         residue_map = {}  # {chain_id: sorted list of residue IDs}
-        with open(self.pdb, "r") as f:
+        with open(self.pdb, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     chain_id = line[21].strip() or "A"
@@ -140,7 +145,6 @@ class Modeller(LoggingMixin):
                     if chain_id not in residue_map:
                         residue_map[chain_id] = set()
                     residue_map[chain_id].add(res_id)
-
         gaps = []
         for chain_id, residues in residue_map.items():
             sorted_residues = sorted(residues)
@@ -149,25 +153,21 @@ class Modeller(LoggingMixin):
                 next_expected = current + 1
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
-
         self._log(
-            f"[!] Found missing residue ranges: {gaps}"
-            if gaps
-            else "[#] No gaps found."
+            f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found."
         )
         return gaps
 
 
-class Ligand_Pipeline(LoggingMixin):
+class LigandPipeline(LoggingMixin):
+    """Ligand parameterization and force field generation pipeline."""
     def __init__(self, logger=None, debug=False):
+        """Initialize LigandPipeline."""
         self.logger = logger
         self.debug = debug
 
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
-        """
-        Converts a ligand PDB file to a MOL2 file using a custom parser and writer.
-        """
-
+        """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
             "H": 0.31,
@@ -182,13 +182,11 @@ class Ligand_Pipeline(LoggingMixin):
             "I": 1.39,
         }
         bond_tolerance = 0.45  # Ångstroms
-
         if mol2_file is None:
             mol2_file = pdb_file.replace(".pdb", ".mol2")
-
         # Efficiently parse ATOM/HETATM lines from PDB
         atom_records = []
-        with open(pdb_file, "r") as f:
+        with open(pdb_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     atom_id = int(line[6:11])
@@ -221,7 +219,6 @@ class Ligand_Pipeline(LoggingMixin):
             self._log(f"[!] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
-
         # Bond detection
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
@@ -250,7 +247,6 @@ class Ligand_Pipeline(LoggingMixin):
                     )
                     bond_id += 1
         df_bonds = pd.DataFrame(bonds)
-
         # Build minimal MOL2 dict
         mol2 = {}
         mol2["MOLECULE"] = pd.DataFrame(
@@ -269,12 +265,11 @@ class Ligand_Pipeline(LoggingMixin):
         )
         mol2["ATOM"] = df_atoms
         mol2["BOND"] = df_bonds
-
         # Write MOL2 file
         with open(mol2_file, "w", encoding="utf-8") as out_file:
             out_file.write("###\n")
             today = date.today().strftime("%Y-%m-%d")
-            out_file.write(f"### Created by Ligand_Pipeline {today}\n")
+            out_file.write(f"### Created by LigandPipeline {today}\n")
             out_file.write("###\n\n")
             out_file.write("@<TRIPOS>MOLECULE\n")
             m = mol2["MOLECULE"].iloc[0]
@@ -310,31 +305,17 @@ class Ligand_Pipeline(LoggingMixin):
         basis="6-31G*",
         maxcycle=512,
     ):
-        """
-        Generate an ORCA input file from a DataFrame of atomic coordinates.
-
-        Parameters:
-            df_atoms (pd.DataFrame): DataFrame with columns ['atom_type', 'x', 'y', 'z']
-            output_file (str): Path to write the ORCA .inp file
-            charge (int): Total molecular charge
-            multiplicity (int): Spin multiplicity
-            theory (str): QM theory level (e.g., HF)
-            basis (str): Basis set (e.g., 6-31G*)
-            maxcycle (int): Max SCF iterations
-        All files are written to the 'orca' subdirectory.
-        """
+        """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
         output_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(output_file))
         )
-
         if not {"atom_type", "x", "y", "z"}.issubset(df_atoms.columns):
             raise ValueError(
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
             )
-
         with open(output_file, "w") as f:
             f.write(f"! {theory} {basis} Opt TightSCF\n")
             f.write("%scf\n")
@@ -352,7 +333,7 @@ class Ligand_Pipeline(LoggingMixin):
         return output_file
 
     def run_orca(self, input_file, output_file=None):
-        "Requires ORCA and OPENMPI"
+        """Run ORCA quantum chemistry calculation."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
@@ -370,7 +351,7 @@ class Ligand_Pipeline(LoggingMixin):
             )
         try:
             result = subprocess.run(
-                [orca_path, input_file], capture_output=True, text=True
+                [orca_path, input_file], capture_output=True, text=True, check=False
             )
             with open(output_file, "w") as f:
                 f.write(result.stdout)
@@ -393,32 +374,16 @@ class Ligand_Pipeline(LoggingMixin):
         method="-XTBOptPBE",
         nprocs=4,
     ):
-        """
-        Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS.
-
-        Parameters:
-            xyz_file (str): The name of the XYZ file (should be in /orca/ directory).
-            charge (int): Total molecular charge.
-            multiplicity (int): Spin multiplicity.
-            method (str): Charge generation method. Options include:
-                          -XTBOpt, -PBEOpt, -XTBOptPBE, -noChargeCalc, etc.
-            nprocs (int): Number of processors to use.
-
-        Returns:
-            True if successful, False otherwise.
-        """
+        """Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS."""
         orca_dir = os.path.abspath("orca")
         xyz_path = os.path.abspath(os.path.join(orca_dir, xyz_file))
-
         if not os.path.exists(xyz_path):
             self._log(f"[Ligand_Pipeline][ERROR] XYZ file not found: {xyz_path}")
             return False
-
         orca_mm_path = shutil.which("orca_mm")
         if orca_mm_path is None:
             self._log("[!] orca_mm executable not found in PATH.")
             return False
-
         cmd = [
             orca_mm_path,
             "-makeff",
@@ -431,9 +396,7 @@ class Ligand_Pipeline(LoggingMixin):
             str(nprocs),
             method,
         ]
-
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
-
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=orca_dir)
             log_file = os.path.abspath(os.path.join(orca_dir, "orca_mm.log"))
@@ -445,7 +408,6 @@ class Ligand_Pipeline(LoggingMixin):
             if result.returncode != 0:
                 self._log(f"[!] ORCA_MM failed. See {log_file} for details.")
                 return False
-
             self._log(
                 f"[#] ORCA_MM force field generation complete. Log written to: {log_file}"
             )
