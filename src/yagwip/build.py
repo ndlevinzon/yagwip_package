@@ -371,101 +371,103 @@ class LigandPipeline(LoggingMixin):
             property_path (str): Path to the ORCA ligand.property.txt file.
             output_path (str, optional): Path to write the updated .mol2 file. If None, overwrite input.
         """
-        # Load mol2 as lines
+        # Load mol2 file and extract atom block
         with open(mol2_path, "r", encoding="utf-8") as f:
-            mol2_lines = f.readlines()
+            lines = f.readlines()
 
-        # Find atom and bond section indices
-        atom_start = next(i for i, line in enumerate(mol2_lines) if line.strip() == "@<TRIPOS>ATOM")
-        bond_start = next(i for i, line in enumerate(mol2_lines) if line.strip() == "@<TRIPOS>BOND")
-        atom_lines = mol2_lines[atom_start + 1:bond_start]
+        atom_section = False
+        atom_lines = []
+        for line in lines:
+            if line.strip().startswith("@<TRIPOS>ATOM"):
+                atom_section = True
+                continue
+            if line.strip().startswith("@<TRIPOS>"):
+                atom_section = False
+            if atom_section:
+                atom_lines.append(line.strip())
 
-        # Parse atom lines into DataFrame
-        atom_data = []
-        for line in atom_lines:
-            parts = line.strip().split()
-            atom_id = int(parts[0])
-            atom_name = parts[1]
-            x, y, z = map(float, parts[2:5])
-            atom_type = parts[5]
-            subst_id = int(parts[6])
-            subst_name = parts[7]
-            charge = float(parts[8]) if len(parts) > 8 else 0.0
-            atom_data.append({
-                "atom_id": atom_id,
-                "atom_name": atom_name,
-                "x": x,
-                "y": y,
-                "z": z,
-                "atom_type": atom_type,
-                "subst_id": subst_id,
-                "subst_name": subst_name,
-                "charge": charge
-            })
-        df_atoms = pd.DataFrame(atom_data)
+        # Parse ATOM lines into a DataFrame
+        mol2_columns = ["atom_id", "atom_name", "x", "y", "z", "atom_type", "subst_id", "subst_name", "charge"]
+        df_atoms = pd.DataFrame([line.split(None, 9) for line in atom_lines], columns=mol2_columns)
+        df_atoms[["atom_id"]] = df_atoms[["atom_id"]].astype(int)
+        df_atoms[["x", "y", "z", "charge"]] = df_atoms[["x", "y", "z", "charge"]].astype(float)
 
         # Parse charges from property file
-        with open(property_path, "r", encoding="utf-8") as f:
-            prop_content = f.read()
-        charges_section = re.search(r"&AtomicCharges\s+\[.*?\]\s+([\d\.\s\-Ee\n]+)", prop_content, re.DOTALL)
-        if charges_section:
-            charge_lines = charges_section.group(1).strip().splitlines()
-            charges = []
-            i = 0
-            while i < len(charge_lines):
-                line = charge_lines[i].strip()
-                if not line:
-                    i += 1
-                    continue
-                tokens = line.split()
-                last_token = tokens[-1] if tokens else ''
-                # If last token ends with 'e', 'e-' or 'e+', join with next non-empty line
-                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (
-                        i + 1) < len(charge_lines):
-                    # Find the next non-empty line
-                    j = i + 1
-                    while j < len(charge_lines) and not charge_lines[j].strip():
-                        j += 1
-                    if j < len(charge_lines):
-                        next_line = charge_lines[j].strip()
-                        joined = last_token + next_line
-                        try:
-                            charge = float(joined)
-                            charges.append(round(charge, 3))
-                        except Exception as e:
-                            raise ValueError(f"Could not parse charge from joined line: '{joined}' ({e})")
-                        i = j + 1  # skip to line after the exponent
-                    else:
-                        raise ValueError(f"Expected exponent after '{last_token}', but found end of lines.")
-                else:
-                    try:
-                        charge_str = tokens[-1]
-                        charge = float(charge_str)
-                        charges.append(round(charge, 3))
-                    except Exception as e:
-                        raise ValueError(f"Could not parse charge from line: '{line}' ({e})")
-                    i += 1
-        else:
-            raise ValueError("Could not find &AtomicCharges section in property file.")
+        with open(property_path, "r", encoding="utf-8") as file:
+            prop_lines = file.readlines()
 
-        if len(charges) != len(df_atoms):
-            raise ValueError("Number of charges does not match number of atoms in mol2 file.")
+        # Find the AtomicCharges section
+        start_idx = None
+        for i, line in enumerate(prop_lines):
+            if re.search(r"&AtomicCharges\b", line, re.IGNORECASE):
+                start_idx = i
+                break
 
-        df_atoms["charge"] = charges
+        if start_idx is None:
+            raise ValueError("Could not find the '&AtomicCharges' block.")
+
+        # The block starts two lines after the header (skip the extra "0" line)
+        charge_values = []
+        pattern = re.compile(r"^\s*(\d+)\s+([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)")
+        for line in prop_lines[start_idx + 2:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            match = pattern.match(line)
+            if not match:
+                break  # end of charge block
+            idx, charge_str = match.groups()
+            try:
+                charge_values.append(float(charge_str))
+            except ValueError:
+                continue
+
+        # Create the charges DataFrame
+        df_charges = pd.DataFrame({
+            'index': range(1, len(charge_values) + 1),  # mol2 is 1-based
+            'charge': charge_values
+        })
+
+        # Merge the charges into the atom DataFrame using atom_id (mol2) and index (charges)
+        df_atoms = df_atoms.merge(df_charges, left_on='atom_id', right_on='index', suffixes=('', '_from_property'))
+
+        # Replace the original 'charge' column with the new charge values from the property file
+        df_atoms['charge'] = df_atoms['charge_from_property']
+        df_atoms.drop(columns=['index', 'charge_from_property'], inplace=True)
 
         # Write updated mol2 file
         if output_path is None:
             output_path = mol2_path
+
         with open(output_path, "w", encoding="utf-8") as f:
             # Write everything up to ATOM section
-            for line in mol2_lines[:atom_start + 1]:
+            atom_start = None
+            for i, line in enumerate(lines):
+                if line.strip() == "@<TRIPOS>ATOM":
+                    atom_start = i
+                    break
                 f.write(line)
-            # Write updated atom lines
-            for i, row in df_atoms.iterrows():
-                f.write(
-                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:.3f}\n"
-                )
-            # Write the rest of the mol2 file (from BOND section onward)
-            for line in mol2_lines[bond_start:]:
-                f.write(line)
+
+            if atom_start is not None:
+                # Write ATOM section header
+                f.write(lines[atom_start])
+
+                # Write updated atom lines
+                for _, row in df_atoms.iterrows():
+                    f.write(
+                        f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f}\n"
+                    )
+
+                # Write the rest of the mol2 file (from BOND section onward)
+                bond_start = None
+                for i, line in enumerate(lines[atom_start + 1:], atom_start + 1):
+                    if line.strip().startswith("@<TRIPOS>"):
+                        bond_start = i
+                        break
+
+                if bond_start is not None:
+                    for line in lines[bond_start:]:
+                        f.write(line)
+
         self._log(f"[#] Updated charges in {output_path} using {property_path}")
+        self._log(f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation.")
