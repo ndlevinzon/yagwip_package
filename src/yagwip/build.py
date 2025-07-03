@@ -389,8 +389,6 @@ class LigandPipeline(LoggingMixin):
             str(charge),
             "-M",
             str(multiplicity),
-            "-nproc",
-            str(nprocs),
             method,
         ]
         self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
@@ -412,3 +410,4 @@ class LigandPipeline(LoggingMixin):
         except Exception as e:
             self._log(f"[!] Failed to run ORCA_MM: {e}")
             return False
+        """Maybe take the output prm, parse charges back into mol2, and then use antechamber + acpype?"""

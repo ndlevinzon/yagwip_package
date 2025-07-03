@@ -306,7 +306,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         charge=charge,
                         multiplicity=multiplicity,
                         method="-XTBOpt",
-                        nprocs=4,
                     )
                     return
                 self._log("[!] ligand.itp not found. Exiting.")
