@@ -297,7 +297,7 @@ class LigandPipeline(LoggingMixin):
         )
         return mol2_file
 
-    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="xtb2"):
+    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
@@ -310,7 +310,7 @@ class LigandPipeline(LoggingMixin):
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
             )
         with open(output_file, "w") as f:
-            f.write(f"! {theory} Opt\n")
+            f.write(f"!PM3 MINIS MBIS\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
                 element = row["atom_type"]

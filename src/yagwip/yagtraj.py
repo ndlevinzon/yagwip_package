@@ -17,7 +17,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 import argparse
 import cmd
 import sys
-import os
 from .utils import *
 from importlib.resources import files
 import importlib.metadata
@@ -27,7 +26,7 @@ __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class YAGTRAJ_shell(cmd.Cmd):
+class YagtrajShell(cmd.Cmd):
     intro = f"Welcome to YAGTRAJ v{__version__}. Type help to list commands."
     prompt = "YAGTRAJ> "
 
@@ -881,7 +880,7 @@ def main():
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
 
     args = parser.parse_args()
-    cli = YAGTRAJ_shell("gmx")
+    cli = YagtrajShell("gmx")
 
     if args.file:
         # Batch mode: read and execute commands from file
