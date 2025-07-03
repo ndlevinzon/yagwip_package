@@ -420,7 +420,8 @@ class LigandPipeline(LoggingMixin):
                 tokens = line.split()
                 last_token = tokens[-1] if tokens else ''
                 # If last token ends with 'e', 'e-' or 'e+', join with next non-empty line
-                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (i + 1) < len(charge_lines):
+                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (
+                        i + 1) < len(charge_lines):
                     # Find the next non-empty line
                     j = i + 1
                     while j < len(charge_lines) and not charge_lines[j].strip():
