@@ -419,16 +419,23 @@ class LigandPipeline(LoggingMixin):
                     continue
                 tokens = line.split()
                 last_token = tokens[-1] if tokens else ''
-                # If last token ends with 'e', 'e-' or 'e+', join with next line's first token
+                # If last token ends with 'e', 'e-' or 'e+', join with next non-empty line
                 if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (i + 1) < len(charge_lines):
-                    next_token = charge_lines[i + 1].strip().split()[0]
-                    joined = last_token + next_token
-                    try:
-                        charge = float(joined)
-                        charges.append(round(charge, 3))
-                    except Exception as e:
-                        raise ValueError(f"Could not parse charge from joined line: '{joined}' ({e})")
-                    i += 2  # skip next line
+                    # Find the next non-empty line
+                    j = i + 1
+                    while j < len(charge_lines) and not charge_lines[j].strip():
+                        j += 1
+                    if j < len(charge_lines):
+                        next_line = charge_lines[j].strip()
+                        joined = last_token + next_line
+                        try:
+                            charge = float(joined)
+                            charges.append(round(charge, 3))
+                        except Exception as e:
+                            raise ValueError(f"Could not parse charge from joined line: '{joined}' ({e})")
+                        i = j + 1  # skip to line after the exponent
+                    else:
+                        raise ValueError(f"Expected exponent after '{last_token}', but found end of lines.")
                 else:
                     try:
                         charge_str = tokens[-1]
