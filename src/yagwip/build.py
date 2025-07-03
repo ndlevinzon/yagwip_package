@@ -352,7 +352,11 @@ class LigandPipeline(LoggingMixin):
             if result.returncode != 0:
                 self._log(f"[ERROR] ORCA execution failed. See {output_file} for details.")
                 return False
-            self._log(f"ORCA Geometry Optimization Calculation completed. Output: {output_file}")
+            self._log(
+                f"ORCA Charge Calculation Completed. Output: {output_file}\n"
+                "Please cite ORCA: Neese, F. Software update: the ORCA program system – "
+                "Version 6.0 Wiley Interdiscip. Rev.: Comput. Mol. Sci., 2025, 15, 2, e70019 (DOI: 10.1002/wcms.70019)"
+            )
             return True
         except Exception as e:
             self._log(f"[ERROR] Failed to run ORCA: {e}")
