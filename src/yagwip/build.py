@@ -355,7 +355,7 @@ class LigandPipeline(LoggingMixin):
                 return False
             self._log(
                 f"ORCA Charge Calculation Completed. Output: {output_file}\n"
-                "Please cite ORCA: Neese, F. Software update: the ORCA program system – "
+                "Please cite ORCA: Neese, F. Software update: the ORCA program system – \n"
                 "Version 6.0 Wiley Interdiscip. Rev.: Comput. Mol. Sci., 2025, 15, 2, e70019 (DOI: 10.1002/wcms.70019)"
             )
             return True
@@ -410,7 +410,32 @@ class LigandPipeline(LoggingMixin):
         charges_section = re.search(r"&AtomicCharges\s+\[.*?\]\s+([\d\.\s\-Ee\n]+)", prop_content, re.DOTALL)
         if charges_section:
             charge_lines = charges_section.group(1).strip().splitlines()
-            charges = [float(val.strip().split()[-1]) for val in charge_lines if val.strip()]
+            # Join split lines for scientific notation
+            fixed_lines = []
+            skip_next = False
+            for i, line in enumerate(charge_lines):
+                if skip_next:
+                    skip_next = False
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                # If line ends with 'e-' or 'e+', join with next line
+                if (line.endswith('e-') or line.endswith('e+')) and i + 1 < len(charge_lines):
+                    next_line = charge_lines[i + 1].strip()
+                    fixed_lines.append(line + next_line)
+                    skip_next = True
+                else:
+                    fixed_lines.append(line)
+
+            charges = []
+            for val in fixed_lines:
+                try:
+                    charge_str = val.strip().split()[-1]
+                    charge = float(charge_str)
+                    charges.append(round(charge, 3))
+                except Exception as e:
+                    raise ValueError(f"Could not parse charge from line: '{val}' ({e})")
         else:
             raise ValueError("Could not find &AtomicCharges section in property file.")
 
@@ -429,7 +454,7 @@ class LigandPipeline(LoggingMixin):
             # Write updated atom lines
             for i, row in df_atoms.iterrows():
                 f.write(
-                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f}\n"
+                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:.3f}\n"
                 )
             # Write the rest of the mol2 file (from BOND section onward)
             for line in mol2_lines[bond_start:]:
