@@ -1,4 +1,6 @@
-# === Standard Library Imports ===
+"""
+slurm_writer.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
+"""
 import os
 import re
 import shutil
@@ -45,10 +47,10 @@ class SlurmWriter:
                     # Replace BASE variable in SLURM script with basename
                     min_content = re.sub(r"__BASE__", basename or "PLACEHOLDER", min_content)
                     out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
-                    with open(out_min_slurm, "w") as f:
+                    with open(out_min_slurm, "w", encoding="utf-8") as f:
                         f.write(min_content)
                     self._log(f"[#] Customized SLURM script written: {out_min_slurm}")
-                except Exception as e:
+                except (OSError, IOError) as e:
                     self._log(f"[!] Failed to configure SLURM script: {e}")
                 else:
                     self._log("[!] run_gmx_tremd_min_cpu.slurm not found in template directory.")
@@ -60,8 +62,6 @@ class SlurmWriter:
             self._log(f"[!] SLURM template not found: {slurm_tpl_name}")
             return
 
-        init_gro = "complex.solv.ions" if ligand_pdb_path else "protein.solv.ions"
-
         try:
             with open(str(slurm_tpl_path), "r", encoding="utf-8") as f:
                 slurm_content = f.read()
@@ -69,7 +69,7 @@ class SlurmWriter:
             slurm_content = re.sub(r"__BASE__", basename or "PLACEHOLDER", slurm_content)
             # Write modified SLURM script
             out_slurm = f"{slurm_tpl_name}"
-            with open(out_slurm, "w") as f:
+            with open(out_slurm, "w", encoding="utf-8") as f:
                 f.write(slurm_content)
             self._log(f"[#] Customized SLURM script written: {out_slurm}")
         except Exception as e:

@@ -162,6 +162,7 @@ class Modeller(LoggingMixin):
 
 class LigandPipeline(LoggingMixin):
     """Ligand parameterization and force field generation pipeline."""
+
     def __init__(self, logger=None, debug=False):
         """Initialize LigandPipeline."""
         self.logger = logger
@@ -328,10 +329,10 @@ class LigandPipeline(LoggingMixin):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        orca_path = ToolChecker.check_orca_available()          # Check if ORCA is available
+        orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
         if orca_path is None:
             return False
-        openmpi_path = ToolChecker.check_openmpi_available()    # Check if OpenMPI is available
+        openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
         if openmpi_path is None:
             return False
         if output_file is None:

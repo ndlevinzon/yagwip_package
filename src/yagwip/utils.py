@@ -147,12 +147,11 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                     logger.error("[STDERR] %s", stderr)
                 if stdout:
                     logger.info("[STDOUT] %s", stdout)
-            else:
-                print(err_msg)
-                if stderr:
-                    print("[STDERR]", stderr)
-                if stdout:
-                    print("[STDOUT]", stdout)
+            print(err_msg)
+            if stderr:
+                print("[STDERR]", stderr)
+            if stdout:
+                print("[STDOUT]", stdout)
 
             # Catch atom number mismatch error
             if "number of coordinates in coordinate file" in error_text:
@@ -323,8 +322,7 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
     """
     if not text:
         return [f for f in os.listdir() if f.endswith(suffix)]
-    else:
-        return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
+    return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
 
 
 class Editor(LoggingMixin):
@@ -469,16 +467,15 @@ class Editor(LoggingMixin):
                 if stripped == "" or stripped.startswith(";"):
                     modified_lines.append(line)
                     continue
+                tokens = line.split()
+                if len(tokens) >= 2:
+                    tokens[0] = new_resname
+                    line = f"{tokens[0]:<20}{tokens[1]}\n"
                 else:
-                    tokens = line.split()
-                    if len(tokens) >= 2:
-                        tokens[0] = new_resname
-                        line = f"{tokens[0]:<20}{tokens[1]}\n"
-                    else:
-                        line = f"{new_resname}\n"
-                    modified_lines.append(line)
-                    in_moleculetype = False
-                    continue
+                    line = f"{new_resname}\n"
+                modified_lines.append(line)
+                in_moleculetype = False
+                continue
 
             modified_lines.append(line)
 
@@ -666,7 +663,7 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
 
 
 def tremd_temperature_ladder(
-    Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Alg=0, Tol=0.001
+    Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Tol=0.001
 ):
     """
     Generate a temperature ladder for temperature replica exchange molecular dynamics (T-REMD).
@@ -681,7 +678,6 @@ def tremd_temperature_ladder(
         PC (int): Protein constraints (1 = H atoms only, 2 = all, 0 = none)
         Hff (int): Hydrogen force field switch (0 = standard, 1 = different model)
         Vs (int): Include volume correction (1 = yes)
-        Alg (int): Not used in this version (reserved for algorithm control)
         Tol (float): Tolerance for exchange probability convergence
 
     Returns:
