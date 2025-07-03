@@ -270,10 +270,9 @@ class LigandPipeline(LoggingMixin):
         mol2["BOND"] = df_bonds
         # Write MOL2 file
         with open(mol2_file, "w", encoding="utf-8") as out_file:
-            out_file.write("###\n")
             today = date.today().strftime("%Y-%m-%d")
             out_file.write(f"### Crafted by Yagwip LigandPipeline {today}\n")
-            out_file.write("###\n\n")
+            out_file.write("### Charged by ORCA 6.0 \n\n")
             out_file.write("@<TRIPOS>MOLECULE\n")
             m = mol2["MOLECULE"].iloc[0]
             out_file.write(f"{m['mol_name']}\n")
