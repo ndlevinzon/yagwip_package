@@ -284,7 +284,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     )
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
-                    # Generate ligand.itp from ORCA output
+                    # Append atom charges to mol2
+                    ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
                     return
                 self._log("[ERROR] ligand.itp not found.")
                 return

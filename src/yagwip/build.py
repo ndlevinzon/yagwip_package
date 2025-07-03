@@ -3,6 +3,7 @@ build.py: GROMACS and ligand building utilities for YAGWIP.
 """
 # === Standard Library Imports ===
 import os
+import re
 import subprocess
 import shutil
 from datetime import date
@@ -361,3 +362,77 @@ class LigandPipeline(LoggingMixin):
         except Exception as e:
             self._log(f"[ERROR] Failed to run ORCA: {e}")
             return False
+
+    def apply_orca_charges_to_mol2(self, mol2_path, property_path, output_path=None):
+        """
+        Update the charges in a MOL2 file using the AtomCharges from an ORCA property file.
+        Args:
+            mol2_path (str): Path to the .mol2 file.
+            property_path (str): Path to the ORCA ligand.property.txt file.
+            output_path (str, optional): Path to write the updated .mol2 file. If None, overwrite input.
+        """
+        # Load mol2 as lines
+        with open(mol2_path, "r", encoding="utf-8") as f:
+            mol2_lines = f.readlines()
+
+        # Find atom and bond section indices
+        atom_start = next(i for i, line in enumerate(mol2_lines) if line.strip() == "@<TRIPOS>ATOM")
+        bond_start = next(i for i, line in enumerate(mol2_lines) if line.strip() == "@<TRIPOS>BOND")
+        atom_lines = mol2_lines[atom_start + 1:bond_start]
+
+        # Parse atom lines into DataFrame
+        atom_data = []
+        for line in atom_lines:
+            parts = line.strip().split()
+            atom_id = int(parts[0])
+            atom_name = parts[1]
+            x, y, z = map(float, parts[2:5])
+            atom_type = parts[5]
+            subst_id = int(parts[6])
+            subst_name = parts[7]
+            charge = float(parts[8]) if len(parts) > 8 else 0.0
+            atom_data.append({
+                "atom_id": atom_id,
+                "atom_name": atom_name,
+                "x": x,
+                "y": y,
+                "z": z,
+                "atom_type": atom_type,
+                "subst_id": subst_id,
+                "subst_name": subst_name,
+                "charge": charge
+            })
+        df_atoms = pd.DataFrame(atom_data)
+
+        # Parse charges from property file
+        with open(property_path, "r", encoding="utf-8") as f:
+            prop_content = f.read()
+        charges_section = re.search(r"&AtomicCharges\\s+\\[.*?\\]\\s+([\\d\\.\\s\\-Ee\\n]+)", prop_content,
+                                    re.DOTALL)
+        if charges_section:
+            charge_lines = charges_section.group(1).strip().splitlines()
+            charges = [float(val.strip()) for val in charge_lines if val.strip()]
+        else:
+            raise ValueError("Could not find &AtomicCharges section in property file.")
+
+        if len(charges) != len(df_atoms):
+            raise ValueError("Number of charges does not match number of atoms in mol2 file.")
+
+        df_atoms["charge"] = charges
+
+        # Write updated mol2 file
+        if output_path is None:
+            output_path = mol2_path
+        with open(output_path, "w", encoding="utf-8") as f:
+            # Write everything up to ATOM section
+            for line in mol2_lines[:atom_start + 1]:
+                f.write(line)
+            # Write updated atom lines
+            for i, row in df_atoms.iterrows():
+                f.write(
+                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f}\n"
+                )
+            # Write the rest of the mol2 file (from BOND section onward)
+            for line in mol2_lines[bond_start:]:
+                f.write(line)
+        self._log(f"[#] Updated charges in {output_path} using {property_path}")
