@@ -276,7 +276,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     )
                     # Generate ORCA Geometry Optimization input
                     orca_geom_input = mol2_file.replace(".mol2", ".inp")
-                    ligand_pipeline.mol2_dataframe_to_orca_geom_opt_input(
+                    ligand_pipeline.mol2_dataframe_to_orca_charge_input(
                         df_atoms,
                         orca_geom_input,
                         charge=charge,

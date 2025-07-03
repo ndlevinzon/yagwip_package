@@ -297,7 +297,7 @@ class LigandPipeline(LoggingMixin):
         )
         return mol2_file
 
-    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1):
+    def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
