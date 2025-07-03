@@ -420,8 +420,8 @@ class LigandPipeline(LoggingMixin):
                 line = line.strip()
                 if not line:
                     continue
-                # If line ends with 'e-' or 'e+', join with next line
-                if (line.endswith('e-') or line.endswith('e+')) and i + 1 < len(charge_lines):
+                # If line ends with 'e', 'e-' or 'e+', join with next line
+                if (line.endswith('e-') or line.endswith('e+') or line.endswith('e')) and i + 1 < len(charge_lines):
                     next_line = charge_lines[i + 1].strip()
                     fixed_lines.append(line + next_line)
                     skip_next = True
