@@ -410,7 +410,7 @@ class LigandPipeline(LoggingMixin):
         charges_section = re.search(r"&AtomicCharges\s+\[.*?\]\s+([\d\.\s\-Ee\n]+)", prop_content, re.DOTALL)
         if charges_section:
             charge_lines = charges_section.group(1).strip().splitlines()
-            charges = [float(val.strip()) for val in charge_lines if val.strip()]
+            charges = [float(val.strip().split()[-1]) for val in charge_lines if val.strip()]
         else:
             raise ValueError("Could not find &AtomicCharges section in property file.")
 
