@@ -410,8 +410,7 @@ class LigandPipeline(LoggingMixin):
         charges_section = re.search(r"&AtomicCharges\s+\[.*?\]\s+([\d\.\s\-Ee\n]+)", prop_content, re.DOTALL)
         if charges_section:
             charge_lines = charges_section.group(1).strip().splitlines()
-            # Join split lines for scientific notation
-            fixed_lines = []
+            charges = []
             i = 0
             while i < len(charge_lines):
                 line = charge_lines[i].strip()
@@ -420,27 +419,24 @@ class LigandPipeline(LoggingMixin):
                     continue
                 tokens = line.split()
                 last_token = tokens[-1] if tokens else ''
-                # If last token ends with 'e', try to join with next line's first token
-                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (
-                        i + 1) < len(charge_lines):
+                # If last token ends with 'e', 'e-' or 'e+', join with next line's first token
+                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (i + 1) < len(charge_lines):
                     next_token = charge_lines[i + 1].strip().split()[0]
                     joined = last_token + next_token
-                    # Replace last token with joined in tokens
-                    tokens[-1] = joined
-                    fixed_lines.append(' '.join(tokens))
+                    try:
+                        charge = float(joined)
+                        charges.append(round(charge, 3))
+                    except Exception as e:
+                        raise ValueError(f"Could not parse charge from joined line: '{joined}' ({e})")
                     i += 2  # skip next line
                 else:
-                    fixed_lines.append(line)
+                    try:
+                        charge_str = tokens[-1]
+                        charge = float(charge_str)
+                        charges.append(round(charge, 3))
+                    except Exception as e:
+                        raise ValueError(f"Could not parse charge from line: '{line}' ({e})")
                     i += 1
-
-            charges = []
-            for val in fixed_lines:
-                try:
-                    charge_str = val.strip().split()[-1]
-                    charge = float(charge_str)
-                    charges.append(round(charge, 3))
-                except Exception as e:
-                    raise ValueError(f"Could not parse charge from line: '{val}' ({e})")
         else:
             raise ValueError("Could not find &AtomicCharges section in property file.")
 
