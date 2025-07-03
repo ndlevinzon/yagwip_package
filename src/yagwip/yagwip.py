@@ -75,8 +75,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
-            print(f"[!] GROMACS Validation Error: {e}")
-            print("[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            print(f"[ERROR] GROMACS Validation Error: {e}")
+            print("\nYAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
             sys.exit(1)
         # Dictionary of custom command overrides set by the user
         self.custom_cmds = {k: "" for k in ("pdb2gmx", "solvate", "genions")}
@@ -84,13 +84,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
     def _require_pdb(self):
         """Check if a PDB file is loaded."""
         if not self.current_pdb_path and not self.debug:
-            self._log("[!] No PDB loaded.")
+            self._log("[ERROR] No PDB loaded.")
             return False
         return True
 
     def default(self, line):
         """Throws error when command is not recognized."""
-        self._log(f"[!] Unknown command: {line}")
+        self._log(f"[ERROR] Unknown command: {line}")
 
     def do_debug(self, arg):
         """
@@ -117,7 +117,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
-            self._log(f"[!] Could not load banner: {e}")
+            self._log(f"[ERROR] Could not load banner: {e}")
 
     def do_show(self, arg):
         """Show current custom or default commands."""
@@ -139,7 +139,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         valid_keys = ["pdb2gmx", "solvate", "genions"]
         cmd_key = arg.strip().lower()
         if cmd_key not in valid_keys:
-            print(f"[!] Usage: set <{'|'.join(valid_keys)}>")
+            print(f"Usage: set <{'|'.join(valid_keys)}>")
             return
         # Get the default command string
         base = self.basename if self.basename else "PLACEHOLDER"
@@ -192,12 +192,12 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         multiplicity = int(args[args.index("--m") + 1]) if "--m" in args else 1
         full_path = os.path.abspath(filename)
         if not os.path.isfile(full_path):
-            self._log(f"[!] '{filename}' not found.")
+            self._log(f"[ERROR] '{filename}' not found.")
             return
         # Store the full path and basename for later use in the build pipeline
         self.current_pdb_path = full_path
         self.basename = os.path.splitext(os.path.basename(full_path))[0]
-        self._log(f"[#] PDB file loaded: {full_path}")
+        self._log(f"PDB file loaded: {full_path}")
         # Read all lines from the PDB file
         with open(full_path, "r") as f:
             lines = f.readlines()
@@ -214,60 +214,44 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 for line in lines:
                     if line.startswith("HETATM"):
                         # Replace ligand residue name with LIG
-                        modified_line = line[:17] + "LIG" + line[20:]
-                        lig_out.write(modified_line)
+                        lig_out.write(line[:17] + "LIG" + line[20:])
                     else:
                         # Replace HSP or HSD with HIS in protein
                         if line[17:20] in ("HSP", "HSD"):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
-            self._log(f"[#] Detected ligand. Split into: {protein_file}, {ligand_file}")
+            self._log(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
-            has_hydrogens = any(
-                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
-                for line in hetatm_lines
-            )
+            has_hydrogens = any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines)
             if not has_hydrogens:
-                self._log(
-                    "[!] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
-                )
+                self._log("[WARNING] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences.")
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
-                self._log("[#] Checking ligand.itp...")
+                self._log("Checking ligand.itp...")
                 self.editor.append_ligand_atomtypes_to_forcefield()
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
             else:
-                self._log("[!] ligand.itp not found in the current directory.")
+                self._log("ligand.itp not found in the current directory.")
                 if use_ligand_builder:
-                    ligand_pipeline = LigandPipeline(
-                        logger=self.logger, debug=self.debug
-                    )
+                    ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                     if mol2_file is None:
-                        self._log(
-                            "[Ligand_Pipeline][ERROR] MOL2 generation failed. Aborting ligand pipeline."
-                        )
+                        self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
                         return
                     # Find the start and end of the ATOM section
                     with open(mol2_file, encoding="utf-8") as f:
                         lines = f.readlines()
-                    atom_start = None
-                    atom_end = None
+                    atom_start = atom_end = None
                     for i, line in enumerate(lines):
                         if line.strip() == "@<TRIPOS>ATOM":
                             atom_start = i + 1
-                        elif (
-                            line.strip().startswith("@<TRIPOS>BOND")
-                            and atom_start is not None
-                        ):
+                        elif line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None:
                             atom_end = i
                             break
                     if atom_start is None:
-                        self._log(
-                            "[Ligand_Pipeline][ERROR] Could not find ATOM section in MOL2 file."
-                        )
+                        self._log("[ERROR] Could not find ATOM section in MOL2 file.")
                         return
                     if atom_end is None:
                         atom_end = len(lines)
@@ -304,11 +288,10 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     ligand_pipeline.generate_forcefield_with_orca_mm(
                         xyz_file="ligand.xyz",
                         charge=charge,
-                        multiplicity=multiplicity,
-                        method="-XTBOpt",
+                        multiplicity=charge,
                     )
                     return
-                self._log("[!] ligand.itp not found. Exiting.")
+                self._log("[ERROR] ligand.itp not found.")
                 return
         else:
             # If no HETATM lines are found, treat entire file as protein
@@ -320,7 +303,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
             self._log(
-                "[#] No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
+                "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
             )
         self.modeller.find_missing_residues()
 
@@ -331,23 +314,15 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         if not self._require_pdb():
             return
-
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
-
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds["pdb2gmx"]
-        )
-
+        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds["pdb2gmx"])
         if not os.path.isfile(output_gro):
-            self._log(f"[!] Expected {output_gro} was not created.")
+            self._log(f"[ERROR] Expected {output_gro} was not created.")
             return
-
         # Combine ligand coordinates
         if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            self.editor.append_ligand_coordinates_to_gro(
-                output_gro, "ligand.pdb", "complex.gro"
-            )
+            self.editor.append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
         else:
             shutil.copy(str(output_gro), "complex.gro")  # only protein
@@ -360,13 +335,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
 
         complex_pdb = "complex" if self.ligand_pdb_path else "protein"
-
         if not self._require_pdb():
             return
-
-        self.builder.run_solvate(
-            complex_pdb, custom_command=self.custom_cmds["solvate"]
-        )
+        self.builder.run_solvate(complex_pdb, custom_command=self.custom_cmds["solvate"])
 
     def do_genions(self, arg):
         """
@@ -375,13 +346,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         Other Options: use "set genions" to override defaults
         """
         solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
-
         if not self._require_pdb():
             return
-
-        self.builder.run_genions(
-            solvated_pdb, custom_command=self.custom_cmds["genions"]
-        )
+        self.builder.run_genions(solvated_pdb, custom_command=self.custom_cmds["genions"])
 
     def do_em(self, arg):
         """
@@ -390,7 +357,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         if not self._require_pdb():
             return
-
         self.sim.run_em(self.basename, arg=arg)
 
     def do_nvt(self, arg):
@@ -400,7 +366,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         if not self._require_pdb():
             return
-
         self.sim.run_nvt(self.basename, arg=arg)
 
     def do_npt(self, arg):
@@ -410,7 +375,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         if not self._require_pdb():
             return
-
         self.sim.run_npt(self.basename, arg=arg)
 
     def do_production(self, arg):
@@ -420,14 +384,11 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         if not self._require_pdb():
             return
-
         self.sim.run_production(self.basename, arg=arg)
 
     def complete_tremd(self, text, line, begidx, endidx):
         """Adds tab completion for .solv.ions.gro for use in TREMD replica calculations"""
         args = line.strip().split()
-
-        # Only complete the filename after 'tremd calc'
         if len(args) >= 2 and args[1] == "calc":
             return complete_filename(text, "solv.ions.gro", line, begidx, endidx)
         return []
@@ -449,25 +410,21 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         Usage: source /absolute/path/to/custom.itp
         """
         itp_path = arg.strip()
-
         if not itp_path.endswith(".itp"):
-            self._log("[!] Must provide a path to a .itp file.")
+            self._log("[ERROR] Must provide a path to a .itp file.")
             return
-
         if not os.path.isfile(itp_path):
-            self._log(f"[!] File '{itp_path}' not found.")
+            self._log(f"[ERROR] File '{itp_path}' not found.")
             return
 
         # Add new path to list (no duplicates)
         if itp_path not in self.user_itp_paths:
             self.user_itp_paths.append(itp_path)
-            self._log(f"[#] Added custom .itp include: {itp_path}")
+            self._log(f"Added custom .itp include: {itp_path}")
         else:
-            self._log(f"[!] Path already in include list: {itp_path}")
-
+            self._log(f"Path already in include list: {itp_path}")
         # Apply all includes to all topol.top files
         self.editor.insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
-
         # Display all tracked includes
         self._log("\nCurrent custom ITP includes:")
         for p in self.user_itp_paths:
@@ -491,9 +448,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             or args[0] not in ["md", "tremd"]
             or args[1] not in ["cpu", "gpu"]
         ):
-            print("[!] Usage: slurm <md|tremd> <cpu|gpu>")
+            print("Usage: slurm <md|tremd> <cpu|gpu>")
             return
-
         sim_type, hardware = args
         writer = SlurmWriter(logger=self.logger)
         writer.write_slurm_scripts(
@@ -515,7 +471,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             if quotes:
                 print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
         except Exception as e:
-            self._log(f"([!] Unable to load quotes: {e})")
+            self._log(f"([ERROR] Unable to load quotes: {e})")
 
     def do_quit(self, _):
         """
@@ -546,7 +502,7 @@ def main():
                         print(f"YAGWIP> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:
-            print(f"[!] File '{args.file}' not found.")
+            print(f"[ERROR] File '{args.file}' not found.")
             sys.exit(1)
     else:
         cli.cmdloop()
