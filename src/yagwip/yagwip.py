@@ -285,11 +285,11 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
                     # Generate ligand.itp from ORCA output
-                    ligand_pipeline.generate_forcefield_with_orca_mm(
-                        xyz_file="ligand.xyz",
-                        charge=charge,
-                        multiplicity=charge,
-                    )
+                    # ligand_pipeline.generate_forcefield_with_orca_mm(
+                    #     xyz_file="ligand.xyz",
+                    #     charge=charge,
+                    #     multiplicity=charge,
+                    # )
                     return
                 self._log("[ERROR] ligand.itp not found.")
                 return
