@@ -412,21 +412,26 @@ class LigandPipeline(LoggingMixin):
             charge_lines = charges_section.group(1).strip().splitlines()
             # Join split lines for scientific notation
             fixed_lines = []
-            skip_next = False
-            for i, line in enumerate(charge_lines):
-                if skip_next:
-                    skip_next = False
-                    continue
-                line = line.strip()
+            i = 0
+            while i < len(charge_lines):
+                line = charge_lines[i].strip()
                 if not line:
+                    i += 1
                     continue
-                # If line ends with 'e', 'e-' or 'e+', join with next line
-                if (line.endswith('e-') or line.endswith('e+') or line.endswith('e')) and i + 1 < len(charge_lines):
-                    next_line = charge_lines[i + 1].strip()
-                    fixed_lines.append(line + next_line)
-                    skip_next = True
+                tokens = line.split()
+                last_token = tokens[-1] if tokens else ''
+                # If last token ends with 'e', try to join with next line's first token
+                if (last_token.endswith('e') or last_token.endswith('e-') or last_token.endswith('e+')) and (
+                        i + 1) < len(charge_lines):
+                    next_token = charge_lines[i + 1].strip().split()[0]
+                    joined = last_token + next_token
+                    # Replace last token with joined in tokens
+                    tokens[-1] = joined
+                    fixed_lines.append(' '.join(tokens))
+                    i += 2  # skip next line
                 else:
                     fixed_lines.append(line)
+                    i += 1
 
             charges = []
             for val in fixed_lines:
