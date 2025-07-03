@@ -34,7 +34,7 @@ class Builder(LoggingMixin):
     def _resolve_basename(self, basename):
         """Resolve the basename for file operations."""
         if not basename and not self.debug:
-            msg = "[!] No PDB loaded. Use `loadPDB <filename.pdb>` first."
+            msg = "[ERROR] No PDB loaded. Use `loadPDB <filename.pdb>` first."
             if self.logger:
                 self.logger.warning(msg)
             else:
@@ -53,7 +53,7 @@ class Builder(LoggingMixin):
         if self.debug:
             print(f"[DEBUG] Command: {command}")
             return
-        self._log(f"[#] Running pdb2gmx for {base}.pdb...")
+        self._log(f"Running pdb2gmx for {base}.pdb...")
         run_gromacs_command(
             command,
             pipe_input=PIPE_INPUTS["pdb2gmx"],
@@ -110,7 +110,7 @@ class Builder(LoggingMixin):
             for cmd in default_cmds:
                 print(f"[DEBUG] Command: {cmd}")
             return
-        self._log(f"[#] Running genion for {base}...")
+        self._log(f"Running genion for {base}...")
         if custom_command:
             self._log("[CUSTOM] Using custom genion command")
             run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
@@ -133,6 +133,7 @@ class Modeller(LoggingMixin):
 
     def find_missing_residues(self):
         """Identifies missing internal residues by checking for gaps in residue numbering."""
+        self._log(f"Checking for missing residues in {self.pdb}...")
         residue_map = {}  # {chain_id: sorted list of residue IDs}
         with open(self.pdb, "r", encoding="utf-8") as f:
             for line in f:
@@ -154,7 +155,7 @@ class Modeller(LoggingMixin):
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
         self._log(
-            f"[!] Found missing residue ranges: {gaps}" if gaps else "[#] No gaps found."
+            f"[WARNING] Found missing residue ranges: {gaps}" if gaps else "No gaps found."
         )
         return gaps
 
@@ -216,7 +217,7 @@ class LigandPipeline(LoggingMixin):
                         }
                     )
         if not atom_records:
-            self._log(f"[!] No atoms found in {pdb_file}.")
+            self._log(f"[ERROR] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
         # Bond detection
@@ -269,7 +270,7 @@ class LigandPipeline(LoggingMixin):
         with open(mol2_file, "w", encoding="utf-8") as out_file:
             out_file.write("###\n")
             today = date.today().strftime("%Y-%m-%d")
-            out_file.write(f"### Created by LigandPipeline {today}\n")
+            out_file.write(f"### Crafted by Yagwip LigandPipeline {today}\n")
             out_file.write("###\n\n")
             out_file.write("@<TRIPOS>MOLECULE\n")
             m = mol2["MOLECULE"].iloc[0]
@@ -291,18 +292,11 @@ class LigandPipeline(LoggingMixin):
                         f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n"
                     )
         self._log(
-            f"[#] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
+            f"[SUMMARY] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
         )
         return mol2_file
 
-    def mol2_dataframe_to_orca_geom_opt_input(
-        self,
-        df_atoms,
-        output_file,
-        charge=0,
-        multiplicity=1,
-        theory="xtb2",
-    ):
+    def mol2_dataframe_to_orca_geom_opt_input(self, df_atoms, output_file, charge=0, multiplicity=1, theory="xtb2"):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
@@ -323,7 +317,7 @@ class LigandPipeline(LoggingMixin):
                     f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n"
                 )
             f.write("*\n")
-        self._log(f"[#] ORCA input written to: {output_file}")
+        self._log(f"ORCA input written to: {output_file}")
         return output_file
 
     def run_orca(self, input_file, output_file=None):
@@ -355,31 +349,24 @@ class LigandPipeline(LoggingMixin):
                 if result.stderr:
                     f.write("\n[STDERR]\n" + result.stderr)
             if result.returncode != 0:
-                self._log(f"[!] ORCA execution failed. See {output_file} for details.")
+                self._log(f"[ERROR] ORCA execution failed. See {output_file} for details.")
                 return False
-            self._log(f"[#] ORCA Geometry Optimization Calculation completed. Output: {output_file}")
+            self._log(f"ORCA Geometry Optimization Calculation completed. Output: {output_file}")
             return True
         except Exception as e:
-            self._log(f"[!] Failed to run ORCA: {e}")
+            self._log(f"[ERROR] Failed to run ORCA: {e}")
             return False
 
-    def generate_forcefield_with_orca_mm(
-        self,
-        xyz_file="ligand.xyz",
-        charge=0,
-        multiplicity=1,
-        method="-XTBOpt",
-        nprocs=4,
-    ):
+    def generate_forcefield_with_orca_mm(self, xyz_file="ligand.xyz", charge=None, multiplicity=None):
         """Run orca_mm -makeff on a ligand.xyz file to generate a force field for use in GROMACS."""
         orca_dir = os.path.abspath("orca")
         xyz_path = os.path.abspath(os.path.join(orca_dir, xyz_file))
         if not os.path.exists(xyz_path):
-            self._log(f"[Ligand_Pipeline][ERROR] XYZ file not found: {xyz_path}")
+            self._log(f"[ERROR] XYZ file not found: {xyz_path}")
             return False
         orca_mm_path = shutil.which("orca_mm")
         if orca_mm_path is None:
-            self._log("[!] orca_mm executable not found in PATH.")
+            self._log("[ERROR] orca_mm executable not found in PATH.")
             return False
         cmd = [
             orca_mm_path,
@@ -389,9 +376,9 @@ class LigandPipeline(LoggingMixin):
             str(charge),
             "-M",
             str(multiplicity),
-            method,
+            "-BEOpt",
         ]
-        self._log(f"[#] Running ORCA_MM command:\n  {' '.join(cmd)}")
+        self._log(f"Running ORCA_MM command:\n  {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=orca_dir)
             log_file = os.path.abspath(os.path.join(orca_dir, "orca_mm.log"))
@@ -401,13 +388,12 @@ class LigandPipeline(LoggingMixin):
                     f.write("\n[STDERR]\n" + result.stderr)
 
             if result.returncode != 0:
-                self._log(f"[!] ORCA_MM failed. See {log_file} for details.")
+                self._log(f"[ERROR] ORCA_MM failed. See {log_file} for details.")
                 return False
             self._log(
-                f"[#] ORCA_MM force field generation complete. Log written to: {log_file}"
+                f"ORCA_MM force field generation complete. Log written to: {log_file}"
             )
             return True
         except Exception as e:
-            self._log(f"[!] Failed to run ORCA_MM: {e}")
+            self._log(f"[ERROR] Failed to run ORCA_MM: {e}")
             return False
-        """Maybe take the output prm, parse charges back into mol2, and then use antechamber + acpype?"""
