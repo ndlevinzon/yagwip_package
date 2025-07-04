@@ -297,10 +297,10 @@ class LigandPipeline(LoggingMixin):
         )
         return mol2_file
 
-    def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
+    def mol2_dataframe_to_orca_charge_input(self, df_atoms, input_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         # Use absolute path for output file
-        output_file = os.path.abspath(output_file)
+        output_file = os.path.abspath(input_file)
 
         # Create output directory if it doesn't exist
         output_dir = os.path.dirname(output_file)
