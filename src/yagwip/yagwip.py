@@ -196,8 +196,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 --c: Set the total charge for QM input (default 0)
                 --m: Set the multiplicity for QM input (default 1)
         """
-        self._log(f"[DEBUG] do_loadpdb called with arg: '{arg}'")
-
         # Parse arguments
         parser = argparse.ArgumentParser(description="Load PDB file")
         parser.add_argument("pdb_file", help="PDB file to load")
@@ -212,8 +210,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         use_ligand_builder = args.ligand_builder
         charge = args.c
         multiplicity = args.m
-        self._log(f"[DEBUG] use_ligand_builder = {use_ligand_builder}")
-        self._log(f"[DEBUG] charge = {charge}, multiplicity = {multiplicity}")
 
         pdb_file = args.pdb_file
         full_path = os.path.abspath(pdb_file)
@@ -262,15 +258,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
                 self._log("ligand.itp not found. Running ligand builder pipeline...")
-                self._log(f"[DEBUG] use_ligand_builder = {use_ligand_builder}")
-                self._log(f"[DEBUG] ligand.itp exists = {os.path.isfile('ligand.itp')}")
                 # Copy amber14sb.ff files into current dir
                 amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
                 amber_ff_dest = os.path.abspath("amber14sb.ff")
 
                 if not os.path.exists(amber_ff_dest):
                     os.makedirs(amber_ff_dest)
-                    self._log(f"[INFO] Created directory: {amber_ff_dest}")
+                    self._log(f"Created directory: {amber_ff_dest}")
                 try:
                     for item in Path(amber_ff_source).iterdir():
                         if item.is_file():
