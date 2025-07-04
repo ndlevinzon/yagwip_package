@@ -299,12 +299,13 @@ class LigandPipeline(LoggingMixin):
 
     def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
-        orca_dir = os.path.abspath("orca")
-        if not os.path.exists(orca_dir):
-            os.makedirs(orca_dir)
-        output_file = os.path.abspath(
-            os.path.join(orca_dir, os.path.basename(output_file))
-        )
+        # Use absolute path for output file
+        output_file = os.path.abspath(output_file)
+
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(output_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         if not {"atom_type", "x", "y", "z"}.issubset(df_atoms.columns):
             raise ValueError(
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
@@ -321,7 +322,7 @@ class LigandPipeline(LoggingMixin):
         self._log(f"ORCA input written to: {output_file}")
         return output_file
 
-    def run_orca(self, orca_path,  input_file, output_file=None):
+    def run_orca(self, orca_path, input_file, output_file=None):
         """Run ORCA quantum chemistry calculation."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
