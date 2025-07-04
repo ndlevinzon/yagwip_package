@@ -199,7 +199,7 @@ class LigandPipeline(LoggingMixin):
             "H": {"max_valence": 1, "common_types": ["H"]},
         }
 
-        bond_tolerance = 0.45  # Ångstroms
+        bond_tolerance = 0.4  # Ångstroms
         if mol2_file is None:
             mol2_file = pdb_file.replace(".pdb", ".mol2")
         # Efficiently parse ATOM/HETATM lines from PDB
