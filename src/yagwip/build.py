@@ -329,7 +329,7 @@ class LigandPipeline(LoggingMixin):
             output_file = os.path.splitext(input_file)[0] + ".out"
         else:
             output_file = os.path.abspath(
-                os.path.join(orca_dir, os.path.basename(output_file))
+                os.path.join("orca/", os.path.basename(output_file))
             )
         try:
             result = subprocess.run(
