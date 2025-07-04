@@ -291,16 +291,19 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     )
                     # Generate ORCA Geometry Optimization input
                     orca_charge_input = mol2_file.replace(".mol2", ".inp")
-                    ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                    orca_input_path = ligand_pipeline.mol2_dataframe_to_orca_charge_input(
                         df_atoms,
                         orca_charge_input,
                         charge=charge,
                         multiplicity=multiplicity,
                     )
-                    # Run ORCA Geometry Optimization
-                    ligand_pipeline.run_orca(orca_path, "./orca/ligand.inp")
-                    # Append atom charges to mol2
-                    ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
+                    # Run ORCA Geometry Optimization - use the full path that was created
+                    if ligand_pipeline.run_orca(orca_path, orca_input_path):
+                        # Append atom charges to mol2
+                        if not ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt"):
+                            self._log("[ERROR] Failed to apply ORCA charges to MOL2 file. Continuing without charges.")
+                    else:
+                        self._log("[ERROR] ORCA calculation failed. Continuing without charges.")
                     ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
                     ligand_pipeline.run_acpype(mol2_file)   # convert to gromacs
                     return
