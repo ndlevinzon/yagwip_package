@@ -298,8 +298,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         multiplicity=multiplicity,
                     )
                     # Run ORCA Geometry Optimization
-                    orca_input_path = os.path.abspath(orca_charge_input)
-                    ligand_pipeline.run_orca(orca_path, orca_input_path)
+                    ligand_pipeline.run_orca(orca_path, "orca/ligand.inp")
                     # Append atom charges to mol2
                     ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
                     ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
