@@ -184,6 +184,21 @@ class LigandPipeline(LoggingMixin):
             "BR": 1.20,
             "I": 1.39,
         }
+
+        # Valence rules and atom type assignments
+        valence_rules = {
+            "C": {"max_valence": 4, "common_types": ["C.3", "C.2", "C.1", "C.ar"]},
+            "N": {"max_valence": 3, "common_types": ["N.3", "N.2", "N.1", "N.ar", "N.am"]},
+            "O": {"max_valence": 2, "common_types": ["O.3", "O.2", "O.co2"]},
+            "S": {"max_valence": 6, "common_types": ["S.3", "S.2", "S.o", "S.o2"]},
+            "P": {"max_valence": 5, "common_types": ["P.3"]},
+            "F": {"max_valence": 1, "common_types": ["F"]},
+            "CL": {"max_valence": 1, "common_types": ["Cl"]},
+            "BR": {"max_valence": 1, "common_types": ["Br"]},
+            "I": {"max_valence": 1, "common_types": ["I"]},
+            "H": {"max_valence": 1, "common_types": ["H"]},
+        }
+
         bond_tolerance = 0.45  # Ångstroms
         if mol2_file is None:
             mol2_file = pdb_file.replace(".pdb", ".mol2")
@@ -250,6 +265,10 @@ class LigandPipeline(LoggingMixin):
                     )
                     bond_id += 1
         df_bonds = pd.DataFrame(bonds)
+
+        # Apply valence rules and assign proper atom types
+        df_atoms = self._apply_valence_rules(df_atoms, df_bonds, valence_rules)
+
         # Build minimal MOL2 dict
         mol2 = {}
         mol2["MOLECULE"] = pd.DataFrame(
@@ -296,6 +315,169 @@ class LigandPipeline(LoggingMixin):
             f"[SUMMARY] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
         )
         return mol2_file
+
+    def _apply_valence_rules(self, df_atoms, df_bonds, valence_rules):
+        """
+        Apply valence rules to assign proper atom types and bond orders.
+
+        Args:
+            df_atoms: DataFrame with atom information
+            df_bonds: DataFrame with bond information
+            valence_rules: Dictionary with valence rules for each element
+
+        Returns:
+            DataFrame with updated atom types
+        """
+        # Create adjacency matrix
+        n_atoms = len(df_atoms)
+        adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
+
+        # Build adjacency matrix from bonds
+        for _, bond in df_bonds.iterrows():
+            origin_idx = df_atoms[df_atoms['atom_id'] == bond['origin_atom_id']].index[0]
+            target_idx = df_atoms[df_atoms['atom_id'] == bond['target_atom_id']].index[0]
+            adjacency[origin_idx, target_idx] = 1
+            adjacency[target_idx, origin_idx] = 1
+
+        # Calculate valence for each atom
+        valence_counts = np.sum(adjacency, axis=1)
+
+        # Assign atom types based on valence rules
+        for i, atom in df_atoms.iterrows():
+            element = atom['atom_type']
+            valence = valence_counts[i]
+
+            if element in valence_rules:
+                rules = valence_rules[element]
+                max_valence = rules['max_valence']
+                common_types = rules['common_types']
+
+                # Check if valence exceeds maximum
+                if valence > max_valence:
+                    self._log(f"[WARNING] Atom {atom['atom_id']} ({element}) has valence {valence} > {max_valence}")
+
+                # Assign atom type based on element and valence
+                atom_type = self._assign_atom_type(element, valence, common_types, df_atoms, i, adjacency)
+                df_atoms.at[i, 'atom_type'] = atom_type
+            else:
+                # Unknown element, keep original
+                pass
+
+        return df_atoms
+
+    def _assign_atom_type(self, element, valence, common_types, df_atoms, atom_idx, adjacency):
+        """
+        Assign specific atom type based on element, valence, and local environment.
+        """
+        if element == "C":
+            if valence == 4:
+                return "C.3"  # sp3 carbon
+            elif valence == 3:
+                # Check if it's aromatic or has double bonds
+                if self._is_aromatic_carbon(df_atoms, atom_idx, adjacency):
+                    return "C.ar"
+                else:
+                    return "C.2"  # sp2 carbon
+            elif valence == 2:
+                return "C.1"  # sp carbon
+            else:
+                return "C.3"  # default to sp3
+
+        elif element == "N":
+            if valence == 3:
+                # Check for amide nitrogen
+                if self._is_amide_nitrogen(df_atoms, atom_idx, adjacency):
+                    return "N.am"
+                else:
+                    return "N.3"  # sp3 nitrogen
+            elif valence == 2:
+                if self._is_aromatic_nitrogen(df_atoms, atom_idx, adjacency):
+                    return "N.ar"
+                else:
+                    return "N.2"  # sp2 nitrogen
+            elif valence == 1:
+                return "N.1"  # sp nitrogen
+            else:
+                return "N.3"  # default
+
+        elif element == "O":
+            if valence == 2:
+                # Check if it's carbonyl oxygen
+                if self._is_carbonyl_oxygen(df_atoms, atom_idx, adjacency):
+                    return "O.2"  # carbonyl oxygen
+                else:
+                    return "O.3"  # sp3 oxygen
+            elif valence == 1:
+                return "O.3"  # sp3 oxygen
+            else:
+                return "O.3"  # default
+
+        elif element == "S":
+            if valence == 2:
+                return "S.2"  # sp2 sulfur
+            elif valence == 1:
+                return "S.3"  # sp3 sulfur
+            else:
+                return "S.3"  # default
+
+        elif element == "P":
+            return "P.3"  # sp3 phosphorus
+
+        elif element in ["F", "CL", "BR", "I"]:
+            return element if element != "CL" else "Cl"
+
+        elif element == "H":
+            return "H"
+
+        else:
+            # Unknown element, return as is
+            return element
+
+    def _is_aromatic_carbon(self, df_atoms, atom_idx, adjacency):
+        """Check if carbon is part of an aromatic ring."""
+        # Simple heuristic: if carbon has 3 bonds and neighbors are C/N, likely aromatic
+        neighbors = np.where(adjacency[atom_idx] == 1)[0]
+        if len(neighbors) == 3:
+            neighbor_elements = [df_atoms.iloc[n]['atom_type'] for n in neighbors]
+            if all(elem in ['C', 'N'] for elem in neighbor_elements):
+                return True
+        return False
+
+    def _is_aromatic_nitrogen(self, df_atoms, atom_idx, adjacency):
+        """Check if nitrogen is part of an aromatic ring."""
+        # Similar to aromatic carbon
+        neighbors = np.where(adjacency[atom_idx] == 1)[0]
+        if len(neighbors) == 2:
+            neighbor_elements = [df_atoms.iloc[n]['atom_type'] for n in neighbors]
+            if all(elem in ['C', 'N'] for elem in neighbor_elements):
+                return True
+        return False
+
+    def _is_amide_nitrogen(self, df_atoms, atom_idx, adjacency):
+        """Check if nitrogen is part of an amide group."""
+        neighbors = np.where(adjacency[atom_idx] == 1)[0]
+        for neighbor_idx in neighbors:
+            neighbor = df_atoms.iloc[neighbor_idx]
+            if neighbor['atom_type'] == 'C':
+                # Check if this carbon has a double bond to oxygen
+                carbon_neighbors = np.where(adjacency[neighbor_idx] == 1)[0]
+                for carbon_neighbor_idx in carbon_neighbors:
+                    carbon_neighbor = df_atoms.iloc[carbon_neighbor_idx]
+                    if carbon_neighbor['atom_type'] == 'O':
+                        return True
+        return False
+
+    def _is_carbonyl_oxygen(self, df_atoms, atom_idx, adjacency):
+        """Check if oxygen is part of a carbonyl group (C=O)."""
+        neighbors = np.where(adjacency[atom_idx] == 1)[0]
+        for neighbor_idx in neighbors:
+            neighbor = df_atoms.iloc[neighbor_idx]
+            if neighbor['atom_type'] == 'C':
+                # Check if this carbon has only 3 bonds total (indicating double bond)
+                carbon_valence = np.sum(adjacency[neighbor_idx])
+                if carbon_valence == 3:  # C=O bond
+                    return True
+        return False
 
     def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
