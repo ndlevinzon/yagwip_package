@@ -9,7 +9,6 @@ import subprocess
 import shutil
 from datetime import date
 from importlib.resources import files
-import io
 
 # === Third-Party Imports ===
 import pandas as pd
@@ -169,38 +168,6 @@ class LigandPipeline(LoggingMixin):
         """Initialize LigandPipeline."""
         self.logger = logger
         self.debug = debug
-        self._file_cache = {}  # Cache for parsed file contents
-        self._cache_size_limit = 10  # Maximum number of cached files
-
-    def _get_cached_file_content(self, file_path):
-        """
-        Get file content from cache or read from disk.
-
-        Args:
-            file_path: Path to the file
-
-        Returns:
-            List of file lines
-        """
-        if file_path in self._file_cache:
-            return self._file_cache[file_path]
-
-        # Read file and cache it
-        with open(file_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        # Manage cache size
-        if len(self._file_cache) >= self._cache_size_limit:
-            # Remove oldest entry (simple FIFO)
-            oldest_key = next(iter(self._file_cache))
-            del self._file_cache[oldest_key]
-
-        self._file_cache[file_path] = lines
-        return lines
-
-    def _clear_cache(self):
-        """Clear the file cache."""
-        self._file_cache.clear()
 
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
         """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
@@ -274,14 +241,46 @@ class LigandPipeline(LoggingMixin):
             return None
         df_atoms = pd.DataFrame(atom_records)
 
-        # Bond detection with spatial partitioning optimization
+        # Bond detection with validation
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
+        bonds = []
+        bond_id = 1
 
-        # Use spatial partitioning for O(n) bond detection
-        bonds, atom_bonds = self._find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance)
+        # Track existing bonds for each atom
+        atom_bonds = {i: [] for i in range(n_atoms)}
 
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                elem_i = elements[i]
+                elem_j = elements[j]
+                r_cov_i = covalent_radii.get(
+                    elem_i, 0.77
+                )  # Default to C radius if unknown
+                r_cov_j = covalent_radii.get(elem_j, 0.77)
+                max_bond = r_cov_i + r_cov_j + bond_tolerance
+                dist = np.linalg.norm(coords[i] - coords[j])
+                if 0.4 < dist < max_bond:
+                    # Validate bond is chemically possible
+                    if self._is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
+                        bonds.append(
+                            {
+                                "bond_id": bond_id,
+                                "origin_atom_id": int(df_atoms.iloc[i]["atom_id"]),
+                                "target_atom_id": int(df_atoms.iloc[j]["atom_id"]),
+                                "bond_type": "1",  # single bond for now
+                                "status_bit": "",
+                            }
+                        )
+                        # Update bond tracking
+                        atom_bonds[i].append(j)
+                        atom_bonds[j].append(i)
+                        bond_id += 1
+                    else:
+                        self._log(
+                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {df_atoms.iloc[i]['atom_id']} and {df_atoms.iloc[j]['atom_id']})"
+                        )
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
@@ -349,10 +348,22 @@ class LigandPipeline(LoggingMixin):
         Returns:
             DataFrame with updated atom types
         """
-        # Use optimized adjacency matrix construction
-        adjacency, atom_id_to_idx = self._build_adjacency_matrix_optimized(df_atoms, df_bonds)
+        # Create adjacency matrix
+        n_atoms = len(df_atoms)
+        adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
 
-        # Calculate valence for each atom using vectorized operations
+        # Build adjacency matrix from bonds
+        for _, bond in df_bonds.iterrows():
+            origin_idx = df_atoms[df_atoms["atom_id"] == bond["origin_atom_id"]].index[
+                0
+            ]
+            target_idx = df_atoms[df_atoms["atom_id"] == bond["target_atom_id"]].index[
+                0
+            ]
+            adjacency[origin_idx, target_idx] = 1
+            adjacency[target_idx, origin_idx] = 1
+
+        # Calculate valence for each atom
         valence_counts = np.sum(adjacency, axis=1)
 
         # Assign atom types based on valence rules
@@ -582,192 +593,6 @@ class LigandPipeline(LoggingMixin):
         """
         return len(atom_bonds[atom_idx])
 
-    def _build_spatial_grid(self, coords, max_bond_distance):
-        """
-        Build a 3D spatial grid for efficient neighbor searching.
-
-        Args:
-            coords: numpy array of atom coordinates (n_atoms, 3)
-            max_bond_distance: maximum distance to consider for bonds
-
-        Returns:
-            grid: dictionary mapping grid coordinates to atom indices
-            grid_size: size of each grid cell
-        """
-        # Calculate grid size based on maximum bond distance
-        grid_size = max_bond_distance * 2
-
-        # Find bounding box
-        min_coords = np.min(coords, axis=0)
-        max_coords = np.max(coords, axis=0)
-
-        # Build grid
-        grid = {}
-        for i, coord in enumerate(coords):
-            grid_x = int((coord[0] - min_coords[0]) / grid_size)
-            grid_y = int((coord[1] - min_coords[1]) / grid_size)
-            grid_z = int((coord[2] - min_coords[2]) / grid_size)
-            grid_key = (grid_x, grid_y, grid_z)
-
-            if grid_key not in grid:
-                grid[grid_key] = []
-            grid[grid_key].append(i)
-
-        return grid, grid_size
-
-    def _get_neighbor_cells(self, grid_key):
-        """Get all neighboring grid cells for a given cell."""
-        x, y, z = grid_key
-        neighbors = []
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                for dz in [-1, 0, 1]:
-                    neighbors.append((x + dx, y + dy, z + dz))
-        return neighbors
-
-    def _find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
-        """
-        Find bonds using spatial partitioning for O(n) average case performance.
-
-        Args:
-            coords: numpy array of atom coordinates
-            elements: array of element symbols
-            covalent_radii: dictionary of covalent radii
-            bond_tolerance: bond distance tolerance
-
-        Returns:
-            bonds: list of bond dictionaries
-            atom_bonds: dictionary tracking bonds per atom
-        """
-        # Calculate maximum bond distance
-        max_radii = max(covalent_radii.values())
-        max_bond_distance = 2 * max_radii + bond_tolerance
-
-        # Build spatial grid
-        grid, grid_size = self._build_spatial_grid(coords, max_bond_distance)
-
-        bonds = []
-        atom_bonds = {i: [] for i in range(len(coords))}
-        bond_id = 1
-
-        # Check each atom against atoms in neighboring cells
-        for i in range(len(coords)):
-            coord_i = coords[i]
-            elem_i = elements[i]
-
-            # Find grid cell for this atom
-            min_coords = np.min(coords, axis=0)
-            grid_x = int((coord_i[0] - min_coords[0]) / grid_size)
-            grid_y = int((coord_i[1] - min_coords[1]) / grid_size)
-            grid_z = int((coord_i[2] - min_coords[2]) / grid_size)
-            current_cell = (grid_x, grid_y, grid_z)
-
-            # Check atoms in current and neighboring cells
-            neighbor_cells = self._get_neighbor_cells(current_cell)
-            checked_atoms = set()
-
-            for cell_key in neighbor_cells:
-                if cell_key not in grid:
-                    continue
-
-                for j in grid[cell_key]:
-                    if j <= i or j in checked_atoms:  # Avoid duplicates
-                        continue
-                    checked_atoms.add(j)
-
-                    elem_j = elements[j]
-                    coord_j = coords[j]
-
-                    # Calculate distance
-                    dist = np.linalg.norm(coord_i - coord_j)
-
-                    # Check if atoms could form a bond
-                    r_cov_i = covalent_radii.get(elem_i, 0.77)
-                    r_cov_j = covalent_radii.get(elem_j, 0.77)
-                    max_bond = r_cov_i + r_cov_j + bond_tolerance
-
-                    if 0.4 < dist < max_bond:
-                        # Validate bond is chemically possible
-                        if self._is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                            bonds.append({
-                                "bond_id": bond_id,
-                                "origin_atom_id": i + 1,  # 1-based indexing
-                                "target_atom_id": j + 1,
-                                "bond_type": "1",
-                                "status_bit": "",
-                            })
-                            # Update bond tracking
-                            atom_bonds[i].append(j)
-                            atom_bonds[j].append(i)
-                            bond_id += 1
-                        else:
-                            self._log(
-                                f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
-                            )
-
-        return bonds, atom_bonds
-
-    def _build_adjacency_matrix_optimized(self, df_atoms, df_bonds):
-        """
-        Build adjacency matrix using optimized indexing for O(n) performance.
-
-        Args:
-            df_atoms: DataFrame with atom information
-            df_bonds: DataFrame with bond information
-
-        Returns:
-            adjacency: numpy array adjacency matrix
-            atom_id_to_idx: mapping from atom_id to DataFrame index
-        """
-        n_atoms = len(df_atoms)
-        adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
-
-        # Create atom_id to index mapping for O(1) lookups
-        atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms['atom_id'])}
-
-        # Build adjacency matrix from bonds in O(bonds) time
-        for _, bond in df_bonds.iterrows():
-            origin_idx = atom_id_to_idx[bond["origin_atom_id"]]
-            target_idx = atom_id_to_idx[bond["target_atom_id"]]
-            adjacency[origin_idx, target_idx] = 1
-            adjacency[target_idx, origin_idx] = 1
-
-        return adjacency, atom_id_to_idx
-
-    def _create_memory_efficient_atom_array(self, atom_records):
-        """
-        Create memory-efficient atom data structure using NumPy arrays.
-
-        Args:
-            atom_records: List of atom dictionaries
-
-        Returns:
-            atom_array: Structured NumPy array with atom data
-        """
-        # Define structured dtype for memory efficiency
-        dtype = np.dtype([
-            ('atom_id', 'i4'),
-            ('atom_name', 'U8'),
-            ('x', 'f8'),
-            ('y', 'f8'),
-            ('z', 'f8'),
-            ('atom_type', 'U4'),
-            ('subst_id', 'i4'),
-            ('subst_name', 'U4'),
-            ('charge', 'f8'),
-            ('status_bit', 'U4')
-        ])
-
-        # Convert to structured array
-        atom_array = np.array(atom_records, dtype=dtype)
-        return atom_array
-
-    def _convert_atom_array_to_dataframe(self, atom_array):
-        """
-        Convert structured NumPy array back to pandas DataFrame when needed.
-        """
-        return pd.DataFrame(atom_array)
-
     def mol2_dataframe_to_orca_charge_input(
         self, df_atoms, output_file, charge=0, multiplicity=1
     ):
@@ -847,64 +672,59 @@ class LigandPipeline(LoggingMixin):
             property_path (str): Path to the ORCA ligand.property.txt file.
             output_path (str, optional): Path to write the updated .mol2 file. If None, overwrite input.
         """
-        # Load mol2 file using cache
-        lines = self._get_cached_file_content(mol2_path)
+        # Load mol2 file and extract atom block
+        with open(mol2_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-        # Optimized section parsing using list comprehension
-        atom_section_lines = []
         atom_section = False
-
+        atom_lines = []
         for line in lines:
-            line_stripped = line.strip()
-            if line_stripped == "@<TRIPOS>ATOM":
+            if line.strip().startswith("@<TRIPOS>ATOM"):
                 atom_section = True
                 continue
-            elif line_stripped.startswith("@<TRIPOS>") and atom_section:
+            if line.strip().startswith("@<TRIPOS>"):
                 atom_section = False
-                break
-            elif atom_section:
-                atom_section_lines.append(line_stripped)
+            if atom_section:
+                atom_lines.append(line.strip())
 
-        if not atom_section_lines:
-            raise ValueError("No ATOM section found in MOL2 file")
-
-        # Parse ATOM lines into a DataFrame using vectorized operations
+        # Parse ATOM lines into a DataFrame
         mol2_columns = [
-            "atom_id", "atom_name", "x", "y", "z",
-            "atom_type", "subst_id", "subst_name", "charge"
+            "atom_id",
+            "atom_name",
+            "x",
+            "y",
+            "z",
+            "atom_type",
+            "subst_id",
+            "subst_name",
+            "charge",
         ]
-
-        # Use pandas read_csv for efficient parsing
-        df_atoms = pd.read_csv(
-            io.StringIO("\n".join(atom_section_lines)),
-            sep=r"\s+",
-            header=None,
-            names=mol2_columns,
-            engine='python'
+        df_atoms = pd.DataFrame(
+            [line.split(None, 9) for line in atom_lines], columns=mol2_columns
         )
+        df_atoms[["atom_id"]] = df_atoms[["atom_id"]].astype(int)
+        df_atoms[["x", "y", "z", "charge"]] = df_atoms[
+            ["x", "y", "z", "charge"]
+        ].astype(float)
 
-        # Convert data types efficiently
-        df_atoms["atom_id"] = df_atoms["atom_id"].astype(int)
-        df_atoms[["x", "y", "z", "charge"]] = df_atoms[["x", "y", "z", "charge"]].astype(float)
+        # Parse charges from property file
+        with open(property_path, "r", encoding="utf-8") as file:
+            prop_lines = file.readlines()
 
-        # Parse charges from property file using cache
-        prop_lines = self._get_cached_file_content(property_path)
-
-        # Find the AtomicCharges section using optimized search
+        # Find the AtomicCharges section
         start_idx = None
         for i, line in enumerate(prop_lines):
-            if str(re.search(r"&AtomicCharges\b", line, re.IGNORECASE)) in line.upper():
+            if re.search(r"&AtomicCharges\b", line, re.IGNORECASE):
                 start_idx = i
                 break
 
         if start_idx is None:
             raise ValueError("Could not find the '&AtomicCharges' block.")
 
-        # Extract charge values using vectorized operations
+        # The block starts two lines after the header (skip the extra "0" line)
         charge_values = []
         pattern = re.compile(r"^\s*(\d+)\s+([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)")
-
-        for line in prop_lines[start_idx + 2:]:
+        for line in prop_lines[start_idx + 2 :]:
             stripped = line.strip()
             if not stripped:
                 continue
@@ -918,12 +738,14 @@ class LigandPipeline(LoggingMixin):
                 continue
 
         # Create the charges DataFrame
-        df_charges = pd.DataFrame({
-            "index": range(1, len(charge_values) + 1),  # mol2 is 1-based
-            "charge": charge_values,
-        })
+        df_charges = pd.DataFrame(
+            {
+                "index": range(1, len(charge_values) + 1),  # mol2 is 1-based
+                "charge": charge_values,
+            }
+        )
 
-        # Merge the charges into the atom DataFrame using optimized merge
+        # Merge the charges into the atom DataFrame using atom_id (mol2) and index (charges)
         df_atoms = df_atoms.merge(
             df_charges,
             left_on="atom_id",
@@ -931,11 +753,11 @@ class LigandPipeline(LoggingMixin):
             suffixes=("", "_from_property"),
         )
 
-        # Replace the original 'charge' column with the new charge values
+        # Replace the original 'charge' column with the new charge values from the property file
         df_atoms["charge"] = df_atoms["charge_from_property"]
         df_atoms.drop(columns=["index", "charge_from_property"], inplace=True)
 
-        # Write updated mol2 file using optimized approach
+        # Write updated mol2 file
         if output_path is None:
             output_path = mol2_path
 
@@ -952,26 +774,22 @@ class LigandPipeline(LoggingMixin):
                 # Write ATOM section header
                 f.write(lines[atom_start])
 
-                # Write updated atom lines using vectorized formatting
-                atom_lines = []
+                # Write updated atom lines
                 for _, row in df_atoms.iterrows():
-                    atom_lines.append(
-                        f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} "
-                        f"{row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} "
-                        f"{row['atom_type']:<9s} {int(row['subst_id']):<2d} "
-                        f"{row['subst_name']:<7s} {row['charge']:>10.4f}\n"
+                    f.write(
+                        f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f}\n"
                     )
-                f.writelines(atom_lines)
 
                 # Write the rest of the mol2 file (from BOND section onward)
                 bond_start = None
-                for i, line in enumerate(lines[atom_start + 1:], atom_start + 1):
+                for i, line in enumerate(lines[atom_start + 1 :], atom_start + 1):
                     if line.strip().startswith("@<TRIPOS>"):
                         bond_start = i
                         break
 
                 if bond_start is not None:
-                    f.writelines(lines[bond_start:])
+                    for line in lines[bond_start:]:
+                        f.write(line)
 
         self._log(f"Updated charges in {output_path} using {property_path}")
         self._log(
@@ -1032,5 +850,3 @@ class LigandPipeline(LoggingMixin):
         except Exception as e:
             self._log(f"[ERROR] Failed to run acpype: {e}")
             return False
-
-
