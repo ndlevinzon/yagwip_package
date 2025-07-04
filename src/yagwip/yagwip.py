@@ -290,15 +290,16 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         ],
                     )
                     # Generate ORCA Geometry Optimization input
-                    orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                    orca_charge_input = mol2_file.replace(".mol2", ".inp")
                     ligand_pipeline.mol2_dataframe_to_orca_charge_input(
                         df_atoms,
-                        orca_geom_input,
+                        orca_charge_input,
                         charge=charge,
                         multiplicity=multiplicity,
                     )
                     # Run ORCA Geometry Optimization
-                    ligand_pipeline.run_orca(orca_path, orca_geom_input)
+                    orca_input_path = os.path.abspath(orca_charge_input)
+                    ligand_pipeline.run_orca(orca_path, orca_input_path)
                     # Append atom charges to mol2
                     ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
                     ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
