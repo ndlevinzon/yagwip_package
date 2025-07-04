@@ -31,7 +31,8 @@ class ToolChecker:
         orca_path = shutil.which("orca")
         if orca_path is None:
             print(
-                "[ToolChecker][ERROR] ORCA executable 'orca' not found in PATH. Please install ORCA and ensure it is available."
+                "[ToolChecker][ERROR] ORCA executable 'orca' not found in PATH."
+                " Please install ORCA and ensure it is available."
             )
             return None
         print(f"[ToolChecker] ORCA executable found: {orca_path}")
@@ -46,7 +47,8 @@ class ToolChecker:
         mpirun_path = shutil.which("mpirun")
         if mpirun_path is None:
             print(
-                "[ToolChecker][ERROR] OpenMPI executable 'mpirun' not found in PATH. Please install OpenMPI and ensure it is available."
+                "[ToolChecker][ERROR] OpenMPI executable 'mpirun' not found in PATH."
+                " Please install OpenMPI and ensure it is available."
             )
             return None
         print(f"[ToolChecker] OpenMPI executable found: {mpirun_path}")
@@ -64,7 +66,11 @@ class ToolChecker:
         """
         try:
             result = subprocess.run(
-                [gmx_path, "--version"], capture_output=True, text=True, timeout=10, check=False
+                [gmx_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
             )
             return result.returncode == 0
         except (
@@ -83,7 +89,9 @@ class ToolChecker:
         amber_path = shutil.which("parmchk2")
         if amber_path is None:
             print(
-                "[ToolChecker][ERROR] AmberTools executable 'parmchk2' not found in PATH. Please install AmberTools and ensure it is available.")
+                "[ToolChecker][ERROR] AmberTools executable 'parmchk2' not found in PATH."
+                " Please install AmberTools and ensure it is available."
+            )
             return None
         print(f"[ToolChecker] AmberTools (parmchk2) executable found: {amber_path}")
         return amber_path
@@ -97,7 +105,9 @@ class ToolChecker:
         obabel_path = shutil.which("obabel")
         if obabel_path is None:
             print(
-                "[ToolChecker][ERROR] OpenBabel executable 'obabel' not found in PATH. Please install OpenBabel and ensure it is available.")
+                "[ToolChecker][ERROR] OpenBabel executable 'obabel' not found in PATH."
+                " Please install OpenBabel and ensure it is available."
+            )
             return None
         print(f"[ToolChecker] OpenBabel (obabel) executable found: {obabel_path}")
         return obabel_path
@@ -111,7 +121,9 @@ class ToolChecker:
         acpype_path = shutil.which("acpype")
         if acpype_path is None:
             print(
-                "[ToolChecker][ERROR] ACPYPE executable 'acpype' not found in PATH. Please install ACPYPE and ensure it is available.")
+                "[ToolChecker][ERROR] ACPYPE executable 'acpype' not found in PATH."
+                " Please install ACPYPE and ensure it is available."
+            )
             return None
         print(f"[ToolChecker] ACPYPE executable found: {acpype_path}")
         return acpype_path
@@ -231,7 +243,9 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                                     print(msg)
 
                                 # Retry the command
-                                retry_msg = "[#] Rerunning command after modifying topol.top..."
+                                retry_msg = (
+                                    "[#] Rerunning command after modifying topol.top..."
+                                )
                                 if logger:
                                     logger.info(retry_msg)
                                 else:
@@ -401,20 +415,20 @@ class Editor(LoggingMixin):
 
         with open(self.ligand_itp, "w", encoding="utf-8") as fout:
             fout.writelines(new_ligand_lines)
-        self._log("[#] Removed [ atomtypes ] section from ligand.itp")
+        self._log("Removed [ atomtypes ] section from ligand.itp")
 
         if not atomtypes_block:
-            self._log("[#] No atomtypes section found in ligand.itp. Skipping...")
+            self._log("No atomtypes section found in ligand.itp. Skipping...")
             return
 
         if not os.path.isfile(self.ffnonbonded_itp):
-            self._log(f"[!] {self.ffnonbonded_itp} not found.")
+            self._log(f"[ERROR] {self.ffnonbonded_itp} not found.")
             return
 
         with open(self.ffnonbonded_itp, "r", encoding="utf-8") as f:
             if ";ligand" in f.read():
                 self._log(
-                    "[#] Ligand section already exists in ffnonbonded.itp. Skipping..."
+                    "Ligand section already exists in ffnonbonded.itp. Skipping..."
                 )
                 return
 
@@ -422,11 +436,11 @@ class Editor(LoggingMixin):
             f.write("\n;ligand\n")
             f.writelines(atomtypes_block)
 
-        self._log(f"[#] Appended ligand atomtypes to {self.ffnonbonded_itp}")
+        self._log(f"Appended ligand atomtypes to {self.ffnonbonded_itp}")
 
     def modify_improper_dihedrals_in_ligand_itp(self):
         if not os.path.isfile(self.ligand_itp):
-            self._log(f"[!] {self.ligand_itp} not found.")
+            self._log(f"[ERROR] {self.ligand_itp} not found.")
             return
 
         with open(self.ligand_itp, "r", encoding="utf-8") as f:
@@ -464,13 +478,13 @@ class Editor(LoggingMixin):
                 output_lines.append(line)
 
         if not modified:
-            self._log("[#] No impropers with func=4 found to modify. Skipping...")
+            self._log("No impropers with func=4 found to modify. Skipping...")
             return
 
         with open(self.ligand_itp, "w", encoding="utf-8") as f:
             f.writelines(output_lines)
 
-        self._log(f"[#] Improper dihedrals converted to func=2 in {self.ligand_itp}.")
+        self._log(f"Improper dihedrals converted to func=2 in {self.ligand_itp}.")
 
     def rename_residue_in_itp_atoms_section(self, old_resname="MOL", new_resname="LIG"):
         with open(self.ligand_itp, "r", encoding="utf-8") as f:
@@ -525,7 +539,7 @@ class Editor(LoggingMixin):
             f.writelines(modified_lines)
 
         self._log(
-            f"[#] Updated residue names in {self.ligand_itp}: {old_resname} -> {new_resname}"
+            f"Updated residue names in {self.ligand_itp}: {old_resname} -> {new_resname}"
         )
 
     def append_ligand_coordinates_to_gro(
@@ -560,7 +574,7 @@ class Editor(LoggingMixin):
                 )
             fout.write(box)
 
-        self._log(f"[#] Wrote combined coordinates to {combined_gro}")
+        self._log(f"Wrote combined coordinates to {combined_gro}")
 
     def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
         with open(topol_top, "r", encoding="utf-8") as f:
@@ -613,7 +627,7 @@ class Editor(LoggingMixin):
             f.writelines(new_lines)
 
         self._log(
-            f"[#] Included {self.ligand_itp} and {ligand_name} entry in {topol_top}"
+            f"Included {self.ligand_itp} and {ligand_name} entry in {topol_top}"
         )
 
     def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
@@ -661,7 +675,7 @@ class Editor(LoggingMixin):
                 f.writelines(new_lines)
 
             self._log(
-                f"[#] Injected {len(itp_path_list)} custom includes into {top_file}"
+                f"Injected {len(itp_path_list)} custom includes into {top_file}"
             )
 
 
