@@ -234,74 +234,60 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             else:
                 self._log("ligand.itp not found in the current directory.")
                 if use_ligand_builder:
-                    orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
-                    if orca_path is None:
-                        return False
-                    openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
-                    if openmpi_path is None:
-                        return False
-                    amber_path = ToolChecker.check_amber_available()  # Check if AMBER is available
-                    if amber_path is None:
-                        return False
-                    openbabel_path = ToolChecker.check_openbabel_available()  # Check if OPENBABEL is available
-                    if openbabel_path is None:
-                        return False
-                    acpype_path = ToolChecker.check_acpype_available()  # Check if ACPYPE is available
-                    if acpype_path is None:
-                        return False
-                    ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
-                    ligand_pdb = "ligand.pdb"
-                    mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
-                    if mol2_file is None:
-                        self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
+                    if use_ligand_builder:
+                        ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
+                        ligand_pdb = "ligand.pdb"
+                        mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                        if mol2_file is None:
+                            self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
+                            return
+                        # Find the start and end of the ATOM section
+                        with open(mol2_file, encoding="utf-8") as f:
+                            lines = f.readlines()
+                        atom_start = atom_end = None
+                        for i, line in enumerate(lines):
+                            if line.strip() == "@<TRIPOS>ATOM":
+                                atom_start = i + 1
+                            elif line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None:
+                                atom_end = i
+                                break
+                        if atom_start is None:
+                            self._log("[ERROR] Could not find ATOM section in MOL2 file.")
+                            return
+                        if atom_end is None:
+                            atom_end = len(lines)
+                        atom_lines = lines[atom_start:atom_end]
+                        # Parse atom lines into DataFrame
+                        df_atoms = pd.read_csv(
+                            io.StringIO("".join(atom_lines)),
+                            sep=r"\s+",
+                            header=None,
+                            names=[
+                                "atom_id",
+                                "atom_name",
+                                "x",
+                                "y",
+                                "z",
+                                "atom_type",
+                                "subst_id",
+                                "subst_name",
+                                "charge",
+                                "status_bit",
+                            ],
+                        )
+                        # Generate ORCA Geometry Optimization input
+                        orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                        ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                            df_atoms,
+                            orca_geom_input,
+                            charge=charge,
+                            multiplicity=multiplicity,
+                        )
+                        # Run ORCA Geometry Optimization
+                        ligand_pipeline.run_orca(orca_geom_input)
+                        # Append atom charges to mol2
+                        ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
                         return
-                    # Find the start and end of the ATOM section
-                    with open(mol2_file, encoding="utf-8") as f:
-                        lines = f.readlines()
-                    atom_start = atom_end = None
-                    for i, line in enumerate(lines):
-                        if line.strip() == "@<TRIPOS>ATOM":
-                            atom_start = i + 1
-                        elif line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None:
-                            atom_end = i
-                            break
-                    if atom_start is None:
-                        self._log("[ERROR] Could not find ATOM section in MOL2 file.")
-                        return
-                    if atom_end is None:
-                        atom_end = len(lines)
-                    atom_lines = lines[atom_start:atom_end]
-                    # Parse atom lines into DataFrame
-                    df_atoms = pd.read_csv(
-                        io.StringIO("".join(atom_lines)),
-                        sep=r"\s+",
-                        header=None,
-                        names=[
-                            "atom_id",
-                            "atom_name",
-                            "x",
-                            "y",
-                            "z",
-                            "atom_type",
-                            "subst_id",
-                            "subst_name",
-                            "charge",
-                            "status_bit",
-                        ],
-                    )
-                    # Generate ORCA Geometry Optimization input
-                    orca_geom_input = mol2_file.replace(".mol2", ".inp")
-                    ligand_pipeline.mol2_dataframe_to_orca_charge_input(
-                        df_atoms,
-                        orca_geom_input,
-                        charge=charge,
-                        multiplicity=multiplicity,
-                    )
-                    # Run ORCA Geometry Optimization
-                    ligand_pipeline.run_orca(orca_geom_input)
-                    # Append atom charges to mol2
-                    ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
-                    return
                 self._log("[ERROR] ligand.itp not found.")
                 return
         else:
