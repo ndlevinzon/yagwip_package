@@ -239,9 +239,28 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
                     amber_ff_dest = "/amber14sb.ff"
 
-                    self._log(f"[DEBUG] Source path: {amber_ff_source}")
-                    self._log(f"[DEBUG] Source exists: {os.path.exists(amber_ff_source)}")
-                    self._log(f"[DEBUG] Destination exists: {os.path.exists(amber_ff_dest)}")
+                    # Create the destination directory if it doesn't exist
+                    if not os.path.exists(amber_ff_dest):
+                        os.makedirs(amber_ff_dest)
+                        self._log(f"[INFO] Created directory: {amber_ff_dest}")
+
+                    # Copy all files from the source directory
+                    try:
+                        for item in amber_ff_source.iterdir():
+                            source_path = str(item)
+                            dest_path = os.path.join(amber_ff_dest, item.name)
+
+                            if item.is_file():
+                                shutil.copy2(source_path, dest_path)
+                                self._log(f"[COPY] {item.name}")
+                            elif item.is_dir():
+                                shutil.copytree(source_path, dest_path, dirs_exist_ok=True)
+                                self._log(f"[COPY] {item.name}/ (directory)")
+
+                        self._log(f"[SUCCESS] Copied all files from {amber_ff_source} to {amber_ff_dest}")
+                    except Exception as e:
+                        self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
+                        return
 
                     ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = "ligand.pdb"
