@@ -297,15 +297,14 @@ class LigandPipeline(LoggingMixin):
         )
         return mol2_file
 
-    def mol2_dataframe_to_orca_charge_input(self, df_atoms, input_file, charge=0, multiplicity=1):
+    def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
-        # Use absolute path for output file
-        output_file = os.path.abspath(input_file)
-
-        # Create output directory if it doesn't exist
-        output_dir = os.path.dirname(output_file)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        orca_dir = os.path.abspath("orca")
+        if not os.path.exists(orca_dir):
+            os.makedirs(orca_dir)
+        output_file = os.path.abspath(
+            os.path.join(orca_dir, os.path.basename(output_file))
+        )
         if not {"atom_type", "x", "y", "z"}.issubset(df_atoms.columns):
             raise ValueError(
                 "df_atoms must contain 'atom_type', 'x', 'y', 'z' columns."
@@ -322,28 +321,27 @@ class LigandPipeline(LoggingMixin):
         self._log(f"ORCA input written to: {output_file}")
         return output_file
 
-    def run_orca(self, orca_path, input_file, output_file=None):
+    def run_orca(self, input_file, output_file=None):
         """Run ORCA quantum chemistry calculation."""
-        input_file = os.path.abspath(input_file)
+        orca_dir = os.path.abspath("orca")
+        if not os.path.exists(orca_dir):
+            os.makedirs(orca_dir)
+        input_file = os.path.abspath(
+            os.path.join(orca_dir, os.path.basename(input_file))
+        )
+        orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
+        if orca_path is None:
+            return False
+        openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
+        if openmpi_path is None:
+            return False
         if output_file is None:
             output_file = os.path.splitext(input_file)[0] + ".out"
         else:
             output_file = os.path.abspath(
-                os.path.join("orca/", os.path.basename(output_file))
+                os.path.join(orca_dir, os.path.basename(output_file))
             )
-
-        # Ensure the orca directory exists
-        orca_dir = os.path.dirname(output_file)
-        if not os.path.exists(orca_dir):
-            os.makedirs(orca_dir)
-
-        # Check if input file exists
-        if not os.path.exists(input_file):
-            self._log(f"[ERROR] ORCA input file not found: {input_file}")
-            return False
-
         try:
-            self._log(f"[RUNNING] ORCA command: {orca_path} {input_file}")
             result = subprocess.run(
                 [orca_path, input_file], capture_output=True, text=True, check=False
             )
