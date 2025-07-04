@@ -264,29 +264,26 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     )
                     amber_ff_dest = "/amber14sb.ff"
 
-                    # Create the destination directory if it doesn't exist
+                    # Create the destination directory
                     if not os.path.exists(amber_ff_dest):
                         os.makedirs(amber_ff_dest)
                         self._log(f"[INFO] Created directory: {amber_ff_dest}")
 
-                    # Copy all files from the source directory
+                    # Copy files by reading content and writing to new files
                     try:
                         for item in amber_ff_source.iterdir():
-                            source_path = str(item)
-                            dest_path = os.path.join(amber_ff_dest, item.name)
-
                             if item.is_file():
-                                shutil.copy2(source_path, dest_path)
-                                self._log(f"[COPY] {item.name}")
-                            elif item.is_dir():
-                                shutil.copytree(
-                                    source_path, dest_path, dirs_exist_ok=True
-                                )
-                                self._log(f"[COPY] {item.name}/ (directory)")
+                                # Read the content from the template file
+                                content = item.read_text(encoding='utf-8')
 
-                        self._log(
-                            f"[SUCCESS] Copied all files from {amber_ff_source} to {amber_ff_dest}"
-                        )
+                                # Write to new file in current directory
+                                dest_file = os.path.join(amber_ff_dest, item.name)
+                                with open(dest_file, 'w', encoding='utf-8') as f:
+                                    f.write(content)
+
+                                self._log(f"[COPY] {item.name}")
+
+                        self._log(f"[SUCCESS] Copied all files from amber14sb.ff templates to {amber_ff_dest}")
                     except Exception as e:
                         self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
                         return
