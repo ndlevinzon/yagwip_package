@@ -240,6 +240,15 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
                     if openmpi_path is None:
                         return False
+                    amber_path = ToolChecker.check_amber_available()  # Check if AMBER is available
+                    if amber_path is None:
+                        return False
+                    openbabel_path = ToolChecker.check_openbabel_available()  # Check if OPENBABEL is available
+                    if openbabel_path is None:
+                        return False
+                    acpype_path = ToolChecker.check_acpype_available()  # Check if ACPYPE is available
+                    if acpype_path is None:
+                        return False
                     ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
@@ -292,6 +301,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     ligand_pipeline.run_orca(orca_geom_input, orca_path)
                     # Append atom charges to mol2
                     ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
+                    ligand_pipeline.run_parmchk2("ligand.mol2")  # creates ligand.frcmod
+                    ligand_pipeline.run_acpype("ligand.mol2")   # convert to gromacs
                     return
                 self._log("[ERROR] ligand.itp not found.")
                 return

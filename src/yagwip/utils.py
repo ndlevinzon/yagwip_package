@@ -74,6 +74,48 @@ class ToolChecker:
         ):
             return False
 
+    @staticmethod
+    def check_amber_available():
+        """
+        Check if AmberTools (parmchk2) is available in the system PATH.
+        Returns the path to the parmchk2 executable if found, else None.
+        """
+        amber_path = shutil.which("parmchk2")
+        if amber_path is None:
+            print(
+                "[ToolChecker][ERROR] AmberTools executable 'parmchk2' not found in PATH. Please install AmberTools and ensure it is available.")
+            return None
+        print(f"[ToolChecker] AmberTools (parmchk2) executable found: {amber_path}")
+        return amber_path
+
+    @staticmethod
+    def check_openbabel_available():
+        """
+        Check if OpenBabel (obabel) is available in the system PATH.
+        Returns the path to the obabel executable if found, else None.
+        """
+        obabel_path = shutil.which("obabel")
+        if obabel_path is None:
+            print(
+                "[ToolChecker][ERROR] OpenBabel executable 'obabel' not found in PATH. Please install OpenBabel and ensure it is available.")
+            return None
+        print(f"[ToolChecker] OpenBabel (obabel) executable found: {obabel_path}")
+        return obabel_path
+
+    @staticmethod
+    def check_acpype_available():
+        """
+        Check if ACPYPE is available in the system PATH.
+        Returns the path to the acpype executable if found, else None.
+        """
+        acpype_path = shutil.which("acpype")
+        if acpype_path is None:
+            print(
+                "[ToolChecker][ERROR] ACPYPE executable 'acpype' not found in PATH. Please install ACPYPE and ensure it is available.")
+            return None
+        print(f"[ToolChecker] ACPYPE executable found: {acpype_path}")
+        return acpype_path
+
 
 def validate_gromacs_installation(gmx_path="gmx"):
     """
