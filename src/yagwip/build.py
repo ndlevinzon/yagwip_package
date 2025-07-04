@@ -893,7 +893,7 @@ class LigandPipeline(LoggingMixin):
         # Find the AtomicCharges section using optimized search
         start_idx = None
         for i, line in enumerate(prop_lines):
-            if "&AtomicCharges" in line.upper():
+            if re.search(r"&AtomicCharges\b", line, re.IGNORECASE) in line.upper():
                 start_idx = i
                 break
 
