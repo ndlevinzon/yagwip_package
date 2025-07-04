@@ -316,13 +316,16 @@ class LigandPipeline(LoggingMixin):
             out_file.write("@<TRIPOS>ATOM\n")
             for _, row in mol2["ATOM"].iterrows():
                 out_file.write(
-                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} {row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} {row['charge']:>10.4f} {row['status_bit']}\n"
+                    f"{int(row['atom_id']):>6d} {row['atom_name']:<8s} {row['x']:>10.4f} {row['y']:>10.4f} "
+                    f"{row['z']:>10.4f} {row['atom_type']:<9s} {int(row['subst_id']):<2d} {row['subst_name']:<7s} "
+                    f"{row['charge']:>10.4f} {row['status_bit']}\n"
                 )
             if len(df_bonds) > 0:
                 out_file.write("@<TRIPOS>BOND\n")
                 for _, row in mol2["BOND"].iterrows():
                     out_file.write(
-                        f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}    {row['bond_type']} {row['status_bit']}\n"
+                        f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}"
+                        f"    {row['bond_type']} {row['status_bit']}\n"
                     )
         self._log(
             f"[SUMMARY] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
@@ -745,7 +748,7 @@ class LigandPipeline(LoggingMixin):
                     for line in lines[bond_start:]:
                         f.write(line)
 
-        self._log(f"[#] Updated charges in {output_path} using {property_path}")
+        self._log(f"Updated charges in {output_path} using {property_path}")
         self._log(f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation.")
 
     def run_parmchk2(self, mol2_file, frcmod_file=None):
@@ -768,7 +771,7 @@ class LigandPipeline(LoggingMixin):
             if result.returncode != 0:
                 self._log(f"[ERROR] parmchk2 failed: {result.stderr}")
                 return False
-            self._log(f"[#] parmchk2 completed. Output: {frcmod_file}")
+            self._log(f"parmchk2 completed. Output: {frcmod_file}")
             return True
         except Exception as e:
             self._log(f"[ERROR] Failed to run parmchk2: {e}")
