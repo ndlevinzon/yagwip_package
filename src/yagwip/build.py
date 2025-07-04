@@ -272,7 +272,7 @@ class LigandPipeline(LoggingMixin):
         with open(mol2_file, "w", encoding="utf-8") as out_file:
             today = date.today().strftime("%Y-%m-%d")
             out_file.write(f"### Crafted by Yagwip LigandPipeline {today}\n")
-            out_file.write("### Charged by ORCA 6.0 \n\n")
+            out_file.write("### Charged by ORCA 6.1 \n\n")
             out_file.write("@<TRIPOS>MOLECULE\n")
             m = mol2["MOLECULE"].iloc[0]
             out_file.write(f"{m['mol_name']}\n")
@@ -321,7 +321,7 @@ class LigandPipeline(LoggingMixin):
         self._log(f"ORCA input written to: {output_file}")
         return output_file
 
-    def run_orca(self, input_file, output_file=None):
+    def run_orca(self, orca_path,  input_file, output_file=None):
         """Run ORCA quantum chemistry calculation."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
@@ -329,12 +329,6 @@ class LigandPipeline(LoggingMixin):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
-        if orca_path is None:
-            return False
-        openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
-        if openmpi_path is None:
-            return False
         if output_file is None:
             output_file = os.path.splitext(input_file)[0] + ".out"
         else:

@@ -31,7 +31,7 @@ import pandas as pd
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
-from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename
+from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename, ToolChecker
 from .slurm_writer import SlurmWriter
 
 # === Metadata ===
@@ -234,6 +234,12 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             else:
                 self._log("ligand.itp not found in the current directory.")
                 if use_ligand_builder:
+                    orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
+                    if orca_path is None:
+                        return False
+                    openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
+                    if openmpi_path is None:
+                        return False
                     ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
@@ -283,7 +289,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         multiplicity=multiplicity,
                     )
                     # Run ORCA Geometry Optimization
-                    ligand_pipeline.run_orca(orca_geom_input)
+                    ligand_pipeline.run_orca(orca_geom_input, orca_path)
                     # Append atom charges to mol2
                     ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
                     return
