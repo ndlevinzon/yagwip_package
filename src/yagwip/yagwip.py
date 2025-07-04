@@ -38,7 +38,6 @@ from .utils import (
     setup_logger,
     validate_gromacs_installation,
     complete_filename,
-    ToolChecker,
 )
 from .slurm_writer import SlurmWriter
 
@@ -197,19 +196,29 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 --c: Set the total charge for QM input (default 0)
                 --m: Set the multiplicity for QM input (default 1)
         """
-        args = shlex.split(arg)
-        if not args:
-            print(
-                "Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]"
-            )
+        self._log(f"[DEBUG] do_loadpdb called with arg: '{arg}'")
+
+        # Parse arguments
+        parser = argparse.ArgumentParser(description="Load PDB file")
+        parser.add_argument("pdb_file", help="PDB file to load")
+        parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder")
+        parser.add_argument("--c", type=int, default=0, help="Total charge for QM input")
+        parser.add_argument("--m", type=int, default=1, help="Multiplicity for QM input")
+
+        try:
+            args = parser.parse_args(arg.split())
+        except SystemExit:
             return
-        filename = args[0]
-        use_ligand_builder = "--ligand_builder" in args
-        charge = int(args[args.index("--c") + 1]) if "--c" in args else 0
-        multiplicity = int(args[args.index("--m") + 1]) if "--m" in args else 1
-        full_path = os.path.abspath(filename)
+        use_ligand_builder = args.ligand_builder
+        charge = args.c
+        multiplicity = args.m
+        self._log(f"[DEBUG] use_ligand_builder = {use_ligand_builder}")
+        self._log(f"[DEBUG] charge = {charge}, multiplicity = {multiplicity}")
+
+        pdb_file = args.pdb_file
+        full_path = os.path.abspath(pdb_file)
         if not os.path.isfile(full_path):
-            self._log(f"[ERROR] '{filename}' not found.")
+            self._log(f"[ERROR] '{pdb_file}' not found.")
             return
         # Store the full path and basename for later use in the build pipeline
         self.current_pdb_path = full_path
@@ -253,10 +262,10 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
                 self._log("ligand.itp not found. Running ligand builder pipeline...")
+                self._log(f"[DEBUG] use_ligand_builder = {use_ligand_builder}")
+                self._log(f"[DEBUG] ligand.itp exists = {os.path.isfile('ligand.itp')}")
                 # Copy amber14sb.ff files into current dir
-                amber_ff_source = str(
-                    files("yagwip.templates").joinpath("amber14sb.ff/")
-                )
+                amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
                 amber_ff_dest = os.path.abspath("amber14sb.ff")
 
                 if not os.path.exists(amber_ff_dest):
@@ -274,15 +283,11 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 except Exception as e:
                     self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
 
-                ligand_pipeline = LigandPipeline(
-                    logger=self.logger, debug=self.debug
-                )
+                ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                 ligand_pdb = "ligand.pdb"
                 mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                 if mol2_file is None:
-                    self._log(
-                        "[ERROR] MOL2 generation failed. Aborting ligand pipeline..."
-                    )
+                    self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
                     return
                 # Find the start and end of the ATOM section
                 with open(mol2_file, encoding="utf-8") as f:
