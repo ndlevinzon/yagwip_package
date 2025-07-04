@@ -239,15 +239,10 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
                     amber_ff_dest = "/amber14sb.ff"
 
-                    if os.path.exists(amber_ff_dest):
-                        self._log(f"[INFO] {amber_ff_dest} already exists in current directory.")
-                    else:
-                        try:
-                            shutil.copytree(amber_ff_source, amber_ff_dest)
-                            self._log(f"[SUCCESS] Copied {amber_ff_source} to {amber_ff_dest}")
-                        except Exception as e:
-                            self._log(f"[ERROR] Failed to copy amber14sb.ff: {e}")
-                            return
+                    self._log(f"[DEBUG] Source path: {amber_ff_source}")
+                    self._log(f"[DEBUG] Source exists: {os.path.exists(amber_ff_source)}")
+                    self._log(f"[DEBUG] Destination exists: {os.path.exists(amber_ff_dest)}")
+
                     ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                     ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
