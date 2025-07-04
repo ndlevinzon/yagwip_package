@@ -236,8 +236,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 if use_ligand_builder:
                     # Copy amber14sb.ff directory from templates to current working directory
                     self._log("Setting up force field files for ligand building...")
-                    amber_ff_source = files("yagwip.templates").joinpath("amber14sb.ff")
-                    amber_ff_dest = "amber14sb.ff"
+                    amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
+                    amber_ff_dest = "/amber14sb.ff"
 
                     if os.path.exists(amber_ff_dest):
                         self._log(f"[INFO] {amber_ff_dest} already exists in current directory.")
