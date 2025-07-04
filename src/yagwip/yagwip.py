@@ -250,105 +250,95 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 self.editor.append_ligand_atomtypes_to_forcefield()
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
-            else:
-                self._log("ligand.itp not found in the current directory.")
-                if use_ligand_builder:
-                    # Copy amber14sb.ff directory from templates to current working directory
-                    self._log("Setting up force field files for ligand building...")
-                    amber_ff_source = str(
-                        files("yagwip.templates").joinpath("amber14sb.ff/")
+            elif use_ligand_builder:
+                self._log("ligand.itp not found. Running ligand builder pipeline...")
+                # Copy amber14sb.ff files into current dir
+                amber_ff_source = str(
+                    files("yagwip.templates").joinpath("amber14sb.ff/")
+                )
+                amber_ff_dest = os.path.abspath("amber14sb.ff")
+
+                if not os.path.exists(amber_ff_dest):
+                    os.makedirs(amber_ff_dest)
+                    self._log(f"[INFO] Created directory: {amber_ff_dest}")
+                try:
+                    for item in Path(amber_ff_source).iterdir():
+                        if item.is_file():
+                            content = item.read_text(encoding='utf-8')
+                            dest_file = os.path.join(amber_ff_dest, item.name)
+                            with open(dest_file, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            self._log(f"[COPY] {item.name}")
+                    self._log(f"[SUCCESS] Copied all amber14sb.ff files.")
+                except Exception as e:
+                    self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
+
+                ligand_pipeline = LigandPipeline(
+                    logger=self.logger, debug=self.debug
+                )
+                ligand_pdb = "ligand.pdb"
+                mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                if mol2_file is None:
+                    self._log(
+                        "[ERROR] MOL2 generation failed. Aborting ligand pipeline..."
                     )
-                    amber_ff_dest = os.path.abspath("amber14sb.ff")
-
-                    # Create the destination directory
-                    if not os.path.exists(amber_ff_dest):
-                        os.makedirs(amber_ff_dest)
-                        self._log(f"[INFO] Created directory: {amber_ff_dest}")
-
-                    # Copy files by reading content and writing to new files
-                    try:
-                        for item in amber_ff_source.iterdir():
-                            if item.is_file():
-                                # Read the content from the template file
-                                content = item.read_text(encoding='utf-8')
-
-                                # Write to new file in current directory
-                                dest_file = os.path.join(amber_ff_dest, item.name)
-                                with open(dest_file, 'w', encoding='utf-8') as f:
-                                    f.write(content)
-
-                                self._log(f"[COPY] {item.name}")
-
-                        self._log(f"[SUCCESS] Copied all files from amber14sb.ff templates to {amber_ff_dest}")
-                    except Exception as e:
-                        self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
-                        return
-
-                    ligand_pipeline = LigandPipeline(
-                        logger=self.logger, debug=self.debug
-                    )
-                    ligand_pdb = "ligand.pdb"
-                    mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
-                    if mol2_file is None:
-                        self._log(
-                            "[ERROR] MOL2 generation failed. Aborting ligand pipeline..."
-                        )
-                        return
-                    # Find the start and end of the ATOM section
-                    with open(mol2_file, encoding="utf-8") as f:
-                        lines = f.readlines()
-                    atom_start = atom_end = None
-                    for i, line in enumerate(lines):
-                        if line.strip() == "@<TRIPOS>ATOM":
-                            atom_start = i + 1
-                        elif (
-                            line.strip().startswith("@<TRIPOS>BOND")
-                            and atom_start is not None
-                        ):
-                            atom_end = i
-                            break
-                    if atom_start is None:
-                        self._log("[ERROR] Could not find ATOM section in MOL2 file.")
-                        return
-                    if atom_end is None:
-                        atom_end = len(lines)
-                    atom_lines = lines[atom_start:atom_end]
-                    # Parse atom lines into DataFrame
-                    df_atoms = pd.read_csv(
-                        io.StringIO("".join(atom_lines)),
-                        sep=r"\s+",
-                        header=None,
-                        names=[
-                            "atom_id",
-                            "atom_name",
-                            "x",
-                            "y",
-                            "z",
-                            "atom_type",
-                            "subst_id",
-                            "subst_name",
-                            "charge",
-                            "status_bit",
-                        ],
-                    )
-                    # Generate ORCA Geometry Optimization input
-                    orca_geom_input = mol2_file.replace(".mol2", ".inp")
-                    ligand_pipeline.mol2_dataframe_to_orca_charge_input(
-                        df_atoms,
-                        orca_geom_input,
-                        charge=charge,
-                        multiplicity=multiplicity,
-                    )
-                    # Run ORCA Geometry Optimization
-                    ligand_pipeline.run_orca(orca_geom_input)
-                    # Append atom charges to mol2
-                    ligand_pipeline.apply_orca_charges_to_mol2(
-                        mol2_file, "orca/ligand.property.txt"
-                    )
-                    ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
-                    ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
                     return
-                self._log("[ERROR] ligand.itp not found.")
+                # Find the start and end of the ATOM section
+                with open(mol2_file, encoding="utf-8") as f:
+                    lines = f.readlines()
+                atom_start = atom_end = None
+                for i, line in enumerate(lines):
+                    if line.strip() == "@<TRIPOS>ATOM":
+                        atom_start = i + 1
+                    elif (
+                        line.strip().startswith("@<TRIPOS>BOND")
+                        and atom_start is not None
+                    ):
+                        atom_end = i
+                        break
+                if atom_start is None:
+                    self._log("[ERROR] Could not find ATOM section in MOL2 file.")
+                    return
+                if atom_end is None:
+                    atom_end = len(lines)
+                atom_lines = lines[atom_start:atom_end]
+                # Parse atom lines into DataFrame
+                df_atoms = pd.read_csv(
+                    io.StringIO("".join(atom_lines)),
+                    sep=r"\s+",
+                    header=None,
+                    names=[
+                        "atom_id",
+                        "atom_name",
+                        "x",
+                        "y",
+                        "z",
+                        "atom_type",
+                        "subst_id",
+                        "subst_name",
+                        "charge",
+                        "status_bit",
+                    ],
+                )
+                # Generate ORCA Geometry Optimization input
+                orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                    df_atoms,
+                    orca_geom_input,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                )
+                # Run ORCA Geometry Optimization
+                ligand_pipeline.run_orca(orca_geom_input)
+                # Append atom charges to mol2
+                ligand_pipeline.apply_orca_charges_to_mol2(
+                    mol2_file, "orca/ligand.property.txt"
+                )
+                ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
+                ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
+                return
+            else:
+                self._log("ligand.itp not found and --ligand_builder not specified.")
                 return
         else:
             # If no HETATM lines are found, treat entire file as protein
