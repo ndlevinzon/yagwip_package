@@ -240,11 +240,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         prot_out.write(line)
             self._log(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
-            has_hydrogens = any(
-                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
-                for line in hetatm_lines
-            )
-            if not has_hydrogens:
+            if not any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines):
                 self._log(
                     "[WARNING] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
                 )
@@ -262,7 +258,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     amber_ff_source = str(
                         files("yagwip.templates").joinpath("amber14sb.ff/")
                     )
-                    amber_ff_dest = "/amber14sb.ff"
+                    amber_ff_dest = os.path.abspath("amber14sb.ff")
 
                     # Create the destination directory
                     if not os.path.exists(amber_ff_dest):
