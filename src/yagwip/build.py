@@ -590,7 +590,7 @@ class LigandPipeline(LoggingMixin):
             f.write(f"!PM3 MINIS MBIS\n")
             f.write(f"* xyz {charge} {multiplicity}\n")
             for _, row in df_atoms.iterrows():
-                element = row["atom_type"]
+                element = row["atom_type"].split(".")[0]
                 f.write(
                     f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n"
                 )
