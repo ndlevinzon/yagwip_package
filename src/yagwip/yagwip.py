@@ -31,7 +31,14 @@ import pandas as pd
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
-from .utils import Editor, LoggingMixin, setup_logger, validate_gromacs_installation, complete_filename, ToolChecker
+from .utils import (
+    Editor,
+    LoggingMixin,
+    setup_logger,
+    validate_gromacs_installation,
+    complete_filename,
+    ToolChecker,
+)
 from .slurm_writer import SlurmWriter
 
 # === Metadata ===
@@ -44,6 +51,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
     Interactive shell for YAGWIP: Yet Another GROMACS Wrapper In Python.
     Provides a command-line interface for molecular simulation workflows.
     """
+
     # Intro message and prompt for the interactive CLI
     intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
     prompt = "YAGWIP> "
@@ -76,7 +84,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             print(f"[ERROR] GROMACS Validation Error: {e}")
-            print("\nYAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
+            print(
+                "\nYAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+            )
             sys.exit(1)
         # Dictionary of custom command overrides set by the user
         self.custom_cmds = {k: "" for k in ("pdb2gmx", "solvate", "genions")}
@@ -144,7 +154,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         # Get the default command string
         base = self.basename if self.basename else "PLACEHOLDER"
         if cmd_key == "pdb2gmx":
-            default = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+            default = (
+                f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+            )
         elif cmd_key == "solvate":
             default = (
                 f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && "
@@ -159,7 +171,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         # Show current command and prompt for new input
         current = self.custom_cmds.get(cmd_key) or default
         self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
-        self._log("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
+        self._log(
+            "Type new command or press ENTER to keep current. Type 'quit' to cancel."
+        )
         new_cmd = input("New command: ").strip()
         if new_cmd.lower() == "quit":
             self._log("[SET] Edit canceled.")
@@ -184,7 +198,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         args = shlex.split(arg)
         if not args:
-            print("Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]")
+            print(
+                "Usage: loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]"
+            )
             return
         filename = args[0]
         use_ligand_builder = "--ligand_builder" in args
@@ -210,7 +226,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             ligand_file = "ligand.pdb"
             self.ligand_pdb_path = os.path.abspath(ligand_file)
             # Open output files for writing protein and ligand portions
-            with open(protein_file, "w", encoding="utf-8") as prot_out, open(ligand_file, "w", encoding="utf-8") as lig_out:
+            with open(protein_file, "w", encoding="utf-8") as prot_out, open(
+                ligand_file, "w", encoding="utf-8"
+            ) as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
                         # Replace ligand residue name with LIG
@@ -222,9 +240,14 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         prot_out.write(line)
             self._log(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
-            has_hydrogens = any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines)
+            has_hydrogens = any(
+                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
+                for line in hetatm_lines
+            )
             if not has_hydrogens:
-                self._log("[WARNING] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences.")
+                self._log(
+                    "[WARNING] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
+                )
             # Check that the ligand.itp file exists and preprocess it if so
             if os.path.isfile("ligand.itp"):
                 self._log("Checking ligand.itp...")
@@ -236,7 +259,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 if use_ligand_builder:
                     # Copy amber14sb.ff directory from templates to current working directory
                     self._log("Setting up force field files for ligand building...")
-                    amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
+                    amber_ff_source = str(
+                        files("yagwip.templates").joinpath("amber14sb.ff/")
+                    )
                     amber_ff_dest = "/amber14sb.ff"
 
                     # Create the destination directory if it doesn't exist
@@ -254,19 +279,27 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                                 shutil.copy2(source_path, dest_path)
                                 self._log(f"[COPY] {item.name}")
                             elif item.is_dir():
-                                shutil.copytree(source_path, dest_path, dirs_exist_ok=True)
+                                shutil.copytree(
+                                    source_path, dest_path, dirs_exist_ok=True
+                                )
                                 self._log(f"[COPY] {item.name}/ (directory)")
 
-                        self._log(f"[SUCCESS] Copied all files from {amber_ff_source} to {amber_ff_dest}")
+                        self._log(
+                            f"[SUCCESS] Copied all files from {amber_ff_source} to {amber_ff_dest}"
+                        )
                     except Exception as e:
                         self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
                         return
 
-                    ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
+                    ligand_pipeline = LigandPipeline(
+                        logger=self.logger, debug=self.debug
+                    )
                     ligand_pdb = "ligand.pdb"
                     mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                     if mol2_file is None:
-                        self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
+                        self._log(
+                            "[ERROR] MOL2 generation failed. Aborting ligand pipeline..."
+                        )
                         return
                     # Find the start and end of the ATOM section
                     with open(mol2_file, encoding="utf-8") as f:
@@ -275,7 +308,10 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     for i, line in enumerate(lines):
                         if line.strip() == "@<TRIPOS>ATOM":
                             atom_start = i + 1
-                        elif line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None:
+                        elif (
+                            line.strip().startswith("@<TRIPOS>BOND")
+                            and atom_start is not None
+                        ):
                             atom_end = i
                             break
                     if atom_start is None:
@@ -313,7 +349,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     # Run ORCA Geometry Optimization
                     ligand_pipeline.run_orca(orca_geom_input)
                     # Append atom charges to mol2
-                    ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt")
+                    ligand_pipeline.apply_orca_charges_to_mol2(
+                        mol2_file, "orca/ligand.property.txt"
+                    )
                     ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
                     ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
                     return
@@ -342,13 +380,17 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             return
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds["pdb2gmx"])
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds["pdb2gmx"]
+        )
         if not os.path.isfile(output_gro):
             self._log(f"[ERROR] Expected {output_gro} was not created.")
             return
         # Combine ligand coordinates
         if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            self.editor.append_ligand_coordinates_to_gro(output_gro, "ligand.pdb", "complex.gro")
+            self.editor.append_ligand_coordinates_to_gro(
+                output_gro, "ligand.pdb", "complex.gro"
+            )
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
         else:
             shutil.copy(str(output_gro), "complex.gro")  # only protein
@@ -363,7 +405,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         complex_pdb = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
-        self.builder.run_solvate(complex_pdb, custom_command=self.custom_cmds["solvate"])
+        self.builder.run_solvate(
+            complex_pdb, custom_command=self.custom_cmds["solvate"]
+        )
 
     def do_genions(self, arg):
         """
@@ -374,7 +418,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
-        self.builder.run_genions(solvated_pdb, custom_command=self.custom_cmds["genions"])
+        self.builder.run_genions(
+            solvated_pdb, custom_command=self.custom_cmds["genions"]
+        )
 
     def do_em(self, arg):
         """

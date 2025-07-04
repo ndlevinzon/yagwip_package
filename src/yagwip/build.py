@@ -1,6 +1,7 @@
 """
 build.py: GROMACS and ligand building utilities for YAGWIP.
 """
+
 # === Standard Library Imports ===
 import os
 import re
@@ -17,10 +18,7 @@ import numpy as np
 from .utils import run_gromacs_command, LoggingMixin, ToolChecker
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {"pdb2gmx": "1\n",
-               "genion_prot": "13\n",
-               "genion_complex": "15\n"
-               }
+PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
 
 
 class Builder(LoggingMixin):
@@ -156,7 +154,9 @@ class Modeller(LoggingMixin):
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
         self._log(
-            f"[WARNING] Found missing residue ranges: {gaps}" if gaps else "No gaps found."
+            f"[WARNING] Found missing residue ranges: {gaps}"
+            if gaps
+            else "No gaps found."
         )
         return gaps
 
@@ -188,7 +188,10 @@ class LigandPipeline(LoggingMixin):
         # Valence rules and atom type assignments
         valence_rules = {
             "C": {"max_valence": 4, "common_types": ["C.3", "C.2", "C.1", "C.ar"]},
-            "N": {"max_valence": 3, "common_types": ["N.3", "N.2", "N.1", "N.ar", "N.am"]},
+            "N": {
+                "max_valence": 3,
+                "common_types": ["N.3", "N.2", "N.1", "N.ar", "N.am"],
+            },
             "O": {"max_valence": 2, "common_types": ["O.3", "O.2", "O.co2"]},
             "S": {"max_valence": 6, "common_types": ["S.3", "S.2", "S.o", "S.o2"]},
             "P": {"max_valence": 5, "common_types": ["P.3"]},
@@ -276,7 +279,8 @@ class LigandPipeline(LoggingMixin):
                         bond_id += 1
                     else:
                         self._log(
-                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {df_atoms.iloc[i]['atom_id']} and {df_atoms.iloc[j]['atom_id']})")
+                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {df_atoms.iloc[i]['atom_id']} and {df_atoms.iloc[j]['atom_id']})"
+                        )
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
@@ -350,8 +354,12 @@ class LigandPipeline(LoggingMixin):
 
         # Build adjacency matrix from bonds
         for _, bond in df_bonds.iterrows():
-            origin_idx = df_atoms[df_atoms['atom_id'] == bond['origin_atom_id']].index[0]
-            target_idx = df_atoms[df_atoms['atom_id'] == bond['target_atom_id']].index[0]
+            origin_idx = df_atoms[df_atoms["atom_id"] == bond["origin_atom_id"]].index[
+                0
+            ]
+            target_idx = df_atoms[df_atoms["atom_id"] == bond["target_atom_id"]].index[
+                0
+            ]
             adjacency[origin_idx, target_idx] = 1
             adjacency[target_idx, origin_idx] = 1
 
@@ -360,28 +368,34 @@ class LigandPipeline(LoggingMixin):
 
         # Assign atom types based on valence rules
         for i, atom in df_atoms.iterrows():
-            element = atom['atom_type']
+            element = atom["atom_type"]
             valence = valence_counts[i]
 
             if element in valence_rules:
                 rules = valence_rules[element]
-                max_valence = rules['max_valence']
-                common_types = rules['common_types']
+                max_valence = rules["max_valence"]
+                common_types = rules["common_types"]
 
                 # Check if valence exceeds maximum
                 if valence > max_valence:
-                    self._log(f"[WARNING] Atom {atom['atom_id']} ({element}) has valence {valence} > {max_valence}")
+                    self._log(
+                        f"[WARNING] Atom {atom['atom_id']} ({element}) has valence {valence} > {max_valence}"
+                    )
 
                 # Assign atom type based on element and valence
-                atom_type = self._assign_atom_type(element, valence, common_types, df_atoms, i, adjacency)
-                df_atoms.at[i, 'atom_type'] = atom_type
+                atom_type = self._assign_atom_type(
+                    element, valence, common_types, df_atoms, i, adjacency
+                )
+                df_atoms.at[i, "atom_type"] = atom_type
             else:
                 # Unknown element, keep original
                 pass
 
         return df_atoms
 
-    def _assign_atom_type(self, element, valence, common_types, df_atoms, atom_idx, adjacency):
+    def _assign_atom_type(
+        self, element, valence, common_types, df_atoms, atom_idx, adjacency
+    ):
         """
         Assign specific atom type based on element, valence, and local environment.
         """
@@ -454,8 +468,8 @@ class LigandPipeline(LoggingMixin):
         # Simple heuristic: if carbon has 3 bonds and neighbors are C/N, likely aromatic
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         if len(neighbors) == 3:
-            neighbor_elements = [df_atoms.iloc[n]['atom_type'] for n in neighbors]
-            if all(elem in ['C', 'N'] for elem in neighbor_elements):
+            neighbor_elements = [df_atoms.iloc[n]["atom_type"] for n in neighbors]
+            if all(elem in ["C", "N"] for elem in neighbor_elements):
                 return True
         return False
 
@@ -464,8 +478,8 @@ class LigandPipeline(LoggingMixin):
         # Similar to aromatic carbon
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         if len(neighbors) == 2:
-            neighbor_elements = [df_atoms.iloc[n]['atom_type'] for n in neighbors]
-            if all(elem in ['C', 'N'] for elem in neighbor_elements):
+            neighbor_elements = [df_atoms.iloc[n]["atom_type"] for n in neighbors]
+            if all(elem in ["C", "N"] for elem in neighbor_elements):
                 return True
         return False
 
@@ -474,12 +488,12 @@ class LigandPipeline(LoggingMixin):
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         for neighbor_idx in neighbors:
             neighbor = df_atoms.iloc[neighbor_idx]
-            if neighbor['atom_type'] == 'C':
+            if neighbor["atom_type"] == "C":
                 # Check if this carbon has a double bond to oxygen
                 carbon_neighbors = np.where(adjacency[neighbor_idx] == 1)[0]
                 for carbon_neighbor_idx in carbon_neighbors:
                     carbon_neighbor = df_atoms.iloc[carbon_neighbor_idx]
-                    if carbon_neighbor['atom_type'] == 'O':
+                    if carbon_neighbor["atom_type"] == "O":
                         return True
         return False
 
@@ -488,7 +502,7 @@ class LigandPipeline(LoggingMixin):
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         for neighbor_idx in neighbors:
             neighbor = df_atoms.iloc[neighbor_idx]
-            if neighbor['atom_type'] == 'C' or 'S':
+            if neighbor["atom_type"] == "C" or "S":
                 # Check if this carbon has only 3 bonds total (indicating double bond)
                 carbon_valence = np.sum(adjacency[neighbor_idx])
                 if carbon_valence == 3:  # C=O bond
@@ -536,7 +550,9 @@ class LigandPipeline(LoggingMixin):
         ]
 
         for invalid_i, invalid_j in invalid_pairs:
-            if (elem_i == invalid_i and elem_j == invalid_j) or (elem_i == invalid_j and elem_j == invalid_i):
+            if (elem_i == invalid_i and elem_j == invalid_j) or (
+                elem_i == invalid_j and elem_j == invalid_i
+            ):
                 return False
 
         return True
@@ -577,7 +593,9 @@ class LigandPipeline(LoggingMixin):
         """
         return len(atom_bonds[atom_idx])
 
-    def mol2_dataframe_to_orca_charge_input(self, df_atoms, output_file, charge=0, multiplicity=1):
+    def mol2_dataframe_to_orca_charge_input(
+        self, df_atoms, output_file, charge=0, multiplicity=1
+    ):
         """Generate an ORCA input file from a DataFrame of atomic coordinates."""
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
@@ -612,7 +630,9 @@ class LigandPipeline(LoggingMixin):
         orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
         if orca_path is None:
             return False
-        openmpi_path = ToolChecker.check_openmpi_available()  # Check if OpenMPI is available
+        openmpi_path = (
+            ToolChecker.check_openmpi_available()
+        )  # Check if OpenMPI is available
         if openmpi_path is None:
             return False
         if output_file is None:
@@ -630,7 +650,9 @@ class LigandPipeline(LoggingMixin):
                 if result.stderr:
                     f.write("\n[STDERR]\n" + result.stderr)
             if result.returncode != 0:
-                self._log(f"[ERROR] ORCA execution failed. See {output_file} for details.")
+                self._log(
+                    f"[ERROR] ORCA execution failed. See {output_file} for details."
+                )
                 return False
             self._log(
                 f"ORCA Charge Calculation Completed. Output: {output_file}\n"
@@ -666,10 +688,24 @@ class LigandPipeline(LoggingMixin):
                 atom_lines.append(line.strip())
 
         # Parse ATOM lines into a DataFrame
-        mol2_columns = ["atom_id", "atom_name", "x", "y", "z", "atom_type", "subst_id", "subst_name", "charge"]
-        df_atoms = pd.DataFrame([line.split(None, 9) for line in atom_lines], columns=mol2_columns)
+        mol2_columns = [
+            "atom_id",
+            "atom_name",
+            "x",
+            "y",
+            "z",
+            "atom_type",
+            "subst_id",
+            "subst_name",
+            "charge",
+        ]
+        df_atoms = pd.DataFrame(
+            [line.split(None, 9) for line in atom_lines], columns=mol2_columns
+        )
         df_atoms[["atom_id"]] = df_atoms[["atom_id"]].astype(int)
-        df_atoms[["x", "y", "z", "charge"]] = df_atoms[["x", "y", "z", "charge"]].astype(float)
+        df_atoms[["x", "y", "z", "charge"]] = df_atoms[
+            ["x", "y", "z", "charge"]
+        ].astype(float)
 
         # Parse charges from property file
         with open(property_path, "r", encoding="utf-8") as file:
@@ -688,7 +724,7 @@ class LigandPipeline(LoggingMixin):
         # The block starts two lines after the header (skip the extra "0" line)
         charge_values = []
         pattern = re.compile(r"^\s*(\d+)\s+([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)")
-        for line in prop_lines[start_idx + 2:]:
+        for line in prop_lines[start_idx + 2 :]:
             stripped = line.strip()
             if not stripped:
                 continue
@@ -702,17 +738,24 @@ class LigandPipeline(LoggingMixin):
                 continue
 
         # Create the charges DataFrame
-        df_charges = pd.DataFrame({
-            'index': range(1, len(charge_values) + 1),  # mol2 is 1-based
-            'charge': charge_values
-        })
+        df_charges = pd.DataFrame(
+            {
+                "index": range(1, len(charge_values) + 1),  # mol2 is 1-based
+                "charge": charge_values,
+            }
+        )
 
         # Merge the charges into the atom DataFrame using atom_id (mol2) and index (charges)
-        df_atoms = df_atoms.merge(df_charges, left_on='atom_id', right_on='index', suffixes=('', '_from_property'))
+        df_atoms = df_atoms.merge(
+            df_charges,
+            left_on="atom_id",
+            right_on="index",
+            suffixes=("", "_from_property"),
+        )
 
         # Replace the original 'charge' column with the new charge values from the property file
-        df_atoms['charge'] = df_atoms['charge_from_property']
-        df_atoms.drop(columns=['index', 'charge_from_property'], inplace=True)
+        df_atoms["charge"] = df_atoms["charge_from_property"]
+        df_atoms.drop(columns=["index", "charge_from_property"], inplace=True)
 
         # Write updated mol2 file
         if output_path is None:
@@ -739,7 +782,7 @@ class LigandPipeline(LoggingMixin):
 
                 # Write the rest of the mol2 file (from BOND section onward)
                 bond_start = None
-                for i, line in enumerate(lines[atom_start + 1:], atom_start + 1):
+                for i, line in enumerate(lines[atom_start + 1 :], atom_start + 1):
                     if line.strip().startswith("@<TRIPOS>"):
                         bond_start = i
                         break
@@ -749,7 +792,9 @@ class LigandPipeline(LoggingMixin):
                         f.write(line)
 
         self._log(f"Updated charges in {output_path} using {property_path}")
-        self._log(f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation.")
+        self._log(
+            f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation."
+        )
 
     def run_parmchk2(self, mol2_file, frcmod_file=None):
         """
@@ -760,14 +805,18 @@ class LigandPipeline(LoggingMixin):
         """
         amber_path = ToolChecker.check_amber_available()
         if amber_path is None:
-            self._log("[ERROR] AmberTools (parmchk2) not found. Skipping parmchk2 step.")
+            self._log(
+                "[ERROR] AmberTools (parmchk2) not found. Skipping parmchk2 step."
+            )
             return False
         if frcmod_file is None:
             frcmod_file = os.path.splitext(mol2_file)[0] + ".frcmod"
         cmd = f"{amber_path} -i {mol2_file} -f mol2 -o {frcmod_file}"
         self._log(f"[RUNNING] {cmd}")
         try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, check=False
+            )
             if result.returncode != 0:
                 self._log(f"[ERROR] parmchk2 failed: {result.stderr}")
                 return False
@@ -790,7 +839,9 @@ class LigandPipeline(LoggingMixin):
         cmd = f"{acpype_path} -i {mol2_file}"
         self._log(f"[RUNNING] {cmd}")
         try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, check=False
+            )
             if result.returncode != 0:
                 self._log(f"[ERROR] acpype failed: {result.stderr}")
                 return False
