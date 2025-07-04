@@ -199,7 +199,7 @@ class LigandPipeline(LoggingMixin):
             "H": {"max_valence": 1, "common_types": ["H"]},
         }
 
-        bond_tolerance = 0.4  # Ångstroms
+        bond_tolerance = 0.45  # Ångstroms
         if mol2_file is None:
             mol2_file = pdb_file.replace(".pdb", ".mol2")
         # Efficiently parse ATOM/HETATM lines from PDB
@@ -237,12 +237,17 @@ class LigandPipeline(LoggingMixin):
             self._log(f"[ERROR] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
-        # Bond detection
+
+        # Bond detection with validation
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
         bonds = []
         bond_id = 1
+
+        # Track existing bonds for each atom
+        atom_bonds = {i: [] for i in range(n_atoms)}
+
         for i in range(n_atoms):
             for j in range(i + 1, n_atoms):
                 elem_i = elements[i]
@@ -254,16 +259,24 @@ class LigandPipeline(LoggingMixin):
                 max_bond = r_cov_i + r_cov_j + bond_tolerance
                 dist = np.linalg.norm(coords[i] - coords[j])
                 if 0.4 < dist < max_bond:
-                    bonds.append(
-                        {
-                            "bond_id": bond_id,
-                            "origin_atom_id": int(df_atoms.iloc[i]["atom_id"]),
-                            "target_atom_id": int(df_atoms.iloc[j]["atom_id"]),
-                            "bond_type": "1",  # single bond for now
-                            "status_bit": "",
-                        }
-                    )
-                    bond_id += 1
+                    # Validate bond is chemically possible
+                    if self._is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
+                        bonds.append(
+                            {
+                                "bond_id": bond_id,
+                                "origin_atom_id": int(df_atoms.iloc[i]["atom_id"]),
+                                "target_atom_id": int(df_atoms.iloc[j]["atom_id"]),
+                                "bond_type": "1",  # single bond for now
+                                "status_bit": "",
+                            }
+                        )
+                        # Update bond tracking
+                        atom_bonds[i].append(j)
+                        atom_bonds[j].append(i)
+                        bond_id += 1
+                    else:
+                        self._log(
+                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {df_atoms.iloc[i]['atom_id']} and {df_atoms.iloc[j]['atom_id']})")
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
@@ -472,7 +485,7 @@ class LigandPipeline(LoggingMixin):
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         for neighbor_idx in neighbors:
             neighbor = df_atoms.iloc[neighbor_idx]
-            if neighbor['atom_type'] == 'C':
+            if neighbor['atom_type'] == 'C' or 'S':
                 # Check if this carbon has only 3 bonds total (indicating double bond)
                 carbon_valence = np.sum(adjacency[neighbor_idx])
                 if carbon_valence == 3:  # C=O bond
