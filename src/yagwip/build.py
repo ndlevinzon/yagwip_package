@@ -324,7 +324,6 @@ class LigandPipeline(LoggingMixin):
 
     def run_orca(self, orca_path, input_file, output_file=None):
         """Run ORCA quantum chemistry calculation."""
-        input_file = os.path.abspath(input_file)
         if output_file is None:
             output_file = os.path.splitext(input_file)[0] + ".out"
         else:

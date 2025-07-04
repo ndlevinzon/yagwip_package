@@ -298,7 +298,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                         multiplicity=multiplicity,
                     )
                     # Run ORCA Geometry Optimization - use the full path that was created
-                    if ligand_pipeline.run_orca(orca_path, "orca/ligand.inp"):
+                    if ligand_pipeline.run_orca(orca_path, orca_input_path):
                         # Append atom charges to mol2
                         if not ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, "orca/ligand.property.txt"):
                             self._log("[ERROR] Failed to apply ORCA charges to MOL2 file. Continuing without charges.")
