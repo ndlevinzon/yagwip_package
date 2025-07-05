@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="yagwip",
-    version="2.0.2",
+    version="2.0.3",
     author="Gregor Patof, NDL",
     description="Yet Another Gromacs Wrapper In Python",
     packages=setuptools.find_packages('src'),
