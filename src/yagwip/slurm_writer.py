@@ -46,12 +46,13 @@ class SlurmWriter:
                         min_content = f.read()
                     # Replace BASE variable in SLURM script with basename
                     min_content = re.sub(r"__BASE__", basename or "PLACEHOLDER", min_content)
+                    min_content = re.sub(r"__INIT__", "complex" or "PLACEHOLDER", min_content)
                     out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
                     with open(out_min_slurm, "w", encoding="utf-8") as f:
                         f.write(min_content)
-                    self._log(f"[#] Customized SLURM script written: {out_min_slurm}")
+                    self._log(f"Customized SLURM script written: {out_min_slurm}")
                 except (OSError, IOError) as e:
-                    self._log(f"[!] Failed to configure SLURM script: {e}")
+                    self._log(f"Failed to configure SLURM script: {e}")
                 else:
                     self._log("[!] run_gmx_tremd_min_cpu.slurm not found in template directory.")
 
