@@ -18,7 +18,6 @@ import io
 import os
 import cmd
 import sys
-import shlex
 import shutil
 import random
 import argparse
@@ -33,11 +32,7 @@ import pandas as pd
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
 from .logger import LoggingMixin, setup_logger
-from .utils import (
-    Editor,
-    validate_gromacs_installation,
-    complete_filename,
-)
+from .utils import Editor, validate_gromacs_installation, complete_filename
 from .slurm_writer import SlurmWriter
 
 # === Metadata ===
@@ -232,7 +227,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             self.ligand_pdb_path = os.path.abspath(ligand_file)
             # Open output files for writing protein and ligand portions
             with open(protein_file, "w", encoding="utf-8") as prot_out, open(
-                ligand_file, "w", encoding="utf-8"
+                    ligand_file, "w", encoding="utf-8"
             ) as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
@@ -290,8 +285,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     if line.strip() == "@<TRIPOS>ATOM":
                         atom_start = i + 1
                     elif (
-                        line.strip().startswith("@<TRIPOS>BOND")
-                        and atom_start is not None
+                            line.strip().startswith("@<TRIPOS>BOND")
+                            and atom_start is not None
                     ):
                         atom_end = i
                         break
@@ -306,18 +301,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                     io.StringIO("".join(atom_lines)),
                     sep=r"\s+",
                     header=None,
-                    names=[
-                        "atom_id",
-                        "atom_name",
-                        "x",
-                        "y",
-                        "z",
-                        "atom_type",
-                        "subst_id",
-                        "subst_name",
-                        "charge",
-                        "status_bit",
-                    ],
+                    names=["atom_id", "atom_name", "x", "y", "z", "atom_type",
+                           "subst_id", "subst_name", "charge", "status_bit"],
                 )
                 # Generate ORCA Geometry Optimization input
                 orca_geom_input = mol2_file.replace(".mol2", ".inp")
@@ -333,7 +318,6 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 ligand_pipeline.apply_orca_charges_to_mol2(
                     mol2_file, "orca/ligand.property.txt"
                 )
-                ligand_pipeline.run_parmchk2(mol2_file)  # creates ligand.frcmod
                 ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
                 return
             else:
@@ -498,9 +482,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         """
         args = arg.strip().lower().split()
         if (
-            len(args) != 2
-            or args[0] not in ["md", "tremd"]
-            or args[1] not in ["cpu", "gpu"]
+                len(args) != 2
+                or args[0] not in ["md", "tremd"]
+                or args[1] not in ["cpu", "gpu"]
         ):
             print("Usage: slurm <md|tremd> <cpu|gpu>")
             return

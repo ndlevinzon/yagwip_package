@@ -675,36 +675,6 @@ class LigandPipeline(LoggingMixin):
             f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation."
         )
 
-    def run_parmchk2(self, mol2_file, frcmod_file=None):
-        """
-        Run AmberTools parmchk2 to generate a .frcmod file from a .mol2 file.
-        Args:
-            mol2_file (str): Path to the input .mol2 file.
-            frcmod_file (str, optional): Path to the output .frcmod file. Defaults to 'ligand.frcmod' in the same directory.
-        """
-        amber_path = ToolChecker.check_amber_available()
-        if amber_path is None:
-            self._log(
-                "[ERROR] AmberTools (parmchk2) not found. Skipping parmchk2 step."
-            )
-            return False
-        if frcmod_file is None:
-            frcmod_file = os.path.splitext(mol2_file)[0] + ".frcmod"
-        cmd = f"{amber_path} -i {mol2_file} -f mol2 -o {frcmod_file}"
-        self._log(f"[RUNNING] {cmd}")
-        try:
-            result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, check=False
-            )
-            if result.returncode != 0:
-                self._log(f"[ERROR] parmchk2 failed: {result.stderr}")
-                return False
-            self._log(f"parmchk2 completed. Output: {frcmod_file}")
-            return True
-        except Exception as e:
-            self._log(f"[ERROR] Failed to run parmchk2: {e}")
-            return False
-
     def run_acpype(self, mol2_file):
         """
         Run ACPYPE to generate topology files from a .mol2 file.
