@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 
 # === Local Imports ===
-from .utils import run_gromacs_command, LoggingMixin, ToolChecker
+from .utils import run_gromacs_command, LoggingMixin, ToolChecker, build_adjacency_matrix_fast
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
@@ -348,20 +348,8 @@ class LigandPipeline(LoggingMixin):
         Returns:
             DataFrame with updated atom types
         """
-        # Create adjacency matrix
-        n_atoms = len(df_atoms)
-        adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
-
-        # Build adjacency matrix from bonds
-        for _, bond in df_bonds.iterrows():
-            origin_idx = df_atoms[df_atoms["atom_id"] == bond["origin_atom_id"]].index[
-                0
-            ]
-            target_idx = df_atoms[df_atoms["atom_id"] == bond["target_atom_id"]].index[
-                0
-            ]
-            adjacency[origin_idx, target_idx] = 1
-            adjacency[target_idx, origin_idx] = 1
+        # Use optimized adjacency matrix construction
+        adjacency, atom_id_to_idx = build_adjacency_matrix_fast(df_atoms, df_bonds)
 
         # Calculate valence for each atom
         valence_counts = np.sum(adjacency, axis=1)
@@ -656,8 +644,7 @@ class LigandPipeline(LoggingMixin):
                 return False
             self._log(
                 f"ORCA Charge Calculation Completed. Output: {output_file}\n"
-                "Please cite ORCA: Neese, F. Software update: the ORCA program system – \n"
-                "Version 6.0 Wiley Interdiscip. Rev.: Comput. Mol. Sci., 2025, 15, 2, e70019 (DOI: 10.1002/wcms.70019)"
+                "Please cite ORCA: Neese, F. Software update: the ORCA program system – DOI: 10.1002/wcms.70019"
             )
             return True
         except Exception as e:

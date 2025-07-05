@@ -364,6 +364,33 @@ def setup_logger(debug_mode=False):
     # Return the configured logger object
     return logger
 
+def build_adjacency_matrix_fast(df_atoms, df_bonds):
+    """
+    Build adjacency matrix using optimized indexing for O(n) performance.
+
+    Args:
+        df_atoms: DataFrame with atom information
+        df_bonds: DataFrame with bond information
+
+    Returns:
+        adjacency: numpy array adjacency matrix
+        atom_id_to_idx: mapping from atom_id to DataFrame index
+    """
+    n_atoms = len(df_atoms)
+    adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
+
+    # Create atom_id to index mapping for O(1) lookups
+    atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms['atom_id'])}
+
+    # Build adjacency matrix from bonds in O(bonds) time
+    for _, bond in df_bonds.iterrows():
+        origin_idx = atom_id_to_idx[bond["origin_atom_id"]]
+        target_idx = atom_id_to_idx[bond["target_atom_id"]]
+        adjacency[origin_idx, target_idx] = 1
+        adjacency[target_idx, origin_idx] = 1
+
+    return adjacency, atom_id_to_idx
+
 
 # === File/Parsing Utilities ===
 
