@@ -459,7 +459,7 @@ class LigandPipeline(LoggingMixin):
         neighbors = np.where(adjacency[atom_idx] == 1)[0]
         for neighbor_idx in neighbors:
             neighbor = df_atoms.iloc[neighbor_idx]
-            if neighbor["atom_type"] == "C" or "S":
+            if neighbor["atom_type"] == ["C", "S"]:
                 # Check if this carbon has only 3 bonds total (indicating double bond)
                 carbon_valence = np.sum(adjacency[neighbor_idx])
                 if carbon_valence == 3:  # C=O bond
