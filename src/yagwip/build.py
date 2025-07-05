@@ -16,8 +16,7 @@ import numpy as np
 
 # === Local Imports ===
 from .logger import LoggingMixin
-from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
-                    build_spatial_grid, get_neighbor_cells, find_bonds_spatial)
+from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast, find_bonds_spatial)
 
 
 # Constants for GROMACS command inputs
@@ -466,83 +465,6 @@ class LigandPipeline(LoggingMixin):
                     return True
         return False
 
-    def _is_valid_bond(self, elem_i, elem_j, atom_bonds, i, j):
-        """
-        Check if a bond between two atoms is chemically valid.
-
-        Args:
-            elem_i, elem_j: Element symbols
-            atom_bonds: Dictionary with lists of bonded atoms
-            i, j: Atom indices
-
-        Returns:
-            bool: True if bond is chemically valid
-        """
-        # Prevent H-H bonds (hydrogen can only bond to one other atom)
-        if elem_i == "H" and elem_j == "H":
-            return False
-
-        # Prevent multiple bonds to hydrogen (hydrogen can only have one bond)
-        if elem_i == "H":
-            # Check if hydrogen already has any bonds
-            if len(atom_bonds[i]) > 0:
-                return False
-
-        if elem_j == "H":
-            # Check if hydrogen already has any bonds
-            if len(atom_bonds[j]) > 0:
-                return False
-
-        # Check valence limits for both atoms
-        if not self._check_valence_limits(elem_i, elem_j, atom_bonds, i, j):
-            return False
-
-        # Check for common invalid combinations
-        invalid_pairs = [
-            ("H", "H"),  # H-H bonds
-            ("F", "F"),  # F-F bonds (rare and unstable)
-            ("CL", "CL"),  # Cl-Cl bonds (rare in organic molecules)
-            ("BR", "BR"),  # Br-Br bonds (rare in organic molecules)
-            ("I", "I"),  # I-I bonds (rare in organic molecules)
-        ]
-
-        for invalid_i, invalid_j in invalid_pairs:
-            if (elem_i == invalid_i and elem_j == invalid_j) or (
-                elem_i == invalid_j and elem_j == invalid_i
-            ):
-                return False
-
-        return True
-
-    def _check_valence_limits(self, elem_i, elem_j, atom_bonds, i, j):
-        """
-        Check if adding this bond would exceed valence limits for either atom.
-        """
-        # Get current valence for both atoms
-        valence_i = len(atom_bonds[i])
-        valence_j = len(atom_bonds[j])
-
-        # Define maximum valence for each element
-        max_valence = {
-            "H": 1,
-            "C": 4,
-            "N": 3,
-            "O": 2,
-            "F": 1,
-            "P": 5,
-            "S": 6,
-            "CL": 1,
-            "BR": 1,
-            "I": 1,
-        }
-
-        # Check if adding this bond would exceed valence
-        if elem_i in max_valence and valence_i >= max_valence[elem_i]:
-            return False
-        if elem_j in max_valence and valence_j >= max_valence[elem_j]:
-            return False
-
-        return True
 
     def _get_current_valence(self, atom_bonds, atom_idx):
         """

@@ -321,7 +321,7 @@ def build_adjacency_matrix_fast(df_atoms, df_bonds):
     return adjacency, atom_id_to_idx
 
 
-def build_spatial_grid(self, coords, max_bond_distance):
+def build_spatial_grid(coords, max_bond_distance):
     """
     Build a 3D spatial grid for efficient neighbor searching.
 
@@ -366,7 +366,7 @@ def get_neighbor_cells(grid_key):
     return neighbors
 
 
-def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
+def find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance):
     """
     Find bonds using spatial partitioning for O(n) average case performance.
 
@@ -385,7 +385,7 @@ def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
     max_bond_distance = 2 * max_radii + bond_tolerance
 
     # Build spatial grid
-    grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
+    grid, grid_size = build_spatial_grid(coords, max_bond_distance)
 
     bonds = []
     atom_bonds = {i: [] for i in range(len(coords))}
@@ -404,7 +404,7 @@ def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
         current_cell = (grid_x, grid_y, grid_z)
 
         # Check atoms in current and neighboring cells
-        neighbor_cells = self.get_neighbor_cells(current_cell)
+        neighbor_cells = get_neighbor_cells(current_cell)
         checked_atoms = set()
 
         for cell_key in neighbor_cells:
@@ -429,7 +429,7 @@ def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
 
                 if 0.4 < dist < max_bond:
                     # Validate bond is chemically possible
-                    if self._is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
+                    if is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
                         bonds.append({
                             "bond_id": bond_id,
                             "origin_atom_id": i + 1,  # 1-based indexing
@@ -442,11 +442,92 @@ def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance):
                         atom_bonds[j].append(i)
                         bond_id += 1
                     else:
-                        self._log(
-                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
-                        )
+                        if logger:
+                            logger.warning(
+                                f"Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
+                            )
 
     return bonds, atom_bonds
+
+
+def is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
+    """
+    Check if a bond between two atoms is chemically valid.
+
+    Args:
+        elem_i, elem_j: Element symbols
+        atom_bonds: Dictionary with lists of bonded atoms
+        i, j: Atom indices
+
+    Returns:
+        bool: True if bond is chemically valid
+    """
+    # Prevent H-H bonds (hydrogen can only bond to one other atom)
+    if elem_i == "H" and elem_j == "H":
+        return False
+
+    # Prevent multiple bonds to hydrogen (hydrogen can only have one bond)
+    if elem_i == "H":
+        # Check if hydrogen already has any bonds
+        if len(atom_bonds[i]) > 0:
+            return False
+
+    if elem_j == "H":
+        # Check if hydrogen already has any bonds
+        if len(atom_bonds[j]) > 0:
+            return False
+
+    # Check valence limits for both atoms
+    if not check_valence_limits(elem_i, elem_j, atom_bonds, i, j):
+        return False
+
+    # Check for common invalid combinations
+    invalid_pairs = [
+        ("H", "H"),  # H-H bonds
+        ("F", "F"),  # F-F bonds (rare and unstable)
+        ("CL", "CL"),  # Cl-Cl bonds (rare in organic molecules)
+        ("BR", "BR"),  # Br-Br bonds (rare in organic molecules)
+        ("I", "I"),  # I-I bonds (rare in organic molecules)
+    ]
+
+    for invalid_i, invalid_j in invalid_pairs:
+        if (elem_i == invalid_i and elem_j == invalid_j) or (
+            elem_i == invalid_j and elem_j == invalid_i
+        ):
+            return False
+
+    return True
+
+
+def check_valence_limits(elem_i, elem_j, atom_bonds, i, j):
+    """
+    Check if adding this bond would exceed valence limits for either atom.
+    """
+    # Get current valence for both atoms
+    valence_i = len(atom_bonds[i])
+    valence_j = len(atom_bonds[j])
+
+    # Define maximum valence for each element
+    max_valence = {
+        "H": 1,
+        "C": 4,
+        "N": 3,
+        "O": 2,
+        "F": 1,
+        "P": 5,
+        "S": 6,
+        "CL": 1,
+        "BR": 1,
+        "I": 1,
+    }
+
+    # Check if adding this bond would exceed valence
+    if elem_i in max_valence and valence_i >= max_valence[elem_i]:
+        return False
+    if elem_j in max_valence and valence_j >= max_valence[elem_j]:
+        return False
+
+    return True
 
 
 # === File/Parsing Utilities ===
