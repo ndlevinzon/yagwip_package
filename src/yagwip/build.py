@@ -16,7 +16,9 @@ import numpy as np
 
 # === Local Imports ===
 from .logger import LoggingMixin
-from .utils import run_gromacs_command, ToolChecker, build_adjacency_matrix_fast
+from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
+                    build_spatial_grid, get_neighbor_cells, find_bonds_spatial)
+
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
@@ -246,42 +248,8 @@ class LigandPipeline(LoggingMixin):
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
-        bonds = []
-        bond_id = 1
-
-        # Track existing bonds for each atom
-        atom_bonds = {i: [] for i in range(n_atoms)}
-
-        for i in range(n_atoms):
-            for j in range(i + 1, n_atoms):
-                elem_i = elements[i]
-                elem_j = elements[j]
-                r_cov_i = covalent_radii.get(
-                    elem_i, 0.77
-                )  # Default to C radius if unknown
-                r_cov_j = covalent_radii.get(elem_j, 0.77)
-                max_bond = r_cov_i + r_cov_j + bond_tolerance
-                dist = np.linalg.norm(coords[i] - coords[j])
-                if 0.4 < dist < max_bond:
-                    # Validate bond is chemically possible
-                    if self._is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                        bonds.append(
-                            {
-                                "bond_id": bond_id,
-                                "origin_atom_id": int(df_atoms.iloc[i]["atom_id"]),
-                                "target_atom_id": int(df_atoms.iloc[j]["atom_id"]),
-                                "bond_type": "1",  # single bond for now
-                                "status_bit": "",
-                            }
-                        )
-                        # Update bond tracking
-                        atom_bonds[i].append(j)
-                        atom_bonds[j].append(i)
-                        bond_id += 1
-                    else:
-                        self._log(
-                            f"[WARNING] Skipping invalid bond between {elem_i} and {elem_j} (atoms {df_atoms.iloc[i]['atom_id']} and {df_atoms.iloc[j]['atom_id']})"
-                        )
+        # Use spatial partitioning for O(n) bond detection
+        bonds, atom_bonds = find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance)
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
