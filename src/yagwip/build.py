@@ -695,7 +695,52 @@ class LigandPipeline(LoggingMixin):
                 self._log(f"[ERROR] acpype failed: {result.stderr}")
                 return False
             self._log(f"[#] acpype completed for {mol2_file}")
+
+            # Post-process ACPYPE output files
+            self.copy_acpype_output_files(mol2_file)
             return True
         except Exception as e:
             self._log(f"[ERROR] Failed to run acpype: {e}")
             return False
+
+    def copy_acpype_output_files(self, mol2_file):
+        """
+        Copy and rename ACPYPE output files from ligand.acpype subdirectory.
+        Args:
+            mol2_file (str): Path to the input .mol2 file.
+        """
+        # Get the base name without extension
+        base_name = os.path.splitext(os.path.basename(mol2_file))[0]
+        acpype_dir = f"{base_name}.acpype"
+
+        # Define source and destination files
+        source_files = {
+            "ligand_GMX.gro": "ligand.gro",
+            "ligand_GMX.itp": "ligand.itp"
+        }
+
+        if not os.path.exists(acpype_dir):
+            self._log(f"[ERROR] ACPYPE output directory {acpype_dir} not found.")
+            return False
+
+        copied_files = []
+        for source_file, dest_file in source_files.items():
+            source_path = os.path.join(acpype_dir, source_file)
+            dest_path = dest_file
+
+            if os.path.exists(source_path):
+                try:
+                    shutil.copy2(source_path, dest_path)
+                    self._log(f"[#] Copied {source_file} -> {dest_file}")
+                    copied_files.append(dest_file)
+                except Exception as e:
+                    self._log(f"[ERROR] Failed to copy {source_file}: {e}")
+            else:
+                self._log(f"[WARNING] ACPYPE output file {source_file} not found in {acpype_dir}")
+
+        if copied_files:
+            self._log(f"[SUMMARY] Successfully copied {len(copied_files)} files: {', '.join(copied_files)}")
+        else:
+            self._log("[WARNING] No ACPYPE output files were copied.")
+
+        return len(copied_files) > 0

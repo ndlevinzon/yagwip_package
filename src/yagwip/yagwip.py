@@ -62,6 +62,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         self.print_banner()  # Prints intro banner to command line
         self.user_itp_paths = []  # Stores user input paths for do_source
         self.editor = Editor()  # Initialize the file Editor class from utils.py
+        self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
         # Initialize the Editor class from utils.py
         self.modeller = Modeller(
             pdb="protein.pdb", debug=self.debug, logger=self.logger
@@ -271,9 +272,8 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 except Exception as e:
                     self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
 
-                ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
                 ligand_pdb = "ligand.pdb"
-                mol2_file = ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                 if mol2_file is None:
                     self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
                     return
@@ -306,19 +306,24 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
                 )
                 # Generate ORCA Geometry Optimization input
                 orca_geom_input = mol2_file.replace(".mol2", ".inp")
-                ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                self.ligand_pipeline.mol2_dataframe_to_orca_charge_input(
                     df_atoms,
                     orca_geom_input,
                     charge=charge,
                     multiplicity=multiplicity,
                 )
                 # Run ORCA Geometry Optimization
-                ligand_pipeline.run_orca(orca_geom_input)
+                self.ligand_pipeline.run_orca(orca_geom_input)
                 # Append atom charges to mol2
-                ligand_pipeline.apply_orca_charges_to_mol2(
+                self.ligand_pipeline.apply_orca_charges_to_mol2(
                     mol2_file, "orca/ligand.property.txt"
                 )
-                ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
+                self.ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
+                self.ligand_pipeline.copy_acpype_output_files(mol2_file)
+                self._log("Checking ligand.itp...")
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
                 return
             else:
                 self._log("ligand.itp not found and --ligand_builder not specified.")
