@@ -32,10 +32,9 @@ import pandas as pd
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
+from .logger import LoggingMixin, setup_logger
 from .utils import (
     Editor,
-    LoggingMixin,
-    setup_logger,
     validate_gromacs_installation,
     complete_filename,
 )

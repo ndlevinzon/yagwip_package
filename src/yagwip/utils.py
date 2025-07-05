@@ -6,9 +6,7 @@ utils.py -- YAGWIP Utility Functions
 import os
 import re
 import math
-import time
 import shutil
-import logging
 import subprocess
 
 # === Third-Party Imports ===
@@ -74,9 +72,9 @@ class ToolChecker:
             )
             return result.returncode == 0
         except (
-            subprocess.TimeoutExpired,
-            FileNotFoundError,
-            subprocess.SubprocessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
+                subprocess.SubprocessError,
         ):
             return False
 
@@ -292,78 +290,6 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
         return False
 
 
-# === Logging Utilities ===
-
-
-class LoggingMixin:
-    """Mixin class to provide consistent logging functionality across all classes."""
-
-    def _log(self, msg):
-        """Log message using logger or print if no logger available."""
-        logger = getattr(self, "logger", None)
-        if logger:
-            logger.info(msg)
-        else:
-            print(msg)
-
-
-def setup_logger(debug_mode=False):
-    """
-    Sets up a logger for the YAGWIP application.
-
-    Parameters:
-        debug_mode (bool): If True, sets console logging to DEBUG level; otherwise INFO.
-
-    Returns:
-        logging.Logger: Configured logger instance for use throughout the CLI.
-    """
-    # Create or retrieve the logger with a fixed name
-    logger = logging.getLogger("yagwip")
-
-    # Set the logger to the most verbose level to ensure all messages are captured
-    logger.setLevel(logging.DEBUG)
-
-    # Remove any existing handlers to prevent duplicate logs if the function is called multiple times
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    # Console Handler Setup
-    ch = logging.StreamHandler()  # Handler for stdout/stderr
-    ch_level = (
-        logging.DEBUG if debug_mode else logging.INFO
-    )  # Use DEBUG level in debug mode
-    ch.setLevel(ch_level)
-
-    # Define the log message format for console output
-    formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-    )
-    ch.setFormatter(formatter)
-
-    # Attach the console handler to the logger
-    logger.addHandler(ch)
-
-    # Generate a timestamped filename for the log file
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    logfile = f"yagwip_{timestamp}.log"
-
-    # Create a file handler to log everything, regardless of debug mode
-    fh = logging.FileHandler(logfile, mode="a", encoding="utf-8")
-    fh.setLevel(logging.DEBUG)  # Capture all details regardless of debug mode
-    fh.setFormatter(formatter)
-
-    # Attach the file handler to the logger
-    logger.addHandler(fh)
-
-    # Optional: Notify the user where logs are being written
-    if not debug_mode:
-        logger.info("Output logged to %s", logfile)
-    else:
-        logger.debug("Debug logging active; also writing to %s", logfile)
-
-    # Return the configured logger object
-    return logger
-
 def build_adjacency_matrix_fast(df_atoms, df_bonds):
     """
     Build adjacency matrix using optimized indexing for O(n) performance.
@@ -410,7 +336,7 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
 
 class Editor(LoggingMixin):
     def __init__(
-        self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
+            self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
     ):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
@@ -570,7 +496,7 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-        self, protein_gro, ligand_pdb, combined_gro="complex.gro"
+            self, protein_gro, ligand_pdb, combined_gro="complex.gro"
     ):
         coords = []
         with open(ligand_pdb, "r", encoding="utf-8") as f:
@@ -617,9 +543,9 @@ class Editor(LoggingMixin):
             stripped = line.strip()
 
             if (
-                not inserted_include
-                and "#include" in stripped
-                and "forcefield.itp" in stripped
+                    not inserted_include
+                    and "#include" in stripped
+                    and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
                 new_lines.append(f'#include "./{self.ligand_itp}"\n')
@@ -746,7 +672,7 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
 
 
 def tremd_temperature_ladder(
-    Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Tol=0.001
+        Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Tol=0.001
 ):
     """
     Generate a temperature ladder for temperature replica exchange molecular dynamics (T-REMD).
@@ -792,7 +718,7 @@ def tremd_temperature_ladder(
 
     # Probability evaluation function for exchange efficiency
     def myeval(m12, s12, CC, u):
-        arg = -CC * u - (u - m12) ** 2 / (2 * s12**2)
+        arg = -CC * u - (u - m12) ** 2 / (2 * s12 ** 2)
         return np.exp(arg)
 
     # Numerical integration using midpoint method for exchange probability contribution
@@ -821,7 +747,7 @@ def tremd_temperature_ladder(
             iter_count += 1
             mu12 = (T2 - T1) * ((A1 * Nw) + (B1 * Nprot) - FlexEner)
             CC = (1 / kB) * ((1 / T1) - (1 / T2))
-            var = Ndf * (D1**2 * (T1**2 + T2**2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0**2)
+            var = Ndf * (D1 ** 2 * (T1 ** 2 + T2 ** 2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0 ** 2)
             sig12 = np.sqrt(var)
 
             # Two components of the exchange probability

@@ -15,7 +15,8 @@ import pandas as pd
 import numpy as np
 
 # === Local Imports ===
-from .utils import run_gromacs_command, LoggingMixin, ToolChecker, build_adjacency_matrix_fast
+from .logger import LoggingMixin
+from .utils import run_gromacs_command, ToolChecker, build_adjacency_matrix_fast
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
