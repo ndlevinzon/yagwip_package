@@ -16,8 +16,9 @@ import numpy as np
 
 # === Local Imports ===
 from .logger import LoggingMixin
-from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast, find_bonds_spatial)
-
+from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
+                    find_bonds_spatial, build_spatial_grid, get_neighbor_cells,
+                    is_valid_bond, check_valence_limits)
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
@@ -248,7 +249,7 @@ class LigandPipeline(LoggingMixin):
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
         # Use spatial partitioning for O(n) bond detection
-        bonds, atom_bonds = find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance)
+        bonds, atom_bonds = find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, self.logger)
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types

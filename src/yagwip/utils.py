@@ -366,7 +366,7 @@ def get_neighbor_cells(grid_key):
     return neighbors
 
 
-def find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance):
+def find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, logger=None):
     """
     Find bonds using spatial partitioning for O(n) average case performance.
 
