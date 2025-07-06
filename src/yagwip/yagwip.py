@@ -204,35 +204,145 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             args = parser.parse_args(arg.split())
         except SystemExit:
             return
+        use_ligand_builder = args.ligand_builder
+        charge = args.c
+        multiplicity = args.m
 
         pdb_file = args.pdb_file
-        if not os.path.exists(pdb_file):
-            self._log_error(f"PDB file '{pdb_file}' not found.")
+        full_path = os.path.abspath(pdb_file)
+        if not os.path.isfile(full_path):
+            self._log_error(f"'{pdb_file}' not found.")
             return
-
-        self.current_pdb_path = os.path.abspath(pdb_file)
-        self.basename = self._get_file_basename(pdb_file)
-        self._log_success(f"Loaded PDB file: {pdb_file}")
-
-        # Handle ligand building if requested
-        if args.ligand_builder:
-            ligand_pdb = f"{self.basename}_ligand.pdb"
-            if os.path.exists(ligand_pdb):
-                self.ligand_pdb_path = os.path.abspath(ligand_pdb)
-                self._log_info(f"Found ligand PDB: {ligand_pdb}")
-
-                # Check if ligand.itp exists
-                if not os.path.exists("ligand.itp"):
-                    self._log_info("ligand.itp not found. Running ligand building pipeline...")
-                    success = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
-                    if success:
-                        self._log_success("Ligand building pipeline completed successfully.")
+        # Store the full path and basename for later use in the build pipeline
+        self.current_pdb_path = full_path
+        self.basename = os.path.splitext(os.path.basename(full_path))[0]
+        self._log_success(f"PDB file loaded: {full_path}")
+        # Read all lines from the PDB file
+        with open(full_path, "r") as f:
+            lines = f.readlines()
+        # Extract all lines representing heteroatoms (typically ligands or cofactors)
+        hetatm_lines = [line for line in lines if line.startswith("HETATM")]
+        # Always rewrite the protein portion with HIS substitutions
+        protein_file = "protein.pdb"
+        if hetatm_lines:
+            # If ligand atoms were found, prepare a separate ligand file
+            ligand_file = "ligand.pdb"
+            self.ligand_pdb_path = os.path.abspath(ligand_file)
+            # Open output files for writing protein and ligand portions
+            with open(protein_file, "w", encoding="utf-8") as prot_out, open(
+                    ligand_file, "w", encoding="utf-8"
+            ) as lig_out:
+                for line in lines:
+                    if line.startswith("HETATM"):
+                        # Replace ligand residue name with LIG
+                        lig_out.write(line[:17] + "LIG" + line[20:])
                     else:
-                        self._log_error("Ligand building pipeline failed.")
-                else:
-                    self._log_info("ligand.itp already exists. Skipping ligand building.")
+                        # Replace HSP or HSD with HIS in protein
+                        if line[17:20] in ("HSP", "HSD"):
+                            line = line[:17] + "HIS" + line[20:]
+                        prot_out.write(line)
+            self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
+            # Determine if the ligand contains hydrogen atoms (important for parameterization)
+            if not any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines):
+                self._log_warning(
+                    "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
+                )
+            # Check that the ligand.itp file exists and preprocess it if so
+            if os.path.isfile("ligand.itp"):
+                self._log_info("Checking ligand.itp...")
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
+            elif use_ligand_builder:
+                self._log_info("ligand.itp not found. Running ligand builder pipeline...")
+                # Copy amber14sb.ff files into current dir
+                amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
+                amber_ff_dest = os.path.abspath("amber14sb.ff")
+
+                if not os.path.exists(amber_ff_dest):
+                    os.makedirs(amber_ff_dest)
+                    self._log_info(f"Created directory: {amber_ff_dest}")
+                try:
+                    for item in Path(amber_ff_source).iterdir():
+                        if item.is_file():
+                            content = item.read_text(encoding='utf-8')
+                            dest_file = os.path.join(amber_ff_dest, item.name)
+                            with open(dest_file, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            self._log_debug(f"Copied {item.name}")
+                    self._log_success("Copied all amber14sb.ff files.")
+                except Exception as e:
+                    self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+
+                ligand_pdb = "ligand.pdb"
+                mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                if mol2_file is None:
+                    self._log_error("MOL2 generation failed. Aborting ligand pipeline...")
+                    return
+                # Find the start and end of the ATOM section
+                with open(mol2_file, encoding="utf-8") as f:
+                    lines = f.readlines()
+                atom_start = atom_end = None
+                for i, line in enumerate(lines):
+                    if line.strip() == "@<TRIPOS>ATOM":
+                        atom_start = i + 1
+                    elif (
+                            line.strip().startswith("@<TRIPOS>BOND")
+                            and atom_start is not None
+                    ):
+                        atom_end = i
+                        break
+                if atom_start is None:
+                    self._log_error("Could not find ATOM section in MOL2 file.")
+                    return
+                if atom_end is None:
+                    atom_end = len(lines)
+                atom_lines = lines[atom_start:atom_end]
+                # Parse atom lines into DataFrame
+                df_atoms = pd.read_csv(
+                    io.StringIO("".join(atom_lines)),
+                    sep=r"\s+",
+                    header=None,
+                    names=["atom_id", "atom_name", "x", "y", "z", "atom_type",
+                           "subst_id", "subst_name", "charge", "status_bit"],
+                )
+                # Generate ORCA Geometry Optimization input
+                orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                self.ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                    df_atoms,
+                    orca_geom_input,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                )
+                # Run ORCA Geometry Optimization
+                self.ligand_pipeline.run_orca(orca_geom_input)
+                # Append atom charges to mol2
+                self.ligand_pipeline.apply_orca_charges_to_mol2(
+                    mol2_file, "orca/ligand.property.txt"
+                )
+                self.ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
+                self.ligand_pipeline.copy_acpype_output_files(mol2_file)
+                self._log_info("Checking ligand.itp...")
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
+                return
             else:
-                self._log_warning(f"Ligand PDB '{ligand_pdb}' not found. Skipping ligand building.")
+                self._log_info("ligand.itp not found and --ligand_builder not specified.")
+                return
+        else:
+            # If no HETATM lines are found, treat entire file as protein
+            self.ligand_pdb_path = None
+            with open(protein_file, "w", encoding="utf-8") as prot_out:
+                for line in lines:
+                    # Normalize histidine variants to 'HIS'
+                    if line[17:20] in ("HSP", "HSD"):
+                        line = line[:17] + "HIS" + line[20:]
+                    prot_out.write(line)
+            self._log_info(
+                "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
+            )
+        self.modeller.find_missing_residues()
 
     def do_pdb2gmx(self, arg):
         """Run pdb2gmx to generate topology and coordinates."""
