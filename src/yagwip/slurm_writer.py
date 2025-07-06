@@ -54,13 +54,13 @@ class SlurmWriter:
                 except (OSError, IOError) as e:
                     self._log(f"Failed to configure SLURM script: {e}")
                 else:
-                    self._log("[!] run_gmx_tremd_min_cpu.slurm not found in template directory.")
+                    self._log("[ERROR] run_gmx_tremd_min_cpu.slurm not found in template directory.")
 
         # Main SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
         slurm_tpl_path = self.template_dir / slurm_tpl_name
         if not slurm_tpl_path.is_file():
-            self._log(f"[!] SLURM template not found: {slurm_tpl_name}")
+            self._log(f"[ERROR] SLURM template not found: {slurm_tpl_name}")
             return
 
         try:
@@ -72,6 +72,6 @@ class SlurmWriter:
             out_slurm = f"{slurm_tpl_name}"
             with open(out_slurm, "w", encoding="utf-8") as f:
                 f.write(slurm_content)
-            self._log(f"[#] Customized SLURM script written: {out_slurm}")
+            self._log(f"Customized SLURM script written: {out_slurm}")
         except Exception as e:
-            self._log(f"[!] Failed to configure SLURM script: {e}")
+            self._log(f"[ERROR] Failed to configure SLURM script: {e}")
