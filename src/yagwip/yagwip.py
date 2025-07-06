@@ -31,7 +31,7 @@ import pandas as pd
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
-from .logger import LoggingMixin, setup_logger
+from .base import YagwipBase
 from .utils import Editor, validate_gromacs_installation, complete_filename
 from .slurm_writer import SlurmWriter
 
@@ -40,7 +40,7 @@ __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class YagwipShell(cmd.Cmd, LoggingMixin):
+class YagwipShell(cmd.Cmd, YagwipBase):
     """
     Interactive shell for YAGWIP: Yet Another GROMACS Wrapper In Python.
     Provides a command-line interface for molecular simulation workflows.
@@ -52,10 +52,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
 
     def __init__(self, gmx_path):
         """Initialize the YAGWIP shell with GROMACS path."""
-        super().__init__()
-        self.debug = False  # Toggle debug mode
-        self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)  # Initialize logging
+        super().__init__(gmx_path=gmx_path, debug=False)
         self.current_pdb_path = None  # Full path to the loaded PDB file
         self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
         self.basename = None  # Base PDB filename (without extension)
@@ -78,9 +75,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
-            print(f"[ERROR] GROMACS Validation Error: {e}")
-            print(
-                "\nYAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+            self._log_error(f"GROMACS Validation Error: {e}")
+            self._log_error(
+                "YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
             )
             sys.exit(1)
         # Dictionary of custom command overrides set by the user
@@ -89,13 +86,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
     def _require_pdb(self):
         """Check if a PDB file is loaded."""
         if not self.current_pdb_path and not self.debug:
-            self._log("[ERROR] No PDB loaded.")
+            self._log_error("No PDB loaded.")
             return False
         return True
 
     def default(self, line):
         """Throws error when command is not recognized."""
-        self._log(f"[ERROR] Unknown command: {line}")
+        self._log_error(f"Unknown command: {line}")
 
     def do_debug(self, arg):
         """
@@ -112,8 +109,9 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         else:
             self.debug = not self.debug
         # Update logger and simulation mode
+        from .log import setup_logger
         self.logger = setup_logger(debug_mode=self.debug)
-        self._log(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
+        self._log_info(f"Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
         """Prints YAGWIP Banner Logo on Start."""
@@ -122,13 +120,13 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
-            self._log(f"[ERROR] Could not load banner: {e}")
+            self._log_error(f"Could not load banner: {e}")
 
     def do_show(self, arg):
         """Show current custom or default commands."""
         for k in ["pdb2gmx", "solvate", "genions"]:
             cmd_str = self.custom_cmds.get(k)
-            self._log(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
+            self._log_info(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
 
     def do_set(self, arg):
         """
@@ -144,7 +142,7 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
         valid_keys = ["pdb2gmx", "solvate", "genions"]
         cmd_key = arg.strip().lower()
         if cmd_key not in valid_keys:
-            print(f"Usage: set <{'|'.join(valid_keys)}>")
+            self._log_error(f"Usage: set <{'|'.join(valid_keys)}>")
             return
         # Get the default command string
         base = self.basename if self.basename else "PLACEHOLDER"
@@ -165,20 +163,20 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             )
         # Show current command and prompt for new input
         current = self.custom_cmds.get(cmd_key) or default
-        self._log(f"[EDIT {cmd_key}] Current command:\n{current}")
-        self._log(
+        self._log_info(f"Current command for {cmd_key}:\n{current}")
+        self._log_info(
             "Type new command or press ENTER to keep current. Type 'quit' to cancel."
         )
         new_cmd = input("New command: ").strip()
         if new_cmd.lower() == "quit":
-            self._log("[SET] Edit canceled.")
+            self._log_info("Edit canceled.")
             return
         if not new_cmd:
             self.custom_cmds[cmd_key] = current
-            self._log("[SET] Keeping existing command.")
+            self._log_info("Keeping existing command.")
             return
         self.custom_cmds[cmd_key] = new_cmd
-        self._log(f"[SET] Updated command for {cmd_key}.")
+        self._log_success(f"Updated command for {cmd_key}.")
 
     def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
         """Tab completion for .pdb files."""
@@ -202,327 +200,152 @@ class YagwipShell(cmd.Cmd, LoggingMixin):
             args = parser.parse_args(arg.split())
         except SystemExit:
             return
-        use_ligand_builder = args.ligand_builder
-        charge = args.c
-        multiplicity = args.m
 
         pdb_file = args.pdb_file
-        full_path = os.path.abspath(pdb_file)
-        if not os.path.isfile(full_path):
-            self._log(f"[ERROR] '{pdb_file}' not found.")
+        if not os.path.exists(pdb_file):
+            self._log_error(f"PDB file '{pdb_file}' not found.")
             return
-        # Store the full path and basename for later use in the build pipeline
-        self.current_pdb_path = full_path
-        self.basename = os.path.splitext(os.path.basename(full_path))[0]
-        self._log(f"PDB file loaded: {full_path}")
-        # Read all lines from the PDB file
-        with open(full_path, "r") as f:
-            lines = f.readlines()
-        # Extract all lines representing heteroatoms (typically ligands or cofactors)
-        hetatm_lines = [line for line in lines if line.startswith("HETATM")]
-        # Always rewrite the protein portion with HIS substitutions
-        protein_file = "protein.pdb"
-        if hetatm_lines:
-            # If ligand atoms were found, prepare a separate ligand file
-            ligand_file = "ligand.pdb"
-            self.ligand_pdb_path = os.path.abspath(ligand_file)
-            # Open output files for writing protein and ligand portions
-            with open(protein_file, "w", encoding="utf-8") as prot_out, open(
-                    ligand_file, "w", encoding="utf-8"
-            ) as lig_out:
-                for line in lines:
-                    if line.startswith("HETATM"):
-                        # Replace ligand residue name with LIG
-                        lig_out.write(line[:17] + "LIG" + line[20:])
+
+        self.current_pdb_path = os.path.abspath(pdb_file)
+        self.basename = self._get_file_basename(pdb_file)
+        self._log_success(f"Loaded PDB file: {pdb_file}")
+
+        # Handle ligand building if requested
+        if args.ligand_builder:
+            ligand_pdb = f"{self.basename}_ligand.pdb"
+            if os.path.exists(ligand_pdb):
+                self.ligand_pdb_path = os.path.abspath(ligand_pdb)
+                self._log_info(f"Found ligand PDB: {ligand_pdb}")
+
+                # Check if ligand.itp exists
+                if not os.path.exists("ligand.itp"):
+                    self._log_info("ligand.itp not found. Running ligand building pipeline...")
+                    success = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                    if success:
+                        self._log_success("Ligand building pipeline completed successfully.")
                     else:
-                        # Replace HSP or HSD with HIS in protein
-                        if line[17:20] in ("HSP", "HSD"):
-                            line = line[:17] + "HIS" + line[20:]
-                        prot_out.write(line)
-            self._log(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
-            # Determine if the ligand contains hydrogen atoms (important for parameterization)
-            if not any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines):
-                self._log(
-                    "[WARNING] Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
-                )
-            # Check that the ligand.itp file exists and preprocess it if so
-            if os.path.isfile("ligand.itp"):
-                self._log("Checking ligand.itp...")
-                self.editor.append_ligand_atomtypes_to_forcefield()
-                self.editor.modify_improper_dihedrals_in_ligand_itp()
-                self.editor.rename_residue_in_itp_atoms_section()
-            elif use_ligand_builder:
-                self._log("ligand.itp not found. Running ligand builder pipeline...")
-                # Copy amber14sb.ff files into current dir
-                amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
-                amber_ff_dest = os.path.abspath("amber14sb.ff")
-
-                if not os.path.exists(amber_ff_dest):
-                    os.makedirs(amber_ff_dest)
-                    self._log(f"Created directory: {amber_ff_dest}")
-                try:
-                    for item in Path(amber_ff_source).iterdir():
-                        if item.is_file():
-                            content = item.read_text(encoding='utf-8')
-                            dest_file = os.path.join(amber_ff_dest, item.name)
-                            with open(dest_file, 'w', encoding='utf-8') as f:
-                                f.write(content)
-                            self._log(f"[COPY] {item.name}")
-                    self._log(f"[SUCCESS] Copied all amber14sb.ff files.")
-                except Exception as e:
-                    self._log(f"[ERROR] Failed to copy amber14sb.ff files: {e}")
-
-                ligand_pdb = "ligand.pdb"
-                mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
-                if mol2_file is None:
-                    self._log("[ERROR] MOL2 generation failed. Aborting ligand pipeline...")
-                    return
-                # Find the start and end of the ATOM section
-                with open(mol2_file, encoding="utf-8") as f:
-                    lines = f.readlines()
-                atom_start = atom_end = None
-                for i, line in enumerate(lines):
-                    if line.strip() == "@<TRIPOS>ATOM":
-                        atom_start = i + 1
-                    elif (
-                            line.strip().startswith("@<TRIPOS>BOND")
-                            and atom_start is not None
-                    ):
-                        atom_end = i
-                        break
-                if atom_start is None:
-                    self._log("[ERROR] Could not find ATOM section in MOL2 file.")
-                    return
-                if atom_end is None:
-                    atom_end = len(lines)
-                atom_lines = lines[atom_start:atom_end]
-                # Parse atom lines into DataFrame
-                df_atoms = pd.read_csv(
-                    io.StringIO("".join(atom_lines)),
-                    sep=r"\s+",
-                    header=None,
-                    names=["atom_id", "atom_name", "x", "y", "z", "atom_type",
-                           "subst_id", "subst_name", "charge", "status_bit"],
-                )
-                # Generate ORCA Geometry Optimization input
-                orca_geom_input = mol2_file.replace(".mol2", ".inp")
-                self.ligand_pipeline.mol2_dataframe_to_orca_charge_input(
-                    df_atoms,
-                    orca_geom_input,
-                    charge=charge,
-                    multiplicity=multiplicity,
-                )
-                # Run ORCA Geometry Optimization
-                self.ligand_pipeline.run_orca(orca_geom_input)
-                # Append atom charges to mol2
-                self.ligand_pipeline.apply_orca_charges_to_mol2(
-                    mol2_file, "orca/ligand.property.txt"
-                )
-                self.ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
-                self.ligand_pipeline.copy_acpype_output_files(mol2_file)
-                self._log("Checking ligand.itp...")
-                self.editor.append_ligand_atomtypes_to_forcefield()
-                self.editor.modify_improper_dihedrals_in_ligand_itp()
-                self.editor.rename_residue_in_itp_atoms_section()
-                return
+                        self._log_error("Ligand building pipeline failed.")
+                else:
+                    self._log_info("ligand.itp already exists. Skipping ligand building.")
             else:
-                self._log("ligand.itp not found and --ligand_builder not specified.")
-                return
-        else:
-            # If no HETATM lines are found, treat entire file as protein
-            self.ligand_pdb_path = None
-            with open(protein_file, "w", encoding="utf-8") as prot_out:
-                for line in lines:
-                    # Normalize histidine variants to 'HIS'
-                    if line[17:20] in ("HSP", "HSD"):
-                        line = line[:17] + "HIS" + line[20:]
-                    prot_out.write(line)
-            self._log(
-                "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
-            )
-        self.modeller.find_missing_residues()
+                self._log_warning(f"Ligand PDB '{ligand_pdb}' not found. Skipping ligand building.")
 
     def do_pdb2gmx(self, arg):
-        """
-        Run pdb2gmx. If ligand is present, treat protein and ligand separately.
-        Usage: "pdb2gmx"
-        """
+        """Run pdb2gmx to generate topology and coordinates."""
         if not self._require_pdb():
             return
-        protein_pdb = "protein"
-        output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds["pdb2gmx"]
-        )
-        if not os.path.isfile(output_gro):
-            self._log(f"[ERROR] Expected {output_gro} was not created.")
-            return
-        # Combine ligand coordinates
-        if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            self.editor.append_ligand_coordinates_to_gro(
-                output_gro, "ligand.pdb", "complex.gro"
-            )
-            self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
-        else:
-            shutil.copy(str(output_gro), "complex.gro")  # only protein
+        custom_cmd = self.custom_cmds.get("pdb2gmx")
+        self.builder.run_pdb2gmx(self.basename, custom_cmd)
 
     def do_solvate(self, arg):
-        """
-        Run solvate with optional custom command override. This command should be run after pdb2gmx.
-        Usage: "solvate"
-        Other Options: use "set solvate" to override defaults
-        """
-
-        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
+        """Run solvate to add solvent to the system."""
         if not self._require_pdb():
             return
-        self.builder.run_solvate(
-            complex_pdb, custom_command=self.custom_cmds["solvate"]
-        )
+        custom_cmd = self.custom_cmds.get("solvate")
+        self.builder.run_solvate(self.basename, arg, custom_cmd)
 
     def do_genions(self, arg):
-        """
-        Run genions with optional custom command override. This command should be run after solvate.
-        Usage: "genions"
-        Other Options: use "set genions" to override defaults
-        """
-        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
+        """Run genion to add ions to the system."""
         if not self._require_pdb():
             return
-        self.builder.run_genions(
-            solvated_pdb, custom_command=self.custom_cmds["genions"]
-        )
+        custom_cmd = self.custom_cmds.get("genions")
+        self.builder.run_genions(self.basename, custom_cmd)
 
     def do_em(self, arg):
-        """
-        Runs default energy minimization on the command line
-        Usage: "em"
-        """
+        """Run energy minimization."""
         if not self._require_pdb():
             return
-        self.sim.run_em(self.basename, arg=arg)
+        self.sim.run_em(self.basename, arg)
 
     def do_nvt(self, arg):
-        """
-        Runs default NVT equilibration on the command line
-        Usage: "em"
-        """
+        """Run NVT equilibration."""
         if not self._require_pdb():
             return
-        self.sim.run_nvt(self.basename, arg=arg)
+        self.sim.run_nvt(self.basename, arg)
 
     def do_npt(self, arg):
-        """
-        Runs default NPT equilibration on the command line
-        Usage: "npt"
-        """
+        """Run NPT equilibration."""
         if not self._require_pdb():
             return
-        self.sim.run_npt(self.basename, arg=arg)
+        self.sim.run_npt(self.basename, arg)
 
     def do_production(self, arg):
-        """
-        Runs default production-phase MD on the command line
-        Usage: "production"
-        """
+        """Run production MD simulation."""
         if not self._require_pdb():
             return
-        self.sim.run_production(self.basename, arg=arg)
+        self.sim.run_production(self.basename, arg)
 
     def complete_tremd(self, text, line, begidx, endidx):
-        """Adds tab completion for .solv.ions.gro for use in TREMD replica calculations"""
-        args = line.strip().split()
-        if len(args) >= 2 and args[1] == "calc":
-            return complete_filename(text, "solv.ions.gro", line, begidx, endidx)
-        return []
+        """Tab completion for tremd command."""
+        return complete_filename(text, ".gro", line, begidx, endidx)
 
     def do_tremd(self, arg):
-        """
-        Generate a TREMD temperature ladder based on a user-specified .gro file.
-        This computes replica exchange temperature ranges using the van der Spoel predictor.
-
-        Usage: "tremd calc X.solv.ions.gro"
-        """
-        self.sim.run_tremd(self.basename, arg=arg)
+        """Calculate temperature ladder for TREMD simulations."""
+        if not self._require_pdb():
+            return
+        self.sim.run_tremd(self.basename, arg)
 
     def do_source(self, arg):
-        """
-        Add a custom .itp include to be added to all topol.top files.
-        This replaces any existing #include lines not in the user-defined list.
-
-        Usage: source /absolute/path/to/custom.itp
-        """
-        itp_path = arg.strip()
-        if not itp_path.endswith(".itp"):
-            self._log("[ERROR] Must provide a path to a .itp file.")
-            return
-        if not os.path.isfile(itp_path):
-            self._log(f"[ERROR] File '{itp_path}' not found.")
+        """Source additional .itp files into topology."""
+        if not arg.strip():
+            self._log_error("Usage: source <itp_file1> [itp_file2] ...")
             return
 
-        # Add new path to list (no duplicates)
-        if itp_path not in self.user_itp_paths:
-            self.user_itp_paths.append(itp_path)
-            self._log(f"Added custom .itp include: {itp_path}")
-        else:
-            self._log(f"Path already in include list: {itp_path}")
-        # Apply all includes to all topol.top files
-        self.editor.insert_itp_into_top_files(self.user_itp_paths, root_dir=os.getcwd())
-        # Display all tracked includes
-        self._log("\nCurrent custom ITP includes:")
-        for p in self.user_itp_paths:
-            print(f'  #include "{p}"')
+        itp_files = arg.strip().split()
+        for itp_file in itp_files:
+            if not os.path.exists(itp_file):
+                self._log_error(f"ITP file '{itp_file}' not found.")
+                continue
+            self.user_itp_paths.append(os.path.abspath(itp_file))
+            self._log_success(f"Added ITP file: {itp_file}")
+
+        if self.user_itp_paths:
+            self._log_info("Use 'slurm' command to generate scripts with sourced ITP files.")
 
     def do_slurm(self, arg):
-        """
-        Setup SLURM job scripts.
-
-        Usage:
-            slurm md cpu
-            slurm md gpu
-            slurm tremd cpu
-            slurm tremd gpu
-
-        Copies template .mdp files and SLURM script to the current directory based on options.
-        """
-        args = arg.strip().lower().split()
-        if (
-                len(args) != 2
-                or args[0] not in ["md", "tremd"]
-                or args[1] not in ["cpu", "gpu"]
-        ):
-            print("Usage: slurm <md|tremd> <cpu|gpu>")
+        """Generate SLURM scripts for MD or TREMD simulations."""
+        if not self._require_pdb():
             return
-        sim_type, hardware = args
-        writer = SlurmWriter(logger=self.logger)
-        writer.write_slurm_scripts(
-            sim_type=sim_type,
-            hardware=hardware,
-            basename=self.basename,
-            ligand_pdb_path=self.ligand_pdb_path,
-        )
+
+        args = arg.strip().split()
+        if len(args) < 2:
+            self._log_error("Usage: slurm <sim_type> <hardware> [basename]")
+            self._log_info("sim_type: 'md' or 'tremd'")
+            self._log_info("hardware: 'cpu' or 'gpu'")
+            return
+
+        sim_type = args[0].lower()
+        hardware = args[1].lower()
+        basename = args[2] if len(args) > 2 else self.basename
+
+        if sim_type not in ['md', 'tremd']:
+            self._log_error("sim_type must be 'md' or 'tremd'")
+            return
+
+        if hardware not in ['cpu', 'gpu']:
+            self._log_error("hardware must be 'cpu' or 'gpu'")
+            return
+
+        slurm_writer = SlurmWriter(logger=self.logger, debug=self.debug)
+        slurm_writer.write_slurm_scripts(sim_type, hardware, basename, self.ligand_pdb_path)
 
     def print_random_quote(self):
-        """
-        Prints random quote on exit.
-        Quotes: scr/yagwip/assets/quotes.txt
-        """
+        """Print a random quote from the quotes file."""
         try:
-            quote_path = files("yagwip.assets").joinpath("quotes.txt")
-            with open(str(quote_path), "r", encoding="utf-8") as f:
-                quotes = [line.strip() for line in f if line.strip()]
+            quotes_path = files("yagwip.assets").joinpath("quotes.txt")
+            with open(str(quotes_path), "r", encoding="utf-8") as f:
+                quotes = f.readlines()
             if quotes:
-                print(f"\nYAGWIP Reminds You...\n{random.choice(quotes)}\n")
+                quote = random.choice(quotes).strip()
+                if quote:
+                    print(f"\n{quote}\n")
         except Exception as e:
-            self._log(f"([ERROR] Unable to load quotes: {e})")
+            self._log_debug(f"Could not load quotes: {e}")
 
     def do_quit(self, _):
-        """
-        Quit the CLI.
-        Usage: "quit"
-        """
+        """Exit the YAGWIP shell."""
         self.print_random_quote()
-        print(f"Copyright (c) 2025 {__author__} \nQuitting YAGWIP.")
+        self._log_info("Goodbye!")
         return True
 
 

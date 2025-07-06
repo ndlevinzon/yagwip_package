@@ -15,7 +15,7 @@ import pandas as pd
 import numpy as np
 
 # === Local Imports ===
-from .logger import LoggingMixin
+from .base import YagwipBase
 from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
                     find_bonds_spatial, build_spatial_grid, get_neighbor_cells,
                     is_valid_bond, check_valence_limits)
@@ -24,23 +24,17 @@ from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fas
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
 
 
-class Builder(LoggingMixin):
+class Builder(YagwipBase):
     """Handles GROMACS system building steps."""
 
     def __init__(self, gmx_path, debug=False, logger=None):
         """Initialize Builder."""
-        self.gmx_path = gmx_path
-        self.debug = debug
-        self.logger = logger
+        super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
     def _resolve_basename(self, basename):
         """Resolve the basename for file operations."""
         if not basename and not self.debug:
-            msg = "[ERROR] No PDB loaded. Use `loadPDB <filename.pdb>` first."
-            if self.logger:
-                self.logger.warning(msg)
-            else:
-                print(msg)
+            self._log_error("No PDB loaded. Use `loadPDB <filename.pdb>` first.")
             return None
         return basename if basename else "PLACEHOLDER"
 
@@ -52,15 +46,10 @@ class Builder(LoggingMixin):
         command = custom_command or (
             f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         )
-        if self.debug:
-            print(f"[DEBUG] Command: {command}")
-            return
-        self._log(f"Running pdb2gmx for {base}.pdb...")
-        run_gromacs_command(
-            command,
-            pipe_input=PIPE_INPUTS["pdb2gmx"],
-            debug=self.debug,
-            logger=self.logger,
+        self._execute_command(
+            command=command,
+            description="pdb2gmx",
+            pipe_input=PIPE_INPUTS["pdb2gmx"]
         )
 
     def run_solvate(self, basename, arg="", custom_command=None):
@@ -77,16 +66,12 @@ class Builder(LoggingMixin):
             f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{box_options}",
             f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {water_model} -o {base}.solv.gro -p topol.top",
         ]
-        if self.debug:
-            for cmd in default_cmds:
-                print(f"[DEBUG] Command: {cmd}")
-            return
         if custom_command:
-            self._log("[CUSTOM] Using custom solvate command")
-            run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
+            self._log_info("Using custom solvate command")
+            self._execute_command(custom_command, "custom solvate")
         else:
-            for cmd in default_cmds:
-                run_gromacs_command(cmd, debug=self.debug, logger=self.logger)
+            for i, cmd in enumerate(default_cmds):
+                self._execute_command(cmd, f"solvate step {i+1}")
 
     def run_genions(self, basename, custom_command=None):
         """Run genion to add ions to the system."""
@@ -108,34 +93,28 @@ class Builder(LoggingMixin):
             f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
             f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}",
         ]
-        if self.debug:
-            for cmd in default_cmds:
-                print(f"[DEBUG] Command: {cmd}")
-            return
-        self._log(f"Running genion for {base}...")
+        self._log_info(f"Running genion for {base}")
         if custom_command:
-            self._log("[CUSTOM] Using custom genion command")
-            run_gromacs_command(custom_command, debug=self.debug, logger=self.logger)
+            self._log_info("Using custom genion command")
+            self._execute_command(custom_command, "custom genion")
         else:
-            for cmd in default_cmds:
-                run_gromacs_command(
-                    cmd, pipe_input=ion_pipe_input, debug=self.debug, logger=self.logger
-                )
+            for i, cmd in enumerate(default_cmds):
+                pipe_input = ion_pipe_input if i == 1 else None
+                self._execute_command(cmd, f"genion step {i+1}", pipe_input=pipe_input)
 
 
-class Modeller(LoggingMixin):
+class Modeller(YagwipBase):
     """Protein structure modeller for missing residues."""
 
     def __init__(self, pdb, logger=None, debug=False, output_file="protein_test.pdb"):
         """Initialize Modeller."""
-        self.logger = logger
-        self.debug = debug
+        super().__init__(debug=debug, logger=logger)
         self.pdb = pdb
         self.output_file = output_file
 
     def find_missing_residues(self):
         """Identifies missing internal residues by checking for gaps in residue numbering."""
-        self._log(f"Checking for missing residues in {self.pdb}...")
+        self._log_info(f"Checking for missing residues in {self.pdb}")
         residue_map = {}  # {chain_id: sorted list of residue IDs}
         with open(self.pdb, "r", encoding="utf-8") as f:
             for line in f:
@@ -156,21 +135,19 @@ class Modeller(LoggingMixin):
                 next_expected = current + 1
                 if sorted_residues[i + 1] != next_expected:
                     gaps.append((chain_id, current, sorted_residues[i + 1]))
-        self._log(
-            f"[WARNING] Found missing residue ranges: {gaps}"
-            if gaps
-            else "No gaps found."
-        )
+        if gaps:
+            self._log_warning(f"Found missing residue ranges: {gaps}")
+        else:
+            self._log_info("No gaps found.")
         return gaps
 
 
-class LigandPipeline(LoggingMixin):
+class LigandPipeline(YagwipBase):
     """Ligand parameterization and force field generation pipeline."""
 
     def __init__(self, logger=None, debug=False):
         """Initialize LigandPipeline."""
-        self.logger = logger
-        self.debug = debug
+        super().__init__(debug=debug, logger=logger)
 
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
         """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
@@ -240,7 +217,7 @@ class LigandPipeline(LoggingMixin):
                         }
                     )
         if not atom_records:
-            self._log(f"[ERROR] No atoms found in {pdb_file}.")
+            self._log_error(f"[ERROR] No atoms found in {pdb_file}.")
             return None
         df_atoms = pd.DataFrame(atom_records)
 
@@ -300,7 +277,7 @@ class LigandPipeline(LoggingMixin):
                         f"{int(row['bond_id']):>6d} {int(row['origin_atom_id']):>6d} {int(row['target_atom_id']):>6d}"
                         f"    {row['bond_type']} {row['status_bit']}\n"
                     )
-        self._log(
+        self._log_info(
             f"[SUMMARY] Atoms: {len(df_atoms)}. Bonds: {len(df_bonds)}. MOL2 written to {mol2_file}."
         )
         return mol2_file
@@ -335,7 +312,7 @@ class LigandPipeline(LoggingMixin):
 
                 # Check if valence exceeds maximum
                 if valence > max_valence:
-                    self._log(
+                    self._log_warning(
                         f"[WARNING] Atom {atom['atom_id']} ({element}) has valence {valence} > {max_valence}"
                     )
 
@@ -466,7 +443,6 @@ class LigandPipeline(LoggingMixin):
                     return True
         return False
 
-
     def _get_current_valence(self, atom_bonds, atom_idx):
         """
         Calculate current valence for an atom based on existing bonds.
@@ -496,7 +472,7 @@ class LigandPipeline(LoggingMixin):
                     f"{element:2s}  {row['x']:>10.6f}  {row['y']:>10.6f}  {row['z']:>10.6f}\n"
                 )
             f.write("*\n")
-        self._log(f"ORCA input written to: {output_file}")
+        self._log_info(f"ORCA input written to: {output_file}")
         return output_file
 
     def run_orca(self, input_file, output_file=None):
@@ -530,17 +506,17 @@ class LigandPipeline(LoggingMixin):
                 if result.stderr:
                     f.write("\n[STDERR]\n" + result.stderr)
             if result.returncode != 0:
-                self._log(
+                self._log_error(
                     f"[ERROR] ORCA execution failed. See {output_file} for details."
                 )
                 return False
-            self._log(
+            self._log_info(
                 f"ORCA Charge Calculation Completed. Output: {output_file}\n"
                 "Please cite ORCA: Neese, F. Software update: the ORCA program system – DOI: 10.1002/wcms.70019"
             )
             return True
         except Exception as e:
-            self._log(f"[ERROR] Failed to run ORCA: {e}")
+            self._log_error(f"[ERROR] Failed to run ORCA: {e}")
             return False
 
     def apply_orca_charges_to_mol2(self, mol2_path, property_path, output_path=None):
@@ -670,8 +646,8 @@ class LigandPipeline(LoggingMixin):
                     for line in lines[bond_start:]:
                         f.write(line)
 
-        self._log(f"Updated charges in {output_path} using {property_path}")
-        self._log(
+        self._log_info(f"Updated charges in {output_path} using {property_path}")
+        self._log_info(
             f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation."
         )
 
@@ -683,24 +659,24 @@ class LigandPipeline(LoggingMixin):
         """
         acpype_path = ToolChecker.check_acpype_available()
         if acpype_path is None:
-            self._log("[ERROR] ACPYPE not found. Skipping acpype step.")
+            self._log_warning("[ERROR] ACPYPE not found. Skipping acpype step.")
             return False
         cmd = f"{acpype_path} -i {mol2_file}"
-        self._log(f"[RUNNING] {cmd}")
+        self._log_info(f"[RUNNING] {cmd}")
         try:
             result = subprocess.run(
                 cmd, shell=True, capture_output=True, text=True, check=False
             )
             if result.returncode != 0:
-                self._log(f"[ERROR] acpype failed: {result.stderr}")
+                self._log_error(f"[ERROR] acpype failed: {result.stderr}")
                 return False
-            self._log(f"[#] acpype completed for {mol2_file}")
+            self._log_info(f"[#] acpype completed for {mol2_file}")
 
             # Post-process ACPYPE output files
             self.copy_acpype_output_files(mol2_file)
             return True
         except Exception as e:
-            self._log(f"[ERROR] Failed to run acpype: {e}")
+            self._log_error(f"[ERROR] Failed to run acpype: {e}")
             return False
 
     def copy_acpype_output_files(self, mol2_file):
@@ -720,7 +696,7 @@ class LigandPipeline(LoggingMixin):
         }
 
         if not os.path.exists(acpype_dir):
-            self._log(f"[ERROR] ACPYPE output directory {acpype_dir} not found.")
+            self._log_warning(f"[ERROR] ACPYPE output directory {acpype_dir} not found.")
             return False
 
         copied_files = []
@@ -731,16 +707,16 @@ class LigandPipeline(LoggingMixin):
             if os.path.exists(source_path):
                 try:
                     shutil.copy2(source_path, dest_path)
-                    self._log(f"[#] Copied {source_file} -> {dest_file}")
+                    self._log_info(f"[#] Copied {source_file} -> {dest_file}")
                     copied_files.append(dest_file)
                 except Exception as e:
-                    self._log(f"[ERROR] Failed to copy {source_file}: {e}")
+                    self._log_error(f"[ERROR] Failed to copy {source_file}: {e}")
             else:
-                self._log(f"[WARNING] ACPYPE output file {source_file} not found in {acpype_dir}")
+                self._log_warning(f"[WARNING] ACPYPE output file {source_file} not found in {acpype_dir}")
 
         if copied_files:
-            self._log(f"[SUMMARY] Successfully copied {len(copied_files)} files: {', '.join(copied_files)}")
+            self._log_info(f"[SUMMARY] Successfully copied {len(copied_files)} files: {', '.join(copied_files)}")
         else:
-            self._log("[WARNING] No ACPYPE output files were copied.")
+            self._log_warning("[WARNING] No ACPYPE output files were copied.")
 
         return len(copied_files) > 0

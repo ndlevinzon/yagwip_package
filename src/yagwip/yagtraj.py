@@ -17,6 +17,8 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 import argparse
 import cmd
 import sys
+import os
+from .base import YagwipBase
 from .utils import *
 from importlib.resources import files
 import importlib.metadata
@@ -26,15 +28,12 @@ __author__ = "NDL, gregorpatof"
 __version__ = importlib.metadata.version("yagwip")
 
 
-class YagtrajShell(cmd.Cmd):
+class YagtrajShell(cmd.Cmd, YagwipBase):
     intro = f"Welcome to YAGTRAJ v{__version__}. Type help to list commands."
     prompt = "YAGTRAJ> "
 
     def __init__(self, gmx_path):
-        super().__init__()
-        self.debug = False  # Toggle debug mode
-        self.gmx_path = gmx_path  # Path to GROMACS executable (e.g., "gmx")
-        self.logger = setup_logger(debug_mode=self.debug)  # Initialize logging
+        super().__init__(gmx_path=gmx_path, debug=False)
         self.current_tpr = None  # Current TPR file
         self.current_traj = None  # Current trajectory file
         self.print_banner()  # Prints intro banner to command line
@@ -43,22 +42,15 @@ class YagtrajShell(cmd.Cmd):
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
-            print(f"[!] GROMACS Validation Error: {e}")
-            print(
-                "[!] YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+            self._log_error(f"GROMACS Validation Error: {e}")
+            self._log_error(
+                "YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
             )
             sys.exit(1)
 
-    def _log(self, msg):
-        """Log message using logger or print if no logger available."""
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
-
     def default(self, line):
         """Throws error when command is not recognized"""
-        self._log(f"[!] Unknown command: {line}")
+        self._log_error(f"Unknown command: {line}")
 
     def do_debug(self, arg):
         """
@@ -78,9 +70,10 @@ class YagtrajShell(cmd.Cmd):
             self.debug = not self.debug
 
         # Update logger and simulation mode
+        from .log import setup_logger
         self.logger = setup_logger(debug_mode=self.debug)
 
-        self._log(f"[DEBUG] Debug mode is now {'ON' if self.debug else 'OFF'}")
+        self._log_info(f"Debug mode is now {'ON' if self.debug else 'OFF'}")
 
     def print_banner(self):
         """
@@ -92,7 +85,7 @@ class YagtrajShell(cmd.Cmd):
             with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
-            self._log(f"[!] Could not load banner: {e}")
+            self._log_error(f"Could not load banner: {e}")
 
     def do_load(self, arg):
         """
@@ -102,29 +95,29 @@ class YagtrajShell(cmd.Cmd):
         """
         args = arg.strip().split()
         if len(args) < 1:
-            self._log("[!] Usage: load <tpr_file> [traj_file]")
+            self._log_error("Usage: load <tpr_file> [traj_file]")
             return
 
         tpr_file = args[0]
         if not os.path.exists(tpr_file):
-            self._log(f"[!] TPR file '{tpr_file}' not found.")
+            self._log_error(f"TPR file '{tpr_file}' not found.")
             return
 
         self.current_tpr = tpr_file
-        self._log(f"[#] Loaded TPR file: {tpr_file}")
+        self._log_success(f"Loaded TPR file: {tpr_file}")
 
         if len(args) > 1:
             traj_file = args[1]
             if not os.path.exists(traj_file):
-                self._log(f"[!] Trajectory file '{traj_file}' not found.")
+                self._log_error(f"Trajectory file '{traj_file}' not found.")
                 return
             self.current_traj = traj_file
-            self._log(f"[#] Loaded trajectory file: {traj_file}")
+            self._log_success(f"Loaded trajectory file: {traj_file}")
 
     def _require_files(self):
         """Check if required files are loaded."""
         if not self.current_tpr:
-            self._log("[!] No TPR file loaded. Use 'load <tpr_file>' first.")
+            self._log_error("No TPR file loaded. Use 'load <tpr_file>' first.")
             return False
         return True
 
@@ -144,7 +137,7 @@ class YagtrajShell(cmd.Cmd):
             command += f" -f {self.current_traj}"
         command += f" -o {output_file}"
 
-        self._log(f"[RMSD] Calculating RMSD for protein backbone...")
+        self._log_info("Calculating RMSD for protein backbone")
 
         # Use run_gromacs_command from utils
         success = run_gromacs_command(
@@ -155,9 +148,9 @@ class YagtrajShell(cmd.Cmd):
         )
 
         if success:
-            self._log(f"[RMSD] RMSD calculation completed. Output: {output_file}")
+            self._log_success(f"RMSD calculation completed. Output: {output_file}")
         else:
-            self._log("[!] RMSD calculation failed.")
+            self._log_error("RMSD calculation failed.")
 
     def do_rgyr(self, arg):
         """
@@ -174,7 +167,7 @@ class YagtrajShell(cmd.Cmd):
             command += f" -f {self.current_traj}"
         command += f" -o {output_file}"
 
-        self._log(f"[RGYR] Calculating radius of gyration...")
+        self._log_info("Calculating radius of gyration")
 
         success = run_gromacs_command(
             command=command,
@@ -184,11 +177,9 @@ class YagtrajShell(cmd.Cmd):
         )
 
         if success:
-            self._log(
-                f"[RGYR] Radius of gyration calculation completed. Output: {output_file}"
-            )
+            self._log_success(f"Radius of gyration calculation completed. Output: {output_file}")
         else:
-            self._log("[!] Radius of gyration calculation failed.")
+            self._log_error("Radius of gyration calculation failed.")
 
     def do_sasa(self, arg):
         """
@@ -205,7 +196,7 @@ class YagtrajShell(cmd.Cmd):
             command += f" -f {self.current_traj}"
         command += f" -o {output_file}"
 
-        self._log(f"[SASA] Calculating solvent accessible surface area...")
+        self._log_info("Calculating solvent accessible surface area")
 
         success = run_gromacs_command(
             command=command,
@@ -215,9 +206,9 @@ class YagtrajShell(cmd.Cmd):
         )
 
         if success:
-            self._log(f"[SASA] SASA calculation completed. Output: {output_file}")
+            self._log_success(f"SASA calculation completed. Output: {output_file}")
         else:
-            self._log("[!] SASA calculation failed.")
+            self._log_error("SASA calculation failed.")
 
     def do_hbond(self, arg):
         """
@@ -232,9 +223,9 @@ class YagtrajShell(cmd.Cmd):
         command = f"{self.gmx_path} hbond -s {self.current_tpr}"
         if self.current_traj:
             command += f" -f {self.current_traj}"
-        command += f" -num {output_file}"
+        command += f" -o {output_file}"
 
-        self._log(f"[HBOND] Calculating hydrogen bonds...")
+        self._log_info("Calculating hydrogen bonds")
 
         success = run_gromacs_command(
             command=command,
@@ -244,24 +235,21 @@ class YagtrajShell(cmd.Cmd):
         )
 
         if success:
-            self._log(
-                f"[HBOND] Hydrogen bond calculation completed. Output: {output_file}"
-            )
+            self._log_success(f"Hydrogen bond calculation completed. Output: {output_file}")
         else:
-            self._log("[!] Hydrogen bond calculation failed.")
+            self._log_error("Hydrogen bond calculation failed.")
 
     def do_distance(self, arg):
         """
         Calculate distance between two groups.
         Usage: distance <group1> <group2> [output_file]
-        Example: distance 1 2 distance.xvg
         """
         if not self._require_files():
             return
 
         args = arg.strip().split()
         if len(args) < 2:
-            self._log("[!] Usage: distance <group1> <group2> [output_file]")
+            self._log_error("Usage: distance <group1> <group2> [output_file]")
             return
 
         group1, group2 = args[0], args[1]
@@ -270,89 +258,72 @@ class YagtrajShell(cmd.Cmd):
         command = f"{self.gmx_path} distance -s {self.current_tpr}"
         if self.current_traj:
             command += f" -f {self.current_traj}"
-        command += f" -o {output_file}"
+        command += f" -o {output_file} -select 'group {group1} plus group {group2}'"
 
-        self._log(
-            f"[DISTANCE] Calculating distance between groups {group1} and {group2}..."
-        )
+        self._log_info(f"Calculating distance between groups {group1} and {group2}")
 
         success = run_gromacs_command(
             command=command,
-            pipe_input=f"{group1}\n{group2}\n",
             debug=self.debug,
             logger=self.logger,
         )
 
         if success:
-            self._log(
-                f"[DISTANCE] Distance calculation completed. Output: {output_file}"
-            )
+            self._log_success(f"Distance calculation completed. Output: {output_file}")
         else:
-            self._log("[!] Distance calculation failed.")
+            self._log_error("Distance calculation failed.")
 
     def do_energy(self, arg):
         """
-        Extract energy terms from energy file.
-        Usage: energy <edr_file> [output_file]
+        Calculate potential energy.
+        Usage: energy [output_file]
         """
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log("[!] Usage: energy <edr_file> [output_file]")
+        if not self._require_files():
             return
 
-        edr_file = args[0]
-        if not os.path.exists(edr_file):
-            self._log(f"[!] Energy file '{edr_file}' not found.")
-            return
+        output_file = arg.strip() if arg.strip() else "energy.xvg"
 
-        output_file = args[1] if len(args) > 1 else "energy.xvg"
+        command = f"{self.gmx_path} energy -s {self.current_tpr}"
+        if self.current_traj:
+            command += f" -f {self.current_traj}"
+        command += f" -o {output_file}"
 
-        command = f"{self.gmx_path} energy -f {edr_file} -o {output_file}"
-
-        self._log(f"[ENERGY] Extracting energy terms from {edr_file}...")
+        self._log_info("Calculating potential energy")
 
         success = run_gromacs_command(
             command=command,
-            pipe_input="10\n11\n0\n",  # Select potential and kinetic energy, then quit
+            pipe_input="10\n",  # Select potential energy
             debug=self.debug,
             logger=self.logger,
         )
 
         if success:
-            self._log(f"[ENERGY] Energy extraction completed. Output: {output_file}")
+            self._log_success(f"Energy calculation completed. Output: {output_file}")
         else:
-            self._log("[!] Energy extraction failed.")
+            self._log_error("Energy calculation failed.")
 
     def do_trjconv(self, arg):
         """
-        Convert trajectory format or extract frames.
-        Usage: trjconv <input_traj> <output_traj> [options]
-        Example: trjconv traj.xtc traj.pdb -dump 1000
+        Convert trajectory format.
+        Usage: trjconv <output_format> [output_file]
         """
+        if not self._require_files():
+            return
+
         args = arg.strip().split()
-        if len(args) < 2:
-            self._log("[!] Usage: trjconv <input_traj> <output_traj> [options]")
+        if len(args) < 1:
+            self._log_error("Usage: trjconv <output_format> [output_file]")
             return
 
-        input_traj = args[0]
-        output_traj = args[1]
+        output_format = args[0]
+        output_file = args[1] if len(args) > 1 else f"output.{output_format}"
 
-        if not os.path.exists(input_traj):
-            self._log(f"[!] Input trajectory '{input_traj}' not found.")
-            return
+        command = f"{self.gmx_path} trjconv -s {self.current_tpr}"
+        if self.current_traj:
+            command += f" -f {self.current_traj}"
+        command += f" -o {output_file}"
 
-        if not self.current_tpr:
-            self._log("[!] No TPR file loaded. Use 'load <tpr_file>' first.")
-            return
-
-        # Build command with additional options
-        command = f"{self.gmx_path} trjconv -s {self.current_tpr} -f {input_traj} -o {output_traj}"
-
-        # Add any additional options
-        if len(args) > 2:
-            command += " " + " ".join(args[2:])
-
-        self._log(f"[TRJCONV] Converting trajectory...")
+        self._log_info(f"Converting trajectory to {output_format} format")
 
         success = run_gromacs_command(
             command=command,
@@ -362,177 +333,80 @@ class YagtrajShell(cmd.Cmd):
         )
 
         if success:
-            self._log(
-                f"[TRJCONV] Trajectory conversion completed. Output: {output_traj}"
-            )
+            self._log_success(f"Trajectory conversion completed. Output: {output_file}")
         else:
-            self._log("[!] Trajectory conversion failed.")
+            self._log_error("Trajectory conversion failed.")
 
     def do_tremd_demux(self, arg):
         """
-        Demultiplex TREMD trajectories and logs.
-        Usage: tremd demux [base_name]
-        Example: tremd demux remd
+        Demultiplex TREMD trajectory.
+        Usage: tremd_demux <replica_count> [output_prefix]
         """
-        base_name = arg.strip() if arg.strip() else "remd"
-
-        # Count replica directories
-        replica_dirs = []
-        for item in os.listdir("."):
-            if os.path.isdir(item) and item.isdigit():
-                replica_dirs.append(int(item))
-
-        if not replica_dirs:
-            self._log(
-                "[!] No replica directories found (directories named with digits only)"
-            )
+        if not self._require_files():
             return
 
-        replica_dirs.sort()
-        num_replicas = len(replica_dirs)
-        self._log(f"[TREMD] Found {num_replicas} TREMD directories: {replica_dirs}")
+        args = arg.strip().split()
+        if len(args) < 1:
+            self._log_error("Usage: tremd_demux <replica_count> [output_prefix]")
+            return
 
-        # Create analysis directory
-        analysis_dir = "remd_analysis_results"
-        if not self.debug:
-            os.makedirs(analysis_dir, exist_ok=True)
+        try:
+            replica_count = int(args[0])
+        except ValueError:
+            self._log_error("Replica count must be an integer")
+            return
 
-        # Create temporary directory for logs
-        log_tmp = "remd_logs"
-        if not self.debug:
-            os.makedirs(log_tmp, exist_ok=True)
+        output_prefix = args[1] if len(args) > 1 else "demux"
 
-        # Copy and concatenate logs
-        self._log("[TREMD] Processing replica logs...")
-        for replica in replica_dirs:
-            log_file = f"{replica}/{base_name}.log"
-            if os.path.exists(log_file):
-                if not self.debug:
-                    import shutil
+        command = f"{self.gmx_path} trjcat -s {self.current_tpr}"
+        if self.current_traj:
+            command += f" -f {self.current_traj}"
+        command += f" -demux {output_prefix} -n {replica_count}"
 
-                    shutil.copy(log_file, f"{log_tmp}/remd_{replica}.log")
-            else:
-                self._log(f"[!] Warning: {log_file} not found")
+        self._log_info(f"Demultiplexing TREMD trajectory for {replica_count} replicas")
 
-        # Concatenate logs
-        if not self.debug:
-            with open(f"{log_tmp}/REMD.log", "w") as outfile:
-                for replica in replica_dirs:
-                    log_file = f"{log_tmp}/remd_{replica}.log"
-                    if os.path.exists(log_file):
-                        with open(log_file, "r") as infile:
-                            outfile.write(infile.read())
-
-        # Run demux.pl (if available) or use gmx demux
-        self._log("[TREMD] Generating replica index...")
-
-        # Try to use demux.pl first, fallback to gmx demux
-        demux_command = f"demux.pl {log_tmp}/REMD.log"
         success = run_gromacs_command(
-            command=demux_command, debug=self.debug, logger=self.logger
+            command=command,
+            debug=self.debug,
+            logger=self.logger,
         )
 
-        if not success:
-            # Fallback to gmx demux
-            self._log("[TREMD] demux.pl not found, trying gmx demux...")
-            demux_command = f"{self.gmx_path} demux {log_tmp}/REMD.log"
-            success = run_gromacs_command(
-                command=demux_command, debug=self.debug, logger=self.logger
-            )
-
-        if success and not self.debug:
-            # Move generated files to analysis directory
-            for file in ["replica_index.xvg", "replica_temp.xvg"]:
-                if os.path.exists(file):
-                    import shutil
-
-                    shutil.move(file, f"{analysis_dir}/{file}")
-
-        # Demultiplex trajectories
-        self._log("[TREMD] Demultiplexing trajectories...")
-
-        # Build list of trajectory files
-        traj_files = []
-        for replica in replica_dirs:
-            traj_file = f"{replica}/{base_name}.xtc"
-            if os.path.exists(traj_file):
-                traj_files.append(traj_file)
-            else:
-                self._log(f"[!] Warning: {traj_file} not found")
-
-        if traj_files:
-            # Use gmx trjcat with demux
-            trjcat_command = f"{self.gmx_path} trjcat -f {' '.join(traj_files)} -demux {analysis_dir}/replica_index.xvg"
-
-            success = run_gromacs_command(
-                command=trjcat_command, debug=self.debug, logger=self.logger
-            )
-
-            if success and not self.debug:
-                # Move demuxed trajectories to analysis directories
-                for replica in replica_dirs:
-                    trajout_file = f"{replica}_trajout.xtc"
-                    if os.path.exists(trajout_file):
-                        replica_dir = f"{analysis_dir}/replica_{replica}"
-                        os.makedirs(replica_dir, exist_ok=True)
-                        import shutil
-
-                        shutil.move(trajout_file, f"{replica_dir}/{trajout_file}")
-
-                        # Copy corresponding TPR file
-                        tpr_file = f"{replica}/{base_name}.tpr"
-                        if os.path.exists(tpr_file):
-                            shutil.copy(
-                                tpr_file, f"{replica_dir}/demuxed_{replica}.tpr"
-                            )
-
-        self._log(f"[TREMD] Demultiplexing completed. Results in {analysis_dir}/")
+        if success:
+            self._log_success(f"TREMD demultiplexing completed. Output prefix: {output_prefix}")
+        else:
+            self._log_error("TREMD demultiplexing failed.")
 
     def do_tremd_rmsd(self, arg):
         """
-        Calculate RMSD for all TREMD replicas.
-        Usage: tremd rmsd [base_name]
-        Example: tremd rmsd remd
+        Calculate RMSD for TREMD trajectories.
+        Usage: tremd_rmsd <replica_count> [output_prefix]
         """
-        base_name = arg.strip() if arg.strip() else "remd"
-        analysis_dir = "remd_analysis_results"
-
-        if not os.path.exists(analysis_dir):
-            self._log("[!] Analysis directory not found. Run 'tremd demux' first.")
+        if not self._require_files():
             return
 
-        # Find replica directories
-        replica_dirs = []
-        for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(
-                os.path.join(analysis_dir, item)
-            ):
-                replica_num = item.split("_")[1]
-                if replica_num.isdigit():
-                    replica_dirs.append(int(replica_num))
-
-        if not replica_dirs:
-            self._log(
-                "[!] No replica analysis directories found. Run 'tremd demux' first."
-            )
+        args = arg.strip().split()
+        if len(args) < 1:
+            self._log_error("Usage: tremd_rmsd <replica_count> [output_prefix]")
             return
 
-        replica_dirs.sort()
-        self._log(f"[TREMD] Calculating RMSD for {len(replica_dirs)} replicas...")
+        try:
+            replica_count = int(args[0])
+        except ValueError:
+            self._log_error("Replica count must be an integer")
+            return
 
-        for replica in replica_dirs:
-            replica_dir = f"{analysis_dir}/replica_{replica}"
-            tpr_file = f"{replica_dir}/demuxed_{replica}.tpr"
-            traj_file = f"{replica_dir}/{replica}_trajout.xtc"
-            output_file = f"{replica_dir}/rmsd.xvg"
+        output_prefix = args[1] if len(args) > 1 else "tremd_rmsd"
 
-            if not os.path.exists(tpr_file) or not os.path.exists(traj_file):
-                self._log(f"[!] Warning: Missing files for replica {replica}")
+        self._log_info(f"Calculating RMSD for {replica_count} TREMD replicas")
+
+        for i in range(replica_count):
+            traj_file = f"demux{i+1}.xtc"
+            if not os.path.exists(traj_file):
+                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
                 continue
 
-            command = f"{self.gmx_path} rms -s {tpr_file} -f {traj_file} -o {output_file} -res"
-
-            self._log(f"[TREMD] Processing replica {replica} RMSD...")
+            output_file = f"{output_prefix}_replica{i+1}.xvg"
+            command = f"{self.gmx_path} rms -s {self.current_tpr} -f {traj_file} -o {output_file}"
 
             success = run_gromacs_command(
                 command=command,
@@ -542,55 +416,41 @@ class YagtrajShell(cmd.Cmd):
             )
 
             if success:
-                self._log(f"[TREMD] Replica {replica} RMSD completed: {output_file}")
+                self._log_success(f"RMSD calculation completed for replica {i+1}. Output: {output_file}")
             else:
-                self._log(f"[!] Replica {replica} RMSD failed")
+                self._log_error(f"RMSD calculation failed for replica {i+1}")
 
     def do_tremd_rmsf(self, arg):
         """
-        Calculate RMSF for all TREMD replicas.
-        Usage: tremd rmsf [base_name]
-        Example: tremd rmsf remd
+        Calculate RMSF for TREMD trajectories.
+        Usage: tremd_rmsf <replica_count> [output_prefix]
         """
-        base_name = arg.strip() if arg.strip() else "remd"
-        analysis_dir = "remd_analysis_results"
-
-        if not os.path.exists(analysis_dir):
-            self._log("[!] Analysis directory not found. Run 'tremd demux' first.")
+        if not self._require_files():
             return
 
-        # Find replica directories
-        replica_dirs = []
-        for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(
-                os.path.join(analysis_dir, item)
-            ):
-                replica_num = item.split("_")[1]
-                if replica_num.isdigit():
-                    replica_dirs.append(int(replica_num))
-
-        if not replica_dirs:
-            self._log(
-                "[!] No replica analysis directories found. Run 'tremd demux' first."
-            )
+        args = arg.strip().split()
+        if len(args) < 1:
+            self._log_error("Usage: tremd_rmsf <replica_count> [output_prefix]")
             return
 
-        replica_dirs.sort()
-        self._log(f"[TREMD] Calculating RMSF for {len(replica_dirs)} replicas...")
+        try:
+            replica_count = int(args[0])
+        except ValueError:
+            self._log_error("Replica count must be an integer")
+            return
 
-        for replica in replica_dirs:
-            replica_dir = f"{analysis_dir}/replica_{replica}"
-            tpr_file = f"{replica_dir}/demuxed_{replica}.tpr"
-            traj_file = f"{replica_dir}/{replica}_trajout.xtc"
-            output_file = f"{replica_dir}/rmsf.xvg"
+        output_prefix = args[1] if len(args) > 1 else "tremd_rmsf"
 
-            if not os.path.exists(tpr_file) or not os.path.exists(traj_file):
-                self._log(f"[!] Warning: Missing files for replica {replica}")
+        self._log_info(f"Calculating RMSF for {replica_count} TREMD replicas")
+
+        for i in range(replica_count):
+            traj_file = f"demux{i+1}.xtc"
+            if not os.path.exists(traj_file):
+                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
                 continue
 
-            command = f"{self.gmx_path} rmsf -s {tpr_file} -f {traj_file} -o {output_file} -res"
-
-            self._log(f"[TREMD] Processing replica {replica} RMSF...")
+            output_file = f"{output_prefix}_replica{i+1}.xvg"
+            command = f"{self.gmx_path} rmsf -s {self.current_tpr} -f {traj_file} -o {output_file}"
 
             success = run_gromacs_command(
                 command=command,
@@ -600,275 +460,139 @@ class YagtrajShell(cmd.Cmd):
             )
 
             if success:
-                self._log(f"[TREMD] Replica {replica} RMSF completed: {output_file}")
+                self._log_success(f"RMSF calculation completed for replica {i+1}. Output: {output_file}")
             else:
-                self._log(f"[!] Replica {replica} RMSF failed")
+                self._log_error(f"RMSF calculation failed for replica {i+1}")
 
     def do_tremd_pca(self, arg):
         """
-        Perform PCA analysis for all TREMD replicas.
-        Usage: tremd pca [base_name]
-        Example: tremd pca remd
+        Perform PCA analysis on TREMD trajectories.
+        Usage: tremd_pca <replica_count> [output_prefix]
         """
-        base_name = arg.strip() if arg.strip() else "remd"
-        analysis_dir = "remd_analysis_results"
-
-        if not os.path.exists(analysis_dir):
-            self._log("[!] Analysis directory not found. Run 'tremd demux' first.")
+        if not self._require_files():
             return
 
-        # Find replica directories
-        replica_dirs = []
-        for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(
-                os.path.join(analysis_dir, item)
-            ):
-                replica_num = item.split("_")[1]
-                if replica_num.isdigit():
-                    replica_dirs.append(int(replica_num))
-
-        if not replica_dirs:
-            self._log(
-                "[!] No replica analysis directories found. Run 'tremd demux' first."
-            )
+        args = arg.strip().split()
+        if len(args) < 1:
+            self._log_error("Usage: tremd_pca <replica_count> [output_prefix]")
             return
 
-        replica_dirs.sort()
-        self._log(f"[TREMD] Performing PCA for {len(replica_dirs)} replicas...")
-
-        for replica in replica_dirs:
-            replica_dir = f"{analysis_dir}/replica_{replica}"
-            tpr_file = f"{replica_dir}/demuxed_{replica}.tpr"
-            traj_file = f"{replica_dir}/{replica}_trajout.xtc"
-
-            if not os.path.exists(tpr_file) or not os.path.exists(traj_file):
-                self._log(f"[!] Warning: Missing files for replica {replica}")
-                continue
-
-            self._log(f"[TREMD] Processing replica {replica} PCA...")
-
-            # Step 1: Center trajectory
-            traj_centered = f"{replica_dir}/traj_centered.xtc"
-            command1 = f"{self.gmx_path} trjconv -s {tpr_file} -f {traj_file} -o {traj_centered} -center -pbc mol"
-
-            success1 = run_gromacs_command(
-                command=command1,
-                pipe_input="0\n0\n",  # Select system for centering
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if not success1:
-                self._log(f"[!] Replica {replica} PCA step 1 (centering) failed")
-                continue
-
-            # Step 2: Fit trajectory
-            traj_fitted = f"{replica_dir}/traj_centered_rot_trans.xtc"
-            command2 = f"{self.gmx_path} trjconv -s {tpr_file} -f {traj_centered} -o {traj_fitted} -ur compact -fit rot+trans"
-
-            success2 = run_gromacs_command(
-                command=command2,
-                pipe_input="0\n0\n",  # Select system for fitting
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if not success2:
-                self._log(f"[!] Replica {replica} PCA step 2 (fitting) failed")
-                continue
-
-            # Step 3: Calculate covariance matrix
-            eigenval_file = f"{replica_dir}/eigenval.xvg"
-            eigenvec_file = f"{replica_dir}/eigenvec.trr"
-            command3 = f"{self.gmx_path} covar -s {tpr_file} -f {traj_fitted} -o {eigenval_file} -v {eigenvec_file}"
-
-            success3 = run_gromacs_command(
-                command=command3,
-                pipe_input="4\n4\n",  # Select backbone for covariance
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if not success3:
-                self._log(f"[!] Replica {replica} PCA step 3 (covariance) failed")
-                continue
-
-            # Step 4: Project trajectory
-            proj_file = f"{replica_dir}/proj.xvg"
-            command4 = f"{self.gmx_path} anaeig -v {eigenvec_file} -s {tpr_file} -f {traj_fitted} -proj {proj_file}"
-
-            success4 = run_gromacs_command(
-                command=command4,
-                pipe_input="4\n4\n",  # Select backbone for projection
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if success4:
-                self._log(f"[TREMD] Replica {replica} PCA completed: {proj_file}")
-            else:
-                self._log(f"[!] Replica {replica} PCA step 4 (projection) failed")
-
-    def do_tremd_temp(self, arg):
-        """
-        Extract temperature data for all TREMD replicas.
-        Usage: tremd temp [base_name]
-        Example: tremd temp remd
-        """
-        base_name = arg.strip() if arg.strip() else "remd"
-        analysis_dir = "remd_analysis_results"
-
-        if not os.path.exists(analysis_dir):
-            self._log("[!] Analysis directory not found. Run 'tremd demux' first.")
+        try:
+            replica_count = int(args[0])
+        except ValueError:
+            self._log_error("Replica count must be an integer")
             return
 
-        # Find replica directories
-        replica_dirs = []
-        for item in os.listdir(analysis_dir):
-            if item.startswith("replica_") and os.path.isdir(
-                os.path.join(analysis_dir, item)
-            ):
-                replica_num = item.split("_")[1]
-                if replica_num.isdigit():
-                    replica_dirs.append(int(replica_num))
+        output_prefix = args[1] if len(args) > 1 else "tremd_pca"
 
-        if not replica_dirs:
-            self._log(
-                "[!] No replica analysis directories found. Run 'tremd demux' first."
-            )
-            return
+        self._log_info(f"Performing PCA analysis for {replica_count} TREMD replicas")
 
-        replica_dirs.sort()
-        self._log(f"[TREMD] Extracting temperature for {len(replica_dirs)} replicas...")
-
-        for replica in replica_dirs:
-            replica_dir = f"{analysis_dir}/replica_{replica}"
-            original_edr = f"{replica}/{base_name}.edr"
-            output_edr = f"{replica_dir}/ener.edr"
-            output_temp = f"{replica_dir}/temp.xvg"
-
-            if not os.path.exists(original_edr):
-                self._log(
-                    f"[!] Warning: {original_edr} not found for replica {replica}"
-                )
+        for i in range(replica_count):
+            traj_file = f"demux{i+1}.xtc"
+            if not os.path.exists(traj_file):
+                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
                 continue
 
-            # Copy energy file to analysis directory
-            if not self.debug:
-                import shutil
-
-                shutil.copy(original_edr, output_edr)
-
-            # Extract temperature
-            command = f"{self.gmx_path} energy -f {output_edr} -o {output_temp}"
-
-            self._log(f"[TREMD] Processing replica {replica} temperature...")
+            # Covariance matrix
+            covar_file = f"{output_prefix}_replica{i+1}_covar.xvg"
+            command = f"{self.gmx_path} covar -s {self.current_tpr} -f {traj_file} -o {covar_file}"
 
             success = run_gromacs_command(
                 command=command,
-                pipe_input="Temperature\n",  # Select temperature
+                pipe_input="4\n4\n",  # Select backbone for both reference and fit
                 debug=self.debug,
                 logger=self.logger,
             )
 
             if success:
-                self._log(
-                    f"[TREMD] Replica {replica} temperature completed: {output_temp}"
-                )
+                self._log_success(f"PCA analysis completed for replica {i+1}. Output: {covar_file}")
             else:
-                self._log(f"[!] Replica {replica} temperature extraction failed")
+                self._log_error(f"PCA analysis failed for replica {i+1}")
 
-    def do_tremd_energy(self, arg):
+    def do_tremd_temp(self, arg):
         """
-        Combine and analyze energy files from all TREMD replicas.
-        Usage: tremd energy [base_name]
-        Example: tremd energy remd
+        Analyze temperature exchange in TREMD simulations.
+        Usage: tremd_temp [output_file]
         """
-        base_name = arg.strip() if arg.strip() else "remd"
-        analysis_dir = "remd_analysis_results"
-
-        if not os.path.exists(analysis_dir):
-            self._log("[!] Analysis directory not found. Run 'tremd demux' first.")
+        if not self._require_files():
             return
 
-        # Find all energy files
-        energy_files = []
-        for item in os.listdir("."):
-            if os.path.isdir(item) and item.isdigit():
-                edr_file = f"{item}/{base_name}.edr"
-                if os.path.exists(edr_file):
-                    energy_files.append(edr_file)
+        output_file = arg.strip() if arg.strip() else "tremd_temp.xvg"
 
-        if not energy_files:
-            self._log("[!] No energy files found in replica directories")
-            return
+        command = f"{self.gmx_path} energy -s {self.current_tpr}"
+        if self.current_traj:
+            command += f" -f {self.current_traj}"
+        command += f" -o {output_file}"
 
-        energy_files.sort()
-        self._log(f"[TREMD] Found {len(energy_files)} energy files")
+        self._log_info("Analyzing temperature exchange in TREMD simulation")
 
-        # Combine energy files
-        combined_edr = f"{analysis_dir}/combined.edr"
-        command1 = (
-            f"{self.gmx_path} eneconv -f {' '.join(energy_files)} -o {combined_edr}"
-        )
-
-        self._log("[TREMD] Combining energy files...")
-
-        success1 = run_gromacs_command(
-            command=command1, debug=self.debug, logger=self.logger
-        )
-
-        if not success1:
-            self._log("[!] Energy file combination failed")
-            return
-
-        # Extract potential energy
-        output_energy = f"{analysis_dir}/kbT_scalar.xvg"
-        command2 = f"{self.gmx_path} energy -f {combined_edr} -o {output_energy}"
-
-        self._log("[TREMD] Extracting potential energy...")
-
-        success2 = run_gromacs_command(
-            command=command2,
-            pipe_input="Potential\n",  # Select potential energy
+        success = run_gromacs_command(
+            command=command,
+            pipe_input="16\n",  # Select temperature
             debug=self.debug,
             logger=self.logger,
         )
 
-        if success2:
-            self._log(f"[TREMD] Energy analysis completed: {output_energy}")
+        if success:
+            self._log_success(f"Temperature analysis completed. Output: {output_file}")
         else:
-            self._log("[!] Energy extraction failed")
+            self._log_error("Temperature analysis failed.")
+
+    def do_tremd_energy(self, arg):
+        """
+        Analyze energy exchange in TREMD simulations.
+        Usage: tremd_energy [output_file]
+        """
+        if not self._require_files():
+            return
+
+        output_file = arg.strip() if arg.strip() else "tremd_energy.xvg"
+
+        command = f"{self.gmx_path} energy -s {self.current_tpr}"
+        if self.current_traj:
+            command += f" -f {self.current_traj}"
+        command += f" -o {output_file}"
+
+        self._log_info("Analyzing energy exchange in TREMD simulation")
+
+        success = run_gromacs_command(
+            command=command,
+            pipe_input="10\n",  # Select potential energy
+            debug=self.debug,
+            logger=self.logger,
+        )
+
+        if success:
+            self._log_success(f"Energy analysis completed. Output: {output_file}")
+        else:
+            self._log_error("Energy analysis failed.")
 
     def do_info(self, arg):
         """Show information about loaded files."""
-        self._log("[INFO] Current file status:")
-        self._log(f"  TPR file: {self.current_tpr or 'None'}")
-        self._log(f"  Trajectory file: {self.current_traj or 'None'}")
-        self._log(f"  GROMACS path: {self.gmx_path}")
-        self._log(f"  Debug mode: {'ON' if self.debug else 'OFF'}")
+        if self.current_tpr:
+            self._log_info(f"TPR file: {self.current_tpr}")
+        if self.current_traj:
+            self._log_info(f"Trajectory file: {self.current_traj}")
+        if not self.current_tpr and not self.current_traj:
+            self._log_info("No files loaded. Use 'load <tpr_file>' to load files.")
 
     def print_random_quote(self):
-        """
-        Prints random quote on exit.
-        Quotes: scr/yagwip/assets/quotes.txt
-        """
+        """Print a random quote from the quotes file."""
         try:
-            quote_path = files("yagwip.assets").joinpath("quotes.txt")
-            with open(str(quote_path), "r", encoding="utf-8") as f:
-                quotes = [line.strip() for line in f if line.strip()]
+            quotes_path = files("yagwip.assets").joinpath("quotes.txt")
+            with open(str(quotes_path), "r", encoding="utf-8") as f:
+                quotes = f.readlines()
             if quotes:
-                print(f"\nYAGTRAJ Reminds You...\n{random.choice(quotes)}\n")
+                quote = random.choice(quotes).strip()
+                if quote:
+                    print(f"\n{quote}\n")
         except Exception as e:
-            self._log(f"[!] Unable to load quotes: {e}")
+            self._log_debug(f"Could not load quotes: {e}")
 
     def do_quit(self, _):
-        """
-        Quit the CLI.
-        Usage: "quit"
-        """
+        """Exit the YAGTRAJ shell."""
         self.print_random_quote()
-        self._log(f"Copyright (c) 2025 {__author__} \nQuitting YAGTRAJ.")
+        self._log_info("Goodbye!")
         return True
 
 

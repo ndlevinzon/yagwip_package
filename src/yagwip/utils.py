@@ -13,7 +13,7 @@ import subprocess
 import numpy as np
 
 # === Local Imports ===
-from .logger import LoggingMixin, setup_logger
+from .log import LoggingMixin, setup_logger
 
 
 # === External Dependency Checker ===

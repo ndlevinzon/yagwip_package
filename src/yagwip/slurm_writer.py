@@ -5,21 +5,16 @@ import os
 import re
 import shutil
 from importlib.resources import files
+from .base import YagwipBase
 
 
-class SlurmWriter:
+class SlurmWriter(YagwipBase):
     """
     Handles generation and writing of SLURM job scripts for GROMACS and TREMD workflows.
     """
-    def __init__(self, template_pkg="yagwip.templates", logger=None):
+    def __init__(self, template_pkg="yagwip.templates", logger=None, debug=False):
+        super().__init__(debug=debug, logger=logger)
         self.template_dir = files(template_pkg)
-        self.logger = logger
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
 
     def write_slurm_scripts(self, sim_type, hardware, basename, ligand_pdb_path=None):
         """
@@ -35,7 +30,7 @@ class SlurmWriter:
         for f in self.template_dir.iterdir():
             if f.name.endswith(".mdp") and f.name != exclude:
                 shutil.copy(str(f), os.getcwd())
-        self._log(f"[#] Copied .mdp templates for {sim_type} (excluded: {exclude}).")
+        self._log_info(f"Copied .mdp templates for {sim_type} (excluded: {exclude})")
 
         # Copy minimization SLURM file for tremd
         if sim_type == "tremd":
@@ -50,17 +45,17 @@ class SlurmWriter:
                     out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
                     with open(out_min_slurm, "w", encoding="utf-8") as f:
                         f.write(min_content)
-                    self._log(f"Customized SLURM script written: {out_min_slurm}")
+                    self._log_success(f"Customized SLURM script written: {out_min_slurm}")
                 except (OSError, IOError) as e:
-                    self._log(f"Failed to configure SLURM script: {e}")
-                else:
-                    self._log("[ERROR] run_gmx_tremd_min_cpu.slurm not found in template directory.")
+                    self._log_error(f"Failed to configure SLURM script: {e}")
+            else:
+                self._log_warning("run_gmx_tremd_min_cpu.slurm not found in template directory.")
 
         # Main SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
         slurm_tpl_path = self.template_dir / slurm_tpl_name
         if not slurm_tpl_path.is_file():
-            self._log(f"[ERROR] SLURM template not found: {slurm_tpl_name}")
+            self._log_error(f"SLURM template not found: {slurm_tpl_name}")
             return
 
         try:
@@ -72,6 +67,6 @@ class SlurmWriter:
             out_slurm = f"{slurm_tpl_name}"
             with open(out_slurm, "w", encoding="utf-8") as f:
                 f.write(slurm_content)
-            self._log(f"Customized SLURM script written: {out_slurm}")
+            self._log_success(f"Customized SLURM script written: {out_slurm}")
         except Exception as e:
-            self._log(f"[ERROR] Failed to configure SLURM script: {e}")
+            self._log_error(f"Failed to configure SLURM script: {e}")

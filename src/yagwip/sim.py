@@ -1,19 +1,12 @@
 import os
+from .base import YagwipBase
 from .utils import run_gromacs_command, tremd_temperature_ladder, count_residues_in_gro
 from importlib.resources import files
 
 
-class Sim:
+class Sim(YagwipBase):
     def __init__(self, gmx_path, debug=False, logger=None):
-        self.gmx_path = gmx_path
-        self.debug = debug
-        self.logger = logger
-
-    def _log(self, msg):
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            print(msg)
+        super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
     def run_em(self, basename, arg=""):
         self._run_stage(
@@ -44,27 +37,25 @@ class Sim:
         grompp_cmd = f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
         mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {outname} {mdrun_suffix}"
 
-        self._execute(grompp_cmd)
-        self._execute(mdrun_cmd)
+        self._execute_command(grompp_cmd, "grompp for production")
+        self._execute_command(mdrun_cmd, "mdrun for production")
 
     def run_tremd(self, basename, arg=""):
         args = arg.strip().split()
         if len(args) != 2 or args[0].lower() != "calc":
-            print("Usage: tremd calc <filename.gro>")
+            self._log_error("Usage: tremd calc <filename.gro>")
             return
 
         gro_path = os.path.abspath(args[1])
         if not os.path.isfile(gro_path):
-            print(f"[#] File not found: {gro_path}")
+            self._log_error(f"File not found: {gro_path}")
             return
 
         try:
             protein_residues, water_residues = count_residues_in_gro(gro_path)
-            print(
-                f"[#] Found {protein_residues} protein residues and {water_residues} water residues."
-            )
+            self._log_info(f"Found {protein_residues} protein residues and {water_residues} water residues.")
         except Exception as e:
-            print(f"[!] Failed to parse .gro file: {e}")
+            self._log_error(f"Failed to parse .gro file: {e}")
             return
 
         try:
@@ -72,11 +63,11 @@ class Sim:
             Thigh = float(input("Final Temperature (K): "))
             Pdes = float(input("Exchange Probability (0 < P < 1): "))
         except ValueError:
-            print("[!] Invalid numeric input.")
+            self._log_error("Invalid numeric input.")
             return
 
         if not (0 < Pdes < 1) or Thigh <= Tlow:
-            print("[!] Invalid parameters.")
+            self._log_error("Invalid parameters.")
             return
 
         try:
@@ -94,18 +85,18 @@ class Sim:
             )
             if self.debug:
                 for i, temp in enumerate(temperatures):
-                    print(f"Replica {i + 1}: {temp:.2f} K")
+                    self._log_debug(f"Replica {i + 1}: {temp:.2f} K")
             else:
                 with open("TREMD_temp_ranges.txt", "w") as f:
                     for i, temp in enumerate(temperatures):
                         f.write(f"Replica {i + 1}: {temp:.2f} K\n")
-                print("[#] Temperature ladder saved to TREMD_temp_ranges.txt")
+                self._log_success("Temperature ladder saved to TREMD_temp_ranges.txt")
         except Exception as e:
-            print(f"[!] Temperature calculation failed: {e}")
+            self._log_error(f"Temperature calculation failed: {e}")
 
     def _run_stage(self, basename, arg, default_mdp, suffix, tprname):
         base = basename if basename else "PLACEHOLDER"
-        self._log(f"[#] Running stage for {base} using {default_mdp}...")
+        self._log_info(f"Running stage for {base} using {default_mdp}")
 
         parts = arg.strip().split(maxsplit=3)
         mdpfile = (
@@ -123,12 +114,5 @@ class Sim:
         grompp_cmd = f"{self.gmx_path} grompp -f {mdpfile} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_file}"
         mdrun_cmd = f"{self.gmx_path} mdrun -v -deffnm {tprname} {mdrun_suffix}"
 
-        self._execute(grompp_cmd)
-        self._execute(mdrun_cmd)
-
-    def _execute(self, command):
-        if self.debug:
-            print(f"[DEBUG] {command}`")
-            print("[DEBUG] Command not executed.")
-        else:
-            run_gromacs_command(command, debug=self.debug, logger=self.logger)
+        self._execute_command(grompp_cmd, f"grompp for {tprname}")
+        self._execute_command(mdrun_cmd, f"mdrun for {tprname}")
