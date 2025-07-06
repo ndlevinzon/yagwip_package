@@ -525,6 +525,7 @@ def main():
     parser.add_argument("-p", "--pdb-list", type=str, help="File containing list of PDB paths for batch processing")
     parser.add_argument("-d", "--pdb-dir", type=str, help="Directory containing PDB files for batch processing")
     parser.add_argument("-r", "--resume", action="store_true", help="Resume previous batch run")
+    parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder for batch processing")
     parser.add_argument("--gmx-path", type=str, default="gmx", help="GROMACS executable path")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
@@ -539,11 +540,12 @@ def main():
     if args.batch:
         from .batch_processor import BatchProcessor
 
-        # Initialize batch processor
+        # Initialize batch processor with ligand_builder flag
         batch_processor = BatchProcessor(
             gmx_path=args.gmx_path,
             debug=args.debug,
-            logger=cli.logger
+            logger=cli.logger,
+            ligand_builder=args.ligand_builder
         )
 
         # Load PDB files
@@ -559,6 +561,8 @@ def main():
 
         # Execute batch
         print(f"Starting batch processing with {len(batch_processor.jobs)} jobs...")
+        if args.ligand_builder:
+            print("Ligand builder enabled for batch processing")
         results = batch_processor.execute_batch(args.batch, resume=args.resume)
 
         if results:

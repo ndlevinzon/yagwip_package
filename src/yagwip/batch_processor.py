@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
+import argparse
 
 from .base import YagwipBase
 from .log import auto_monitor, runtime_context
@@ -32,6 +33,7 @@ class BatchJob:
     end_time: Optional[datetime] = None
     error_message: Optional[str] = None
     output_files: List[str] = None
+    ligand_builder: bool = False
 
     def __post_init__(self):
         if self.output_files is None:
@@ -51,12 +53,13 @@ class BatchProcessor(YagwipBase):
     - Resume capability for failed jobs
     """
 
-    def __init__(self, gmx_path: str = "gmx", debug: bool = False, logger=None):
+    def __init__(self, gmx_path: str = "gmx", debug: bool = False, logger=None, ligand_builder: bool = False):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
         self.jobs: List[BatchJob] = []
         self.batch_config: Dict[str, Any] = {}
         self.results_dir = "batch_results"
         self.logs_dir = "batch_logs"
+        self.ligand_builder = ligand_builder
 
         # Create results and logs directories
         os.makedirs(self.results_dir, exist_ok=True)
@@ -99,15 +102,17 @@ class BatchProcessor(YagwipBase):
                     self._log_warning(f"File doesn't have .pdb extension (line {line_num}): {pdb_path}")
                     continue
 
-                # Create unique working directory
+                # Create working directory in the same location as the source PDB
+                pdb_dir = os.path.dirname(pdb_path)
                 basename = Path(pdb_path).stem
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                working_dir = os.path.join(self.results_dir, f"{basename}_{timestamp}")
+                working_dir = os.path.join(pdb_dir, f"{basename}_yagwip_{timestamp}")
 
                 job = BatchJob(
                     pdb_path=pdb_path,
                     working_dir=working_dir,
-                    basename=basename
+                    basename=basename,
+                    ligand_builder=self.ligand_builder
                 )
                 jobs.append(job)
 
@@ -140,15 +145,17 @@ class BatchProcessor(YagwipBase):
 
         for pdb_file in pdb_files:
             if pdb_file.is_file():
-                # Create unique working directory
+                # Create working directory in the same location as the source PDB
+                pdb_dir = str(pdb_file.parent)
                 basename = pdb_file.stem
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                working_dir = os.path.join(self.results_dir, f"{basename}_{timestamp}")
+                working_dir = os.path.join(pdb_dir, f"{basename}_yagwip_{timestamp}")
 
                 job = BatchJob(
                     pdb_path=str(pdb_file.absolute()),
                     working_dir=working_dir,
-                    basename=basename
+                    basename=basename,
+                    ligand_builder=self.ligand_builder
                 )
                 jobs.append(job)
 
@@ -182,15 +189,17 @@ class BatchProcessor(YagwipBase):
                 self._log_warning(f"File doesn't have .pdb extension: {pdb_path}")
                 continue
 
-            # Create unique working directory
+            # Create working directory in the same location as the source PDB
+            pdb_dir = os.path.dirname(pdb_path)
             basename = Path(pdb_path).stem
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            working_dir = os.path.join(self.results_dir, f"{basename}_{timestamp}")
+            working_dir = os.path.join(pdb_dir, f"{basename}_yagwip_{timestamp}")
 
             job = BatchJob(
                 pdb_path=pdb_path,
                 working_dir=working_dir,
-                basename=basename
+                basename=basename,
+                ligand_builder=self.ligand_builder
             )
             jobs.append(job)
 
@@ -313,7 +322,7 @@ class BatchProcessor(YagwipBase):
         # Create working directory
         os.makedirs(job.working_dir, exist_ok=True)
 
-        # Setup logging for this job
+        # Setup logging for this job (only file handler, no console to avoid redundancy)
         job_log_file = os.path.join(self.logs_dir, f"{job.basename}.log")
         job_logger = self._setup_job_logger(job_log_file)
 
@@ -350,8 +359,17 @@ class BatchProcessor(YagwipBase):
                     yagwip_shell.logger = job_logger
                     yagwip_shell.debug = self.debug
 
-                    # Execute command
-                    yagwip_shell.onecmd(command)
+                    # Modify loadpdb command to use the specific PDB filename
+                    if command.startswith('loadpdb'):
+                        if job.ligand_builder:
+                            modified_command = f"loadpdb {job.basename}.pdb --ligand_builder"
+                        else:
+                            modified_command = f"loadpdb {job.basename}.pdb"
+                        job_logger.info(f"Modified command: {modified_command}")
+                        yagwip_shell.onecmd(modified_command)
+                    else:
+                        # Execute command as-is
+                        yagwip_shell.onecmd(command)
 
                     job_logger.info(f"Command {i} completed successfully")
 
@@ -382,30 +400,24 @@ class BatchProcessor(YagwipBase):
         return result
 
     def _setup_job_logger(self, log_file: str) -> logging.Logger:
-        """Setup logger for individual job."""
+        """Setup logger for individual job (file only, no console to avoid redundancy)."""
         logger = logging.getLogger(f"batch_job_{Path(log_file).stem}")
         logger.setLevel(logging.INFO)
 
         # Clear existing handlers
         logger.handlers.clear()
 
-        # File handler
+        # File handler only (no console handler to avoid redundant output)
         file_handler = logging.FileHandler(log_file, mode='w')
         file_handler.setLevel(logging.INFO)
-
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
 
         # Formatter
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
 
         logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
 
         return logger
 
