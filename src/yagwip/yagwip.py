@@ -521,9 +521,54 @@ def main():
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
     )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
+    parser.add_argument("-b", "--batch", type=str, help="Batch process multiple PDBs using command script")
+    parser.add_argument("-p", "--pdb-list", type=str, help="File containing list of PDB paths for batch processing")
+    parser.add_argument("-d", "--pdb-dir", type=str, help="Directory containing PDB files for batch processing")
+    parser.add_argument("-r", "--resume", action="store_true", help="Resume previous batch run")
+    parser.add_argument("--gmx-path", type=str, default="gmx", help="GROMACS executable path")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
-    cli = YagwipShell("gmx")
-    if args.file:
+
+    # Initialize YAGWIP shell
+    cli = YagwipShell(args.gmx_path)
+
+    if args.debug:
+        cli.do_debug("on")
+
+    # Handle batch processing
+    if args.batch:
+        from .batch_processor import BatchProcessor
+
+        # Initialize batch processor
+        batch_processor = BatchProcessor(
+            gmx_path=args.gmx_path,
+            debug=args.debug,
+            logger=cli.logger
+        )
+
+        # Load PDB files
+        if args.pdb_list:
+            # Load from PDB list file
+            batch_processor.load_pdb_list(args.pdb_list)
+        elif args.pdb_dir:
+            # Load from directory
+            batch_processor.load_pdb_directory(args.pdb_dir)
+        else:
+            print("[ERROR] Must specify either --pdb-list or --pdb-dir for batch processing")
+            sys.exit(1)
+
+        # Execute batch
+        print(f"Starting batch processing with {len(batch_processor.jobs)} jobs...")
+        results = batch_processor.execute_batch(args.batch, resume=args.resume)
+
+        if results:
+            print(f"Batch processing completed. Results saved in {batch_processor.results_dir}")
+        else:
+            print("Batch processing failed.")
+            sys.exit(1)
+
+    # Handle single file processing (original functionality)
+    elif args.file:
         # Batch mode: read and execute commands from file
         try:
             with open(args.file, "r", encoding="utf-8") as f:
@@ -535,6 +580,8 @@ def main():
         except FileNotFoundError:
             print(f"[ERROR] File '{args.file}' not found.")
             sys.exit(1)
+
+    # Interactive mode
     else:
         cli.cmdloop()
 
