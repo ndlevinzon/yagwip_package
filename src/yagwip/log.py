@@ -3,11 +3,14 @@ import logging
 import psutil
 import os
 import platform
+import functools
+import threading
 from datetime import datetime
 from functools import wraps
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Any, Callable, List, Union
 from dataclasses import dataclass, field
 from enum import Enum
+from contextlib import contextmanager
 
 
 class LogLevel(Enum):
@@ -32,6 +35,7 @@ class SystemInfo:
     platform: str
     python_version: str
     process_id: int
+    thread_id: Optional[int] = None
 
 
 @dataclass
@@ -48,6 +52,9 @@ class RuntimeMetrics:
     success: bool = True
     error_message: Optional[str] = None
     additional_info: Dict[str, Any] = field(default_factory=dict)
+    function_name: Optional[str] = None
+    module_name: Optional[str] = None
+    line_number: Optional[int] = None
 
 
 class RuntimeMonitor:
@@ -57,6 +64,7 @@ class RuntimeMonitor:
         self.logger = logger
         self.metrics_history: List[RuntimeMetrics] = []
         self.current_operation: Optional[RuntimeMetrics] = None
+        self._lock = threading.Lock()
 
     def _get_system_info(self) -> SystemInfo:
         """Capture current system information."""
@@ -72,7 +80,8 @@ class RuntimeMonitor:
                 disk_usage_percent=disk.percent,
                 platform=f"{platform.system()} {platform.release()}",
                 python_version=platform.python_version(),
-                process_id=os.getpid()
+                process_id=os.getpid(),
+                thread_id=threading.get_ident()
             )
         except Exception as e:
             # Fallback if psutil is not available
@@ -85,61 +94,64 @@ class RuntimeMonitor:
                 disk_usage_percent=0.0,
                 platform="Unknown",
                 python_version=platform.python_version(),
-                process_id=os.getpid()
+                process_id=os.getpid(),
+                thread_id=threading.get_ident()
             )
 
     def start_operation(self, operation_name: str, **kwargs) -> RuntimeMetrics:
         """Start monitoring an operation."""
-        self.current_operation = RuntimeMetrics(
-            operation_name=operation_name,
-            start_time=datetime.now(),
-            system_info_start=self._get_system_info(),
-            additional_info=kwargs
-        )
+        with self._lock:
+            self.current_operation = RuntimeMetrics(
+                operation_name=operation_name,
+                start_time=datetime.now(),
+                system_info_start=self._get_system_info(),
+                additional_info=kwargs
+            )
 
-        if self.logger:
-            self.logger.info(f"Starting operation: {operation_name}")
-            if self.current_operation.system_info_start:
-                self._log_system_info("START", self.current_operation.system_info_start)
+            if self.logger:
+                self.logger.info(f"Starting operation: {operation_name}")
+                if self.current_operation.system_info_start:
+                    self._log_system_info("START", self.current_operation.system_info_start)
 
-        return self.current_operation
+            return self.current_operation
 
     def end_operation(self, success: bool = True, error_message: Optional[str] = None) -> Optional[RuntimeMetrics]:
         """End monitoring an operation and calculate metrics."""
-        if not self.current_operation:
-            return None
+        with self._lock:
+            if not self.current_operation:
+                return None
 
-        self.current_operation.end_time = datetime.now()
-        self.current_operation.duration_seconds = (
-                self.current_operation.end_time - self.current_operation.start_time
-        ).total_seconds()
-        self.current_operation.system_info_end = self._get_system_info()
-        self.current_operation.success = success
-        self.current_operation.error_message = error_message
+            self.current_operation.end_time = datetime.now()
+            self.current_operation.duration_seconds = (
+                    self.current_operation.end_time - self.current_operation.start_time
+            ).total_seconds()
+            self.current_operation.system_info_end = self._get_system_info()
+            self.current_operation.success = success
+            self.current_operation.error_message = error_message
 
-        # Calculate deltas
-        if self.current_operation.system_info_start and self.current_operation.system_info_end:
-            self.current_operation.memory_delta_mb = (
-                    self.current_operation.system_info_end.memory_used_mb -
-                    self.current_operation.system_info_start.memory_used_mb
-            )
-            self.current_operation.cpu_delta_percent = (
-                    self.current_operation.system_info_end.cpu_percent -
-                    self.current_operation.system_info_start.cpu_percent
-            )
+            # Calculate deltas
+            if self.current_operation.system_info_start and self.current_operation.system_info_end:
+                self.current_operation.memory_delta_mb = (
+                        self.current_operation.system_info_end.memory_used_mb -
+                        self.current_operation.system_info_start.memory_used_mb
+                )
+                self.current_operation.cpu_delta_percent = (
+                        self.current_operation.system_info_end.cpu_percent -
+                        self.current_operation.system_info_start.cpu_percent
+                )
 
-        # Log runtime information
-        if self.logger:
-            self._log_runtime_summary(self.current_operation)
+            # Log runtime information
+            if self.logger:
+                self._log_runtime_summary(self.current_operation)
 
-        # Store in history
-        self.metrics_history.append(self.current_operation)
+            # Store in history
+            self.metrics_history.append(self.current_operation)
 
-        # Clear current operation
-        completed_operation = self.current_operation
-        self.current_operation = None
+            # Clear current operation
+            completed_operation = self.current_operation
+            self.current_operation = None
 
-        return completed_operation
+            return completed_operation
 
     def _log_system_info(self, prefix: str, system_info: SystemInfo):
         """Log system information."""
@@ -154,6 +166,8 @@ class RuntimeMonitor:
         self.logger.info(f"  Platform: {system_info.platform}")
         self.logger.info(f"  Python: {system_info.python_version}")
         self.logger.info(f"  Process ID: {system_info.process_id}")
+        if system_info.thread_id:
+            self.logger.info(f"  Thread ID: {system_info.thread_id}")
 
     def _log_runtime_summary(self, metrics: RuntimeMetrics):
         """Log runtime summary for an operation."""
@@ -166,6 +180,13 @@ class RuntimeMonitor:
         self.logger.info(f"[RUNTIME] Operation: {metrics.operation_name}")
         self.logger.info(f"  Status: {status}")
         self.logger.info(f"  Duration: {duration_str}")
+
+        if metrics.function_name:
+            self.logger.info(f"  Function: {metrics.function_name}")
+        if metrics.module_name:
+            self.logger.info(f"  Module: {metrics.module_name}")
+        if metrics.line_number:
+            self.logger.info(f"  Line: {metrics.line_number}")
 
         if metrics.memory_delta_mb is not None:
             memory_change = "+" if metrics.memory_delta_mb >= 0 else ""
@@ -271,6 +292,101 @@ class LoggingMixin:
             return wrapper
 
         return decorator
+
+
+# Global runtime monitor for automatic monitoring
+_global_runtime_monitor = RuntimeMonitor()
+
+
+def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[str] = None):
+    """
+    Automatic runtime monitoring decorator that can be applied to any function.
+
+    This decorator automatically tracks:
+    - Execution time
+    - Memory usage changes
+    - CPU usage changes
+    - Function metadata (name, module, line number)
+
+    Usage:
+        @auto_monitor
+        def my_function():
+            pass
+
+        @auto_monitor(operation_name="Custom Name")
+        def my_function():
+            pass
+    """
+
+    def decorator(func_to_monitor):
+        @wraps(func_to_monitor)
+        def wrapper(*args, **kwargs):
+            # Get function metadata
+            import inspect
+            frame = inspect.currentframe()
+            if frame:
+                try:
+                    # Get caller information
+                    caller_frame = frame.f_back
+                    if caller_frame:
+                        module_name = caller_frame.f_globals.get('__name__', 'unknown')
+                        line_number = caller_frame.f_lineno
+                    else:
+                        module_name = 'unknown'
+                        line_number = 0
+                finally:
+                    frame = None
+            else:
+                module_name = 'unknown'
+                line_number = 0
+
+            # Determine operation name
+            op_name = operation_name or f"{func_to_monitor.__name__}"
+
+            # Start monitoring
+            metrics = _global_runtime_monitor.start_operation(
+                op_name,
+                function_name=func_to_monitor.__name__,
+                module_name=module_name,
+                line_number=line_number
+            )
+
+            try:
+                result = func_to_monitor(*args, **kwargs)
+                _global_runtime_monitor.end_operation(success=True)
+                return result
+            except Exception as e:
+                _global_runtime_monitor.end_operation(success=False, error_message=str(e))
+                raise
+
+        return wrapper
+
+    # Handle both @auto_monitor and @auto_monitor(operation_name="...")
+    if func is None:
+        return decorator
+    else:
+        return decorator(func)
+
+
+@contextmanager
+def runtime_context(operation_name: str, logger: Optional[logging.Logger] = None):
+    """
+    Context manager for runtime monitoring of code blocks.
+
+    Usage:
+        with runtime_context("my_operation"):
+            # Code to monitor
+            pass
+    """
+    monitor = RuntimeMonitor(logger)
+    metrics = monitor.start_operation(operation_name)
+
+    try:
+        yield metrics
+        monitor.end_operation(success=True)
+    except Exception as e:
+        monitor.end_operation(success=False, error_message=str(e))
+        raise
 
 
 def setup_logger(debug_mode=False, log_file: Optional[str] = None):
@@ -380,3 +496,16 @@ def monitor_runtime(operation_name: Optional[str] = None):
         return wrapper
 
     return decorator
+
+
+# Function to get global runtime summary
+def get_global_runtime_summary() -> Dict[str, Any]:
+    """Get a summary of all global runtime metrics."""
+    return _global_runtime_monitor.get_summary()
+
+
+# Function to clear global runtime history
+def clear_global_runtime_history():
+    """Clear the global runtime monitoring history."""
+    _global_runtime_monitor.metrics_history.clear()
+

@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List, Tuple, Union
 from pathlib import Path
 from enum import Enum
 
-from .log import LoggingMixin, setup_logger
+from .log import LoggingMixin, setup_logger, auto_monitor, runtime_context
 
 
 class LogLevel(Enum):
@@ -32,6 +32,7 @@ class YagwipBase(LoggingMixin, ABC):
     - File operations
     - Error handling
     - Configuration management
+    - Automatic runtime monitoring
     """
 
     def __init__(self,
@@ -100,6 +101,7 @@ class YagwipBase(LoggingMixin, ABC):
         """Log success message."""
         self._log_message(LogLevel.SUCCESS, message, **kwargs)
 
+    @auto_monitor
     def _validate_file_exists(self, filepath: str, description: str = "File") -> bool:
         """
         Validate that a file exists and log appropriate messages.
@@ -117,6 +119,7 @@ class YagwipBase(LoggingMixin, ABC):
         self._log_debug(f"{description} validated: {filepath}")
         return True
 
+    @auto_monitor
     def _validate_directory_exists(self, dirpath: str, description: str = "Directory") -> bool:
         """
         Validate that a directory exists and create if needed.
@@ -137,6 +140,7 @@ class YagwipBase(LoggingMixin, ABC):
                 return False
         return True
 
+    @auto_monitor
     def _safe_copy_file(self, src: str, dst: str, description: str = "File") -> bool:
         """
         Safely copy a file with error handling and logging.
@@ -160,6 +164,7 @@ class YagwipBase(LoggingMixin, ABC):
             self._log_error(f"Failed to copy {description}: {e}")
             return False
 
+    @auto_monitor
     def _execute_command(self,
                          command: str,
                          description: str = "Command",
@@ -190,6 +195,7 @@ class YagwipBase(LoggingMixin, ABC):
             command, pipe_input, **kwargs
         )
 
+    @auto_monitor
     def _run_gromacs_command_internal(self, command: str, pipe_input: Optional[str] = None, **kwargs) -> bool:
         """Internal method to run GROMACS command with runtime monitoring."""
         from .utils import run_gromacs_command
@@ -210,27 +216,49 @@ class YagwipBase(LoggingMixin, ABC):
 
         return success
 
+    @auto_monitor
     def _get_file_basename(self, filepath: str) -> str:
         """Get basename without extension from filepath."""
         return os.path.splitext(os.path.basename(filepath))[0]
 
+    @auto_monitor
     def _build_filepath(self, basename: str, extension: str) -> str:
         """Build filepath from basename and extension."""
         return f"{basename}.{extension}"
 
+    @auto_monitor
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
         return self.config.get(key, default)
 
+    @auto_monitor
     def set_config(self, key: str, value: Any):
         """Set configuration value."""
         self.config[key] = value
         self._log_debug(f"Configuration updated: {key} = {value}")
 
+    @auto_monitor
     def update_config(self, **kwargs):
         """Update multiple configuration values."""
         self.config.update(kwargs)
         self._log_debug(f"Configuration updated: {list(kwargs.keys())}")
+
+    def monitor_operation(self, operation_name: str):
+        """
+        Context manager for monitoring operations with automatic resource tracking.
+
+        Usage:
+            with self.monitor_operation("my_operation"):
+                # Code to monitor
+                pass
+        """
+        return runtime_context(operation_name, self.logger)
+
+    def get_runtime_summary(self) -> Dict[str, Any]:
+        """Get runtime summary for this component."""
+        if hasattr(self, 'runtime_monitor'):
+            return self.runtime_monitor.get_summary()
+        return {}
 
 
 class ConfigurableMixin:
@@ -257,20 +285,17 @@ class ConfigurableMixin:
 
 
 class FileProcessorMixin:
-    """
-    Mixin for classes that process files.
-    Provides common file processing utilities.
-    """
+    """Mixin for file processing operations with automatic monitoring."""
 
     @staticmethod
     def read_file_lines(filepath: str) -> List[str]:
-        """Read file and return lines."""
+        """Read file lines."""
         with open(filepath, 'r', encoding='utf-8') as f:
             return f.readlines()
 
     @staticmethod
     def write_file_lines(filepath: str, lines: List[str]):
-        """Write lines to file."""
+        """Write file lines."""
         with open(filepath, 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
@@ -282,17 +307,14 @@ class FileProcessorMixin:
 
     @staticmethod
     def backup_file(filepath: str, suffix: str = ".backup") -> str:
-        """Create backup of file and return backup path."""
+        """Backup file."""
         backup_path = filepath + suffix
         shutil.copy2(filepath, backup_path)
         return backup_path
 
 
 class CommandExecutorMixin:
-    """
-    Mixin for classes that execute commands.
-    Provides standardized command execution with logging.
-    """
+    """Mixin for command execution with automatic monitoring."""
 
     def execute_command(self,
                         command: str,
@@ -300,45 +322,42 @@ class CommandExecutorMixin:
                         pipe_input: Optional[str] = None,
                         **kwargs) -> bool:
         """
-        Execute a command with standardized error handling and logging.
+        Execute a command with automatic runtime monitoring.
 
         Args:
             command: Command to execute
             description: Description for logging
             pipe_input: Input to pipe to command
-            **kwargs: Additional arguments for run_gromacs_command
+            **kwargs: Additional arguments
 
         Returns:
             True if command successful, False otherwise
         """
         from .utils import run_gromacs_command
 
-        # Check if we have debug mode and logging capabilities
-        debug_mode = getattr(self, 'debug', False)
-        has_logging = hasattr(self, '_log_debug') and hasattr(self, '_log_info')
+        logger = getattr(self, 'logger', None)
+        debug = getattr(self, 'debug', False)
 
-        if debug_mode:
-            if has_logging:
-                self._log_debug(f"{description}: {command}")
-            else:
-                print(f"[DEBUG] {description}: {command}")
+        if debug:
+            if logger:
+                logger.debug(f"{description}: {command}")
             return True
 
-        if has_logging:
-            self._log_info(f"Running {description}")
+        if logger:
+            logger.info(f"Executing: {description}")
 
         success = run_gromacs_command(
             command=command,
             pipe_input=pipe_input,
-            debug=debug_mode,
-            logger=getattr(self, 'logger', None),
+            debug=debug,
+            logger=logger,
             **kwargs
         )
 
-        if has_logging and hasattr(self, '_log_success') and hasattr(self, '_log_error'):
+        if logger:
             if success:
-                self._log_success(f"{description} completed successfully")
+                logger.info(f"{description} completed successfully")
             else:
-                self._log_error(f"{description} failed")
+                logger.error(f"{description} failed")
 
         return success

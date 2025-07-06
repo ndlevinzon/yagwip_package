@@ -19,7 +19,7 @@ from .base import YagwipBase
 from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
                     find_bonds_spatial, build_spatial_grid, get_neighbor_cells,
                     is_valid_bond, check_valence_limits)
-from .log import LoggingMixin
+from .log import LoggingMixin, auto_monitor, runtime_context
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
@@ -32,6 +32,7 @@ class Builder(YagwipBase):
         """Initialize Builder."""
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
+    @auto_monitor
     def _resolve_basename(self, basename):
         """Resolve the basename for file operations."""
         if not basename and not self.debug:
@@ -39,7 +40,7 @@ class Builder(YagwipBase):
             return None
         return basename if basename else "PLACEHOLDER"
 
-    @LoggingMixin().runtime_monitored("pdb2gmx")
+    @auto_monitor
     def run_pdb2gmx(self, basename, custom_command=None):
         """Run pdb2gmx to generate topology and coordinates."""
         base = self._resolve_basename(basename)
@@ -59,6 +60,7 @@ class Builder(YagwipBase):
             logger=self.logger,
         )
 
+    @auto_monitor
     def run_solvate(self, basename, custom_command=None):
         """Run solvate to add solvent to the system."""
         base = self._resolve_basename(basename)
@@ -77,6 +79,7 @@ class Builder(YagwipBase):
             for i, cmd in enumerate(default_cmds):
                 self._execute_command(cmd, f"solvate step {i+1}")
 
+    @auto_monitor
     def run_genions(self, basename, custom_command=None):
         """Run genion to add ions to the system."""
         base = self._resolve_basename(basename)
@@ -116,6 +119,7 @@ class Modeller(YagwipBase):
         self.pdb = pdb
         self.output_file = output_file
 
+    @auto_monitor
     def find_missing_residues(self):
         """Identifies missing internal residues by checking for gaps in residue numbering."""
         self._log_info(f"Checking for missing residues in {self.pdb}")
@@ -153,6 +157,7 @@ class LigandPipeline(YagwipBase):
         """Initialize LigandPipeline."""
         super().__init__(debug=debug, logger=logger)
 
+    @auto_monitor
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
         """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
         # Covalent radii in Ångstroms for common elements (extend as needed)

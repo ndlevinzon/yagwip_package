@@ -13,7 +13,7 @@ import subprocess
 import numpy as np
 
 # === Local Imports ===
-from .log import LoggingMixin, setup_logger
+from .log import LoggingMixin, setup_logger, auto_monitor, runtime_context
 
 
 # === External Dependency Checker ===
@@ -24,6 +24,7 @@ class ToolChecker:
     """
 
     @staticmethod
+    @auto_monitor
     def check_orca_available():
         """
         Check if ORCA is available in the system PATH.
@@ -40,6 +41,7 @@ class ToolChecker:
         return orca_path
 
     @staticmethod
+    @auto_monitor
     def check_openmpi_available():
         """
         Check if OpenMPI (mpirun) is available in the system PATH.
@@ -56,6 +58,7 @@ class ToolChecker:
         return mpirun_path
 
     @staticmethod
+    @auto_monitor
     def check_gromacs_availabile(gmx_path="gmx"):
         """
         Check if GROMACS is available and can be executed.
@@ -82,6 +85,7 @@ class ToolChecker:
             return False
 
     @staticmethod
+    @auto_monitor
     def check_amber_available():
         """
         Check if AmberTools (parmchk2) is available in the system PATH.
@@ -98,6 +102,7 @@ class ToolChecker:
         return amber_path
 
     @staticmethod
+    @auto_monitor
     def check_openbabel_available():
         """
         Check if OpenBabel (obabel) is available in the system PATH.
@@ -114,6 +119,7 @@ class ToolChecker:
         return obabel_path
 
     @staticmethod
+    @auto_monitor
     def check_acpype_available():
         """
         Check if ACPYPE is available in the system PATH.
@@ -130,6 +136,7 @@ class ToolChecker:
         return acpype_path
 
 
+@auto_monitor
 def validate_gromacs_installation(gmx_path="gmx"):
     """
     Validate GROMACS installation and raise an error if not available.
@@ -148,6 +155,7 @@ def validate_gromacs_installation(gmx_path="gmx"):
         )
 
 
+@auto_monitor
 def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
     """
     Executes a shell command for GROMACS, with optional piping and logging.
@@ -856,31 +864,43 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
         water_resnames (tuple): Tuple of residue names considered as water.
 
     Returns:
-        dict: {'protein': int, 'water': int}
+        tuple: (protein_count, water_count)
     """
     residue_ids = set()
     water_ids = set()
 
-    with open(gro_path, "r") as f:
-        lines = f.readlines()
+    try:
+        with open(gro_path, "r") as f:
+            lines = f.readlines()
 
-    # Atom lines are from line 3 to N-2 (last two lines are box vectors)
-    for line in lines[2:-1]:
-        if len(line) < 20:
-            continue  # skip malformed lines
+        if len(lines) < 3:
+            raise ValueError(f"Invalid .gro file: {gro_path} - file too short")
 
-        res_id = int(line[:5].strip())
-        res_name = line[5:10].strip()
+        # Atom lines are from line 3 to N-2 (last two lines are box vectors)
+        for line in lines[2:-1]:
+            if len(line) < 20:
+                continue  # skip malformed lines
 
-        if res_name in water_resnames:
-            water_ids.add(res_id)
-        else:
-            residue_ids.add(res_id)
+            try:
+                res_id = int(line[:5].strip())
+                res_name = line[5:10].strip()
 
-    protein_count = len(residue_ids - water_ids)
-    water_count = len(water_ids)
+                if res_name in water_resnames:
+                    water_ids.add(res_id)
+                else:
+                    residue_ids.add(res_id)
+            except (ValueError, IndexError):
+                continue  # skip malformed lines
 
-    return protein_count, water_count
+        protein_count = len(residue_ids - water_ids)
+        water_count = len(water_ids)
+
+        return protein_count, water_count
+
+    except FileNotFoundError:
+        raise FileNotFoundError(f"GRO file not found: {gro_path}")
+    except Exception as e:
+        raise ValueError(f"Error parsing GRO file {gro_path}: {e}")
 
 
 def tremd_temperature_ladder(
