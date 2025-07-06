@@ -295,7 +295,7 @@ class LoggingMixin:
 
 
 # Global runtime monitor for automatic monitoring
-_global_runtime_monitor = RuntimeMonitor()
+_global_runtime_monitor = RuntimeMonitor(logging.getLogger("yagwip"))
 
 
 def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[str] = None):
@@ -366,6 +366,12 @@ def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[st
         return decorator
     else:
         return decorator(func)
+
+
+def update_global_monitor_logger(logger: logging.Logger):
+    """Update the global runtime monitor with a specific logger."""
+    global _global_runtime_monitor
+    _global_runtime_monitor.logger = logger
 
 
 @contextmanager
@@ -468,6 +474,9 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
         logger.info("Output logged to %s", log_file)
     else:
         logger.debug("Debug logging active; also writing to %s", log_file)
+
+    # Update the global runtime monitor with this logger
+    update_global_monitor_logger(logger)
 
     # Return the configured logger object
     return logger
