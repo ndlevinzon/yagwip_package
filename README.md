@@ -206,10 +206,36 @@ YAGWIP uses a comprehensive template system located in `src/yagwip/templates/`:
 - **Force Fields**: Amber14SB force field files
 - **Banners**: ASCII art and quotes for CLI
 
-### Logging Configuration
+### Runtime Monitoring & Logging
+YAGWIP includes comprehensive runtime monitoring and logging:
+
+#### Runtime Monitoring
+- **Execution Time**: Tracks duration of each operation
+- **Memory Usage**: Monitors memory consumption and changes
+- **CPU Usage**: Tracks CPU utilization during operations
+- **System Information**: Captures platform, Python version, process ID
+- **Performance Metrics**: Calculates success rates and averages
+
+#### Logging Features
 - **Debug Mode**: Toggle with `debug` command
-- **Log Files**: Automatically generated with timestamps
-- **Log Levels**: DEBUG, INFO, WARNING, ERROR, SUCCESS
+- **Log Files**: Automatically generated with timestamps and detailed formatting
+- **Log Levels**: DEBUG, INFO, WARNING, ERROR, SUCCESS, RUNTIME
+- **System Snapshots**: Captures system state at operation start/end
+- **Performance Summary**: Provides runtime statistics and metrics
+
+#### Runtime Commands
+```bash
+runtime                    # Show runtime statistics and performance metrics
+```
+
+#### Log File Format
+Enhanced log files include:
+- Timestamp with date and time
+- Line numbers for debugging
+- System information at startup
+- Runtime metrics for each operation
+- Memory and CPU usage tracking
+- Success/failure status with error messages
 
 ## Analysis Tools
 

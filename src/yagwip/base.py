@@ -183,7 +183,18 @@ class YagwipBase(LoggingMixin, ABC):
             self._log_debug(f"{description}: {command}")
             return True
 
-        self._log_info(f"Running {description}")
+        # Use runtime monitoring for command execution
+        return self._log_with_runtime(
+            f"Execute {description}",
+            self._run_gromacs_command_internal,
+            command, pipe_input, **kwargs
+        )
+
+    def _run_gromacs_command_internal(self, command: str, pipe_input: Optional[str] = None, **kwargs) -> bool:
+        """Internal method to run GROMACS command with runtime monitoring."""
+        from .utils import run_gromacs_command
+
+        self._log_info(f"Running command: {command}")
         success = run_gromacs_command(
             command=command,
             pipe_input=pipe_input,
@@ -193,9 +204,9 @@ class YagwipBase(LoggingMixin, ABC):
         )
 
         if success:
-            self._log_success(f"{description} completed successfully")
+            self._log_success(f"Command completed successfully")
         else:
-            self._log_error(f"{description} failed")
+            self._log_error(f"Command failed")
 
         return success
 

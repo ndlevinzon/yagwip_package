@@ -136,6 +136,23 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             cmd_str = self.custom_cmds.get(k)
             self._log_info(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
 
+    def do_runtime(self, arg):
+        """Show runtime statistics and performance metrics."""
+        if hasattr(self, 'runtime_monitor'):
+            summary = self.runtime_monitor.get_summary()
+            if summary:
+                self._log_info("=== Runtime Statistics ===")
+                self._log_info(f"Total Operations: {summary['total_operations']}")
+                self._log_info(f"Successful: {summary['successful_operations']}")
+                self._log_info(f"Failed: {summary['failed_operations']}")
+                self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
+                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
+                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
+            else:
+                self._log_info("No runtime data available yet.")
+        else:
+            self._log_info("Runtime monitoring not available.")
+
     def do_set(self, arg):
         """
         Edit the default command string for pdb2gmx, solvate, or genions.

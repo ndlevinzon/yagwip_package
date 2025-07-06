@@ -19,6 +19,7 @@ from .base import YagwipBase
 from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
                     find_bonds_spatial, build_spatial_grid, get_neighbor_cells,
                     is_valid_bond, check_valence_limits)
+from .log import LoggingMixin
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
@@ -38,6 +39,7 @@ class Builder(YagwipBase):
             return None
         return basename if basename else "PLACEHOLDER"
 
+    @LoggingMixin().runtime_monitored("pdb2gmx")
     def run_pdb2gmx(self, basename, custom_command=None):
         """Run pdb2gmx to generate topology and coordinates."""
         base = self._resolve_basename(basename)
