@@ -72,16 +72,16 @@ class Sim(YagwipBase):
 
         try:
             temperatures = tremd_temperature_ladder(
-                Tlow,
-                Thigh,
-                Pdes,
-                water_residues,
-                protein_residues,
-                Hff=0,
-                Vs=0,
-                PC=1,
-                WC=0,
-                Tol=0.0005,
+                water_residues,  # Nw: Number of water molecules
+                protein_residues,  # Np: Number of protein residues
+                Tlow,  # Tlow: Minimum temperature (K)
+                Thigh,  # Thigh: Maximum temperature (K)
+                Pdes,  # Pdes: Desired exchange probability
+                WC=3,  # Water constraints (3 = all constraints)
+                PC=1,  # Protein constraints (1 = H atoms only)
+                Hff=0,  # Hydrogen force field switch (0 = standard)
+                Vs=0,  # Volume correction (0 = no)
+                Tol=0.0005,  # Tolerance for convergence
             )
             if self.debug:
                 for i, temp in enumerate(temperatures):
