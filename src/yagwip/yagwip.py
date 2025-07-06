@@ -345,25 +345,55 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.modeller.find_missing_residues()
 
     def do_pdb2gmx(self, arg):
-        """Run pdb2gmx to generate topology and coordinates."""
+        """
+        Run pdb2gmx. If ligand is present, treat protein and ligand separately.
+        Usage: "pdb2gmx"
+        """
         if not self._require_pdb():
             return
-        custom_cmd = self.custom_cmds.get("pdb2gmx")
-        self.builder.run_pdb2gmx(self.basename, custom_cmd)
+        protein_pdb = "protein"
+        output_gro = f"{protein_pdb}.gro"
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
+        )
+        if not os.path.isfile(output_gro):
+            self._log(f"[ERROR] Expected {output_gro} was not created.")
+            return
+        # Combine ligand coordinates
+        if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
+            self.editor.append_ligand_coordinates_to_gro(
+                output_gro, "ligand.pdb", "complex.gro"
+            )
+            self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
+        else:
+            shutil.copy(str(output_gro), "complex.gro")  # only protein
 
     def do_solvate(self, arg):
-        """Run solvate to add solvent to the system."""
+        """
+        Run solvate with optional custom command override. This command should be run after pdb2gmx.
+        Usage: "solvate"
+        Other Options: use "set solvate" to override defaults
+        """
+
+        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
-        custom_cmd = self.custom_cmds.get("solvate")
-        self.builder.run_solvate(self.basename, arg, custom_cmd)
+        self.builder.run_solvate(
+            complex_pdb, custom_command=self.custom_cmds.get("solvate")
+        )
 
     def do_genions(self, arg):
-        """Run genion to add ions to the system."""
+        """
+        Run genions with optional custom command override. This command should be run after solvate.
+        Usage: "genions"
+        Other Options: use "set genions" to override defaults
+        """
+        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
-        custom_cmd = self.custom_cmds.get("genions")
-        self.builder.run_genions(self.basename, custom_cmd)
+        self.builder.run_genions(
+            solvated_pdb, custom_command=self.custom_cmds.get("genions")
+        )
 
     def do_em(self, arg):
         """Run energy minimization."""
