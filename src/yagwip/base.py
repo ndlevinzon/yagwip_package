@@ -184,9 +184,36 @@ class YagwipBase(LoggingMixin, ABC):
         """
         from .utils import run_gromacs_command
 
+        # Enhanced debug mode: Show detailed information but still execute
         if self.debug:
-            self._log_debug(f"{description}: {command}")
-            return True
+            self._log_debug("=" * 60)
+            self._log_debug(f"DEBUG MODE: {description}")
+            self._log_debug("=" * 60)
+            self._log_debug(f"Command: {command}")
+            if pipe_input:
+                self._log_debug(f"Pipe Input: {pipe_input}")
+            self._log_debug(f"Additional Args: {kwargs}")
+
+            # Show current system resources
+            try:
+                import psutil
+                memory = psutil.virtual_memory()
+                cpu_percent = psutil.cpu_percent()
+                disk = psutil.disk_usage('.')
+
+                self._log_debug("System Resources:")
+                self._log_debug(f"  CPU Usage: {cpu_percent:.1f}%")
+                self._log_debug(f"  Memory Usage: {memory.percent:.1f}% ({memory.used / (1024**3):.2f} GB used)")
+                self._log_debug(f"  Disk Usage: {disk.percent:.1f}%")
+                self._log_debug(f"  Available Memory: {memory.available / (1024**3):.2f} GB")
+            except ImportError:
+                self._log_debug("System monitoring not available (psutil not installed)")
+            except Exception as e:
+                self._log_debug(f"Could not get system info: {e}")
+
+            self._log_debug("=" * 60)
+            self._log_debug("EXECUTING COMMAND (Debug mode still runs commands)")
+            self._log_debug("=" * 60)
 
         # Use runtime monitoring for command execution
         return self._log_with_runtime(

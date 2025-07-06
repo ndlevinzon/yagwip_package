@@ -248,32 +248,67 @@ class RuntimeMonitor:
         status = "SUCCESS" if metrics.success else "FAILED"
         duration_str = f"{metrics.duration_seconds:.2f}s" if metrics.duration_seconds else "unknown"
 
-        self.logger.info(f"[RUNTIME] Operation: {metrics.operation_name}")
-        self.logger.info(f"  Status: {status}")
-        self.logger.info(f"  Duration: {duration_str}")
+        # Enhanced debug mode: Show detailed information
+        if self.debug_mode:
+            self.logger.info("=" * 50)
+            self.logger.info(f"DEBUG: {metrics.operation_name} Operation Summary")
+            self.logger.info("=" * 50)
+            self.logger.info(f"Duration: {duration_str}")
+            self.logger.info(f"Status: {'✓ SUCCESS' if metrics.success else '✗ FAILED'}")
 
-        if metrics.function_name:
-            self.logger.info(f"  Function: {metrics.function_name}")
-        if metrics.module_name:
-            self.logger.info(f"  Module: {metrics.module_name}")
-        if metrics.line_number:
-            self.logger.info(f"  Line: {metrics.line_number}")
+            if metrics.function_name:
+                self.logger.info(f"Function: {metrics.function_name}")
+            if metrics.module_name:
+                self.logger.info(f"Module: {metrics.module_name}")
+            if metrics.line_number:
+                self.logger.info(f"Line: {metrics.line_number}")
 
-        if metrics.memory_delta_mb is not None:
-            memory_change = "+" if metrics.memory_delta_mb >= 0 else ""
-            self.logger.info(f"  Memory Change: {memory_change}{metrics.memory_delta_mb:.1f} MB")
+            if metrics.system_info_start and metrics.system_info_end:
+                self.logger.info("System Resource Changes:")
+                self.logger.info(
+                    f"  CPU: {metrics.system_info_start.cpu_percent:.1f}% → {metrics.system_info_end.cpu_percent:.1f}% (Δ: {metrics.cpu_delta_percent:.1f}%)")
+                self.logger.info(
+                    f"  Memory: {metrics.system_info_start.memory_percent:.1f}% → {metrics.system_info_end.memory_percent:.1f}% (Δ: {metrics.memory_delta_mb:.2f} MB)")
+                self.logger.info(
+                    f"  Available Memory: {metrics.system_info_start.memory_available_mb:.1f} MB → {metrics.system_info_end.memory_available_mb:.1f} MB")
 
-        if metrics.cpu_delta_percent is not None:
-            cpu_change = "+" if metrics.cpu_delta_percent >= 0 else ""
-            self.logger.info(f"  CPU Change: {cpu_change}{metrics.cpu_delta_percent:.1f}%")
+            if metrics.error_message:
+                self.logger.error(f"Error Details: {metrics.error_message}")
 
-        if metrics.error_message:
-            self.logger.error(f"  Error: {metrics.error_message}")
+            if metrics.additional_info:
+                self.logger.info("Additional Information:")
+                for key, value in metrics.additional_info.items():
+                    self.logger.info(f"  {key}: {value}")
 
-        # Log additional info if present
-        if metrics.additional_info:
-            for key, value in metrics.additional_info.items():
-                self.logger.info(f"  {key}: {value}")
+            self.logger.info("=" * 50)
+        else:
+            # Standard logging for non-debug mode
+            self.logger.info(f"[RUNTIME] Operation: {metrics.operation_name}")
+            self.logger.info(f"  Status: {status}")
+            self.logger.info(f"  Duration: {duration_str}")
+
+            if metrics.function_name:
+                self.logger.info(f"  Function: {metrics.function_name}")
+            if metrics.module_name:
+                self.logger.info(f"  Module: {metrics.module_name}")
+            if metrics.line_number:
+                self.logger.info(f"  Line: {metrics.line_number}")
+
+            if metrics.memory_delta_mb is not None:
+                memory_change = "+" if metrics.memory_delta_mb >= 0 else ""
+                self.logger.info(f"  Memory Change: {memory_change}{metrics.memory_delta_mb:.1f} MB")
+
+            if metrics.cpu_delta_percent is not None:
+                cpu_change = "+" if metrics.cpu_delta_percent >= 0 else ""
+                self.logger.info(f"  CPU Change: {cpu_change}{metrics.cpu_delta_percent:.1f}%")
+
+            if metrics.error_message:
+                self.logger.error(f"  Error: {metrics.error_message}")
+
+            # Log additional info if present
+            if metrics.additional_info:
+                for key, value in metrics.additional_info.items():
+                    self.logger.info(f"  {key}: {value}")
 
     def _log_command_summary(self, metrics: CommandMetrics):
         """Log command summary."""

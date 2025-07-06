@@ -104,10 +104,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_debug(self, arg):
         """
-        Debug Mode: Simply prints commands to the command line that
-        would have otherwise be executed. Prints to console instead of log
+        Debug Mode: Enhanced logging with detailed resource statistics and command information.
+        Commands are still executed, but with verbose output including system resources.
 
-        Usage: Toggle with 'debug', 'debug on', or 'debug off'"
+        Usage: Toggle with 'debug', 'debug on', or 'debug off'
         """
         arg = arg.lower().strip()
         if arg == "on":
@@ -119,7 +119,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Update logger and simulation mode
         from .log import setup_logger
         self.logger = setup_logger(debug_mode=self.debug)
-        self._log_info(f"Debug mode is now {'ON' if self.debug else 'OFF'}")
+
+        if self.debug:
+            self._log_info("Debug mode is now ON")
+            self._log_info("Enhanced debug mode will show:")
+            self._log_info("  - Detailed command information")
+            self._log_info("  - System resource statistics")
+            self._log_info("  - Runtime monitoring data")
+            self._log_info("  - All commands will still be executed")
+        else:
+            self._log_info("Debug mode is now OFF")
 
     def print_banner(self):
         """Prints YAGWIP Banner Logo on Start."""
