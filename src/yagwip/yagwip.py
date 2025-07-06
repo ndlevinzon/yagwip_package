@@ -526,6 +526,8 @@ def main():
     parser.add_argument("-d", "--pdb-dir", type=str, help="Directory containing PDB files for batch processing")
     parser.add_argument("-r", "--resume", action="store_true", help="Resume previous batch run")
     parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder for batch processing")
+    parser.add_argument("--parallel", action="store_true", help="Enable parallel batch processing")
+    parser.add_argument("--workers", type=int, help="Number of parallel workers (default: auto-detect)")
     parser.add_argument("--gmx-path", type=str, default="gmx", help="GROMACS executable path")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
@@ -538,15 +540,33 @@ def main():
 
     # Handle batch processing
     if args.batch:
-        from .batch_processor import BatchProcessor
+        from .batch_processor import ParallelBatchProcessor
 
-        # Initialize batch processor with ligand_builder flag
-        batch_processor = BatchProcessor(
-            gmx_path=args.gmx_path,
-            debug=args.debug,
-            logger=cli.logger,
-            ligand_builder=args.ligand_builder
-        )
+        # Determine number of workers
+        max_workers = args.workers
+        if args.parallel and not max_workers:
+            import multiprocessing as mp
+            max_workers = min(mp.cpu_count(), 8)  # Auto-detect with cap
+
+        # Initialize batch processor
+        if args.parallel:
+            print(f"Initializing parallel batch processor with {max_workers} workers...")
+            batch_processor = ParallelBatchProcessor(
+                gmx_path=args.gmx_path,
+                debug=args.debug,
+                logger=cli.logger,
+                ligand_builder=args.ligand_builder,
+                max_workers=max_workers
+            )
+        else:
+            print("Initializing sequential batch processor...")
+            batch_processor = ParallelBatchProcessor(
+                gmx_path=args.gmx_path,
+                debug=args.debug,
+                logger=cli.logger,
+                ligand_builder=args.ligand_builder,
+                max_workers=1  # Sequential processing
+            )
 
         # Load PDB files
         if args.pdb_list:
@@ -563,10 +583,17 @@ def main():
         print(f"Starting batch processing with {len(batch_processor.jobs)} jobs...")
         if args.ligand_builder:
             print("Ligand builder enabled for batch processing")
+        if args.parallel:
+            print(f"Parallel processing enabled with {max_workers} workers")
+
         results = batch_processor.execute_batch(args.batch, resume=args.resume)
 
         if results:
             print(f"Batch processing completed. Results saved in {batch_processor.results_dir}")
+            print(f"Completed: {results['completed_jobs']}/{results['total_jobs']} jobs")
+            print(f"Failed: {results['failed_jobs']} jobs")
+            if args.parallel:
+                print(f"Parallel workers used: {results.get('parallel_workers', 'N/A')}")
         else:
             print("Batch processing failed.")
             sys.exit(1)

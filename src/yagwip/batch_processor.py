@@ -27,6 +27,135 @@ from .base import YagwipBase
 from .log import auto_monitor, runtime_context
 
 
+def _setup_job_logger_worker(log_file: str) -> logging.Logger:
+    """Setup logger for individual job in worker process (file only, no console to avoid redundancy)."""
+    logger = logging.getLogger(f"batch_job_{Path(log_file).stem}")
+    logger.setLevel(logging.INFO)
+
+    # Clear existing handlers
+    logger.handlers.clear()
+
+    # File handler only (no console handler to avoid redundant output)
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler.setLevel(logging.INFO)
+
+    # Formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+
+    return logger
+
+
+def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: List[str],
+                                        gmx_path: str, debug: bool) -> Dict[str, Any]:
+    """
+    Standalone worker function for executing a single batch job in a separate process.
+    This function runs in a separate process to avoid conflicts.
+    """
+    # Recreate job object from serialized data
+    job = BatchJob.from_dict(job_data)
+    job.start_time = datetime.now()
+    job.status = "running"
+
+    # Create working directory
+    os.makedirs(job.working_dir, exist_ok=True)
+
+    # Setup logging for this job (only file handler, no console to avoid redundancy)
+    job_log_file = os.path.join("batch_logs", f"{job.basename}.log")
+    job_logger = _setup_job_logger_worker(job_log_file)
+
+    result = {
+        'basename': job.basename,
+        'pdb_path': job.pdb_path,
+        'working_dir': job.working_dir,
+        'status': 'failed',
+        'start_time': job.start_time,
+        'end_time': None,
+        'duration': None,
+        'error_message': None,
+        'output_files': [],
+        'log_file': job_log_file,
+        'job_id': job.job_id
+    }
+
+    try:
+        # Copy PDB file to working directory
+        working_pdb = os.path.join(job.working_dir, f"{job.basename}.pdb")
+        shutil.copy2(job.pdb_path, working_pdb)
+
+        # Change to working directory
+        original_cwd = os.getcwd()
+        os.chdir(job.working_dir)
+
+        # Execute commands
+        for i, command in enumerate(commands, 1):
+            job_logger.info(f"Executing command {i}/{len(commands)}: {command}")
+
+            try:
+                # Create temporary YAGWIP shell for this job
+                from .yagwip import YagwipShell
+                yagwip_shell = YagwipShell(gmx_path)
+                yagwip_shell.logger = job_logger
+                yagwip_shell.debug = debug
+
+                # Modify loadpdb command to use the specific PDB filename
+                if command.startswith('loadpdb'):
+                    if job.ligand_builder:
+                        modified_command = f"loadpdb {job.basename}.pdb --ligand_builder"
+                    else:
+                        modified_command = f"loadpdb {job.basename}.pdb"
+                    job_logger.info(f"Modified command: {modified_command}")
+                    yagwip_shell.onecmd(modified_command)
+                else:
+                    # Execute command as-is
+                    yagwip_shell.onecmd(command)
+
+                job_logger.info(f"Command {i} completed successfully")
+
+            except Exception as e:
+                job_logger.error(f"Command {i} failed: {e}")
+                raise
+
+        # Collect output files
+        result['output_files'] = _collect_output_files_worker(job.working_dir)
+        result['status'] = 'completed'
+
+    except Exception as e:
+        job_logger.error(f"Job failed: {e}")
+        result['error_message'] = str(e)
+        result['status'] = 'failed'
+
+    finally:
+        # Restore original directory
+        os.chdir(original_cwd)
+        job.end_time = datetime.now()
+        result['end_time'] = job.end_time
+        result['duration'] = (job.end_time - job.start_time).total_seconds()
+
+        job.status = result['status']
+        job.output_files = result['output_files']
+        job.error_message = result['error_message']
+
+    return result
+
+
+def _collect_output_files_worker(working_dir: str) -> List[str]:
+    """Collect important output files from working directory in worker process."""
+    output_files = []
+    important_extensions = ['.gro', '.top', '.itp', '.tpr', '.xtc', '.trr', '.edr']
+
+    for file_path in Path(working_dir).rglob('*'):
+        if file_path.is_file():
+            if file_path.suffix.lower() in important_extensions:
+                output_files.append(str(file_path.relative_to(working_dir)))
+
+    return output_files
+
+
 @dataclass
 class BatchJob:
     """Represents a single batch job for a PDB file."""
@@ -44,6 +173,46 @@ class BatchJob:
     def __post_init__(self):
         if self.output_files is None:
             self.output_files = []
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert job to dictionary for serialization."""
+        return {
+            'pdb_path': self.pdb_path,
+            'working_dir': self.working_dir,
+            'basename': self.basename,
+            'status': self.status,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'error_message': self.error_message,
+            'output_files': self.output_files,
+            'ligand_builder': self.ligand_builder,
+            'job_id': self.job_id
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BatchJob':
+        """Create job from dictionary."""
+        # Convert datetime strings back to datetime objects
+        start_time = None
+        if data.get('start_time'):
+            start_time = datetime.fromisoformat(data['start_time'])
+
+        end_time = None
+        if data.get('end_time'):
+            end_time = datetime.fromisoformat(data['end_time'])
+
+        return cls(
+            pdb_path=data['pdb_path'],
+            working_dir=data['working_dir'],
+            basename=data['basename'],
+            status=data['status'],
+            start_time=start_time,
+            end_time=end_time,
+            error_message=data.get('error_message'),
+            output_files=data.get('output_files', []),
+            ligand_builder=data.get('ligand_builder', False),
+            job_id=data.get('job_id', 0)
+        )
 
 
 class ParallelBatchProcessor(YagwipBase):
@@ -292,9 +461,10 @@ class ParallelBatchProcessor(YagwipBase):
 
         # Execute jobs in parallel
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all jobs
+            # Submit all jobs with serializable data
             future_to_job = {
-                executor.submit(self._execute_single_job_worker, job, commands): job
+                executor.submit(_execute_single_job_worker_standalone, job.to_dict(), commands,
+                              self.gmx_path or "gmx", self.debug): job
                 for job in jobs_to_process
             }
 
@@ -340,94 +510,7 @@ class ParallelBatchProcessor(YagwipBase):
 
         return results
 
-    def _execute_single_job_worker(self, job: BatchJob, commands: List[str]) -> Dict[str, Any]:
-        """
-        Worker function for executing a single batch job in a separate process.
-        This function runs in a separate process to avoid conflicts.
-        """
-        job.start_time = datetime.now()
-        job.status = "running"
 
-        # Create working directory
-        os.makedirs(job.working_dir, exist_ok=True)
-
-        # Setup logging for this job (only file handler, no console to avoid redundancy)
-        job_log_file = os.path.join(self.logs_dir, f"{job.basename}.log")
-        job_logger = self._setup_job_logger(job_log_file)
-
-        result = {
-            'basename': job.basename,
-            'pdb_path': job.pdb_path,
-            'working_dir': job.working_dir,
-            'status': 'failed',
-            'start_time': job.start_time,
-            'end_time': None,
-            'duration': None,
-            'error_message': None,
-            'output_files': [],
-            'log_file': job_log_file,
-            'job_id': job.job_id
-        }
-
-        try:
-            # Copy PDB file to working directory
-            working_pdb = os.path.join(job.working_dir, f"{job.basename}.pdb")
-            shutil.copy2(job.pdb_path, working_pdb)
-
-            # Change to working directory
-            original_cwd = os.getcwd()
-            os.chdir(job.working_dir)
-
-            # Execute commands
-            for i, command in enumerate(commands, 1):
-                job_logger.info(f"Executing command {i}/{len(commands)}: {command}")
-
-                try:
-                    # Create temporary YAGWIP shell for this job
-                    from .yagwip import YagwipShell
-                    yagwip_shell = YagwipShell(self.gmx_path)
-                    yagwip_shell.logger = job_logger
-                    yagwip_shell.debug = self.debug
-
-                    # Modify loadpdb command to use the specific PDB filename
-                    if command.startswith('loadpdb'):
-                        if job.ligand_builder:
-                            modified_command = f"loadpdb {job.basename}.pdb --ligand_builder"
-                        else:
-                            modified_command = f"loadpdb {job.basename}.pdb"
-                        job_logger.info(f"Modified command: {modified_command}")
-                        yagwip_shell.onecmd(modified_command)
-                    else:
-                        # Execute command as-is
-                        yagwip_shell.onecmd(command)
-
-                    job_logger.info(f"Command {i} completed successfully")
-
-                except Exception as e:
-                    job_logger.error(f"Command {i} failed: {e}")
-                    raise
-
-            # Collect output files
-            result['output_files'] = self._collect_output_files(job.working_dir)
-            result['status'] = 'completed'
-
-        except Exception as e:
-            job_logger.error(f"Job failed: {e}")
-            result['error_message'] = str(e)
-            result['status'] = 'failed'
-
-        finally:
-            # Restore original directory
-            os.chdir(original_cwd)
-            job.end_time = datetime.now()
-            result['end_time'] = job.end_time
-            result['duration'] = (job.end_time - job.start_time).total_seconds()
-
-            job.status = result['status']
-            job.output_files = result['output_files']
-            job.error_message = result['error_message']
-
-        return result
 
     def _monitor_progress(self, total_jobs: int, results: Dict[str, Any]):
         """Monitor and report progress of parallel batch processing."""
