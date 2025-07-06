@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List, Tuple, Union
 from pathlib import Path
 from enum import Enum
 
-from .log import LoggingMixin, setup_logger, auto_monitor, runtime_context
+from .log import LoggingMixin, setup_logger, auto_monitor, runtime_context, command_context
 
 
 class LogLevel(Enum):
@@ -252,7 +252,19 @@ class YagwipBase(LoggingMixin, ABC):
                 # Code to monitor
                 pass
         """
-        return runtime_context(operation_name, self.logger)
+        return runtime_context(operation_name, self.logger, self.debug)
+
+    def monitor_command(self, command_name: str):
+        """
+        Context manager for monitoring complete commands with summary logging.
+
+        Usage:
+            with self.monitor_command("loadpdb"):
+                # All operations within this block will be tracked
+                # Only summary will be logged unless debug=True
+                pass
+        """
+        return command_context(command_name, self.logger, self.debug)
 
     def get_runtime_summary(self) -> Dict[str, Any]:
         """Get runtime summary for this component."""
