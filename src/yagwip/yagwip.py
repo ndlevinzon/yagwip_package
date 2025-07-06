@@ -52,7 +52,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def __init__(self, gmx_path):
         """Initialize the YAGWIP shell with GROMACS path."""
-        super().__init__(gmx_path=gmx_path, debug=False)
+        # Initialize cmd.Cmd first (no parameters)
+        cmd.Cmd.__init__(self)
+        # Initialize YagwipBase with our parameters
+        YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
+
         self.current_pdb_path = None  # Full path to the loaded PDB file
         self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
         self.basename = None  # Base PDB filename (without extension)
