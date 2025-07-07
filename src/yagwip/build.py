@@ -21,7 +21,6 @@ from .utils import (
     build_adjacency_matrix_fast,
     find_bonds_spatial,
 )
-from .config import get_tool_checker
 from .log import auto_monitor
 
 # Constants for GROMACS command inputs
