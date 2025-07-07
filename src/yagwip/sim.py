@@ -1,7 +1,10 @@
+# === Standard Library Imports ===
 import os
-from .base import YagwipBase
-from .utils import run_gromacs_command, tremd_temperature_ladder, count_residues_in_gro
 from importlib.resources import files
+
+# === Local Imports ===
+from .base import YagwipBase
+from .utils import tremd_temperature_ladder, count_residues_in_gro
 
 
 class Sim(YagwipBase):

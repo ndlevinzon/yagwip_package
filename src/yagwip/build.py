@@ -21,12 +21,8 @@ from .utils import (
     ToolChecker,
     build_adjacency_matrix_fast,
     find_bonds_spatial,
-    build_spatial_grid,
-    get_neighbor_cells,
-    is_valid_bond,
-    check_valence_limits,
 )
-from .log import LoggingMixin, auto_monitor, runtime_context
+from .log import auto_monitor
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}

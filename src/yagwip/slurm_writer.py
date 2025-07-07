@@ -1,11 +1,13 @@
 """
 slurm_writer.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
 """
-
+# === Standard Library Imports ===
 import os
 import re
 import shutil
 from importlib.resources import files
+
+# === Local Imports ===
 from .base import YagwipBase
 
 

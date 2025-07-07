@@ -4,27 +4,24 @@ Batch Processor for YAGWIP
 Handles batch processing of multiple PDB files from different directories
 with the same YAGWIP command script execution.
 """
-
+# === Standard Library Imports ===
 import os
-import sys
 import shutil
-import tempfile
-import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
-import argparse
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import threading
 from queue import Queue
 import time
 
+# === Local Imports ===
 from .base import YagwipBase
-from .log import auto_monitor, runtime_context
+from .log import auto_monitor
 
 
 def _setup_job_logger_worker(log_file: str) -> logging.Logger:
@@ -578,17 +575,9 @@ class ParallelBatchProcessor(YagwipBase):
         self, previous_results: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Get results for already completed jobs."""
-        results = {
-            "start_time": datetime.now(),
-            "total_jobs": len(self.jobs),
-            "completed_jobs": len(previous_results),
-            "failed_jobs": 0,
-            "job_results": list(previous_results.values()),
-            "parallel_workers": self.max_workers,
-        }
-
-        results["end_time"] = datetime.now()
-        results["duration"] = 0  # No processing time needed
+        results = {"start_time": datetime.now(), "total_jobs": len(self.jobs), "completed_jobs": len(previous_results),
+                   "failed_jobs": 0, "job_results": list(previous_results.values()),
+                   "parallel_workers": self.max_workers, "end_time": datetime.now(), "duration": 0}
 
         return results
 
