@@ -16,9 +16,16 @@ import numpy as np
 
 # === Local Imports ===
 from .base import YagwipBase
-from .utils import (run_gromacs_command, ToolChecker, build_adjacency_matrix_fast,
-                    find_bonds_spatial, build_spatial_grid, get_neighbor_cells,
-                    is_valid_bond, check_valence_limits)
+from .utils import (
+    run_gromacs_command,
+    ToolChecker,
+    build_adjacency_matrix_fast,
+    find_bonds_spatial,
+    build_spatial_grid,
+    get_neighbor_cells,
+    is_valid_bond,
+    check_valence_limits,
+)
 from .log import LoggingMixin, auto_monitor, runtime_context
 
 # Constants for GROMACS command inputs
@@ -235,7 +242,9 @@ class LigandPipeline(YagwipBase):
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
         # Use spatial partitioning for O(n) bond detection
-        bonds, atom_bonds = find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, self.logger)
+        bonds, atom_bonds = find_bonds_spatial(
+            coords, elements, covalent_radii, bond_tolerance, self.logger
+        )
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
@@ -699,13 +708,12 @@ class LigandPipeline(YagwipBase):
         acpype_dir = f"{base_name}.acpype"
 
         # Define source and destination files
-        source_files = {
-            "ligand_GMX.gro": "ligand.gro",
-            "ligand_GMX.itp": "ligand.itp"
-        }
+        source_files = {"ligand_GMX.gro": "ligand.gro", "ligand_GMX.itp": "ligand.itp"}
 
         if not os.path.exists(acpype_dir):
-            self._log_warning(f"[ERROR] ACPYPE output directory {acpype_dir} not found.")
+            self._log_warning(
+                f"[ERROR] ACPYPE output directory {acpype_dir} not found."
+            )
             return False
 
         copied_files = []
@@ -721,10 +729,14 @@ class LigandPipeline(YagwipBase):
                 except Exception as e:
                     self._log_error(f"[ERROR] Failed to copy {source_file}: {e}")
             else:
-                self._log_warning(f"[WARNING] ACPYPE output file {source_file} not found in {acpype_dir}")
+                self._log_warning(
+                    f"[WARNING] ACPYPE output file {source_file} not found in {acpype_dir}"
+                )
 
         if copied_files:
-            self._log_info(f"[SUMMARY] Successfully copied {len(copied_files)} files: {', '.join(copied_files)}")
+            self._log_info(
+                f"[SUMMARY] Successfully copied {len(copied_files)} files: {', '.join(copied_files)}"
+            )
         else:
             self._log_warning("[WARNING] No ACPYPE output files were copied.")
 

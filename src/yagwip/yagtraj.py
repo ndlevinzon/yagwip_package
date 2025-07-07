@@ -74,6 +74,7 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
         # Update logger and simulation mode
         from .log import setup_logger
+
         self.logger = setup_logger(debug_mode=self.debug)
 
         self._log_info(f"Debug mode is now {'ON' if self.debug else 'OFF'}")
@@ -180,7 +181,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         )
 
         if success:
-            self._log_success(f"Radius of gyration calculation completed. Output: {output_file}")
+            self._log_success(
+                f"Radius of gyration calculation completed. Output: {output_file}"
+            )
         else:
             self._log_error("Radius of gyration calculation failed.")
 
@@ -238,7 +241,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         )
 
         if success:
-            self._log_success(f"Hydrogen bond calculation completed. Output: {output_file}")
+            self._log_success(
+                f"Hydrogen bond calculation completed. Output: {output_file}"
+            )
         else:
             self._log_error("Hydrogen bond calculation failed.")
 
@@ -375,7 +380,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         )
 
         if success:
-            self._log_success(f"TREMD demultiplexing completed. Output prefix: {output_prefix}")
+            self._log_success(
+                f"TREMD demultiplexing completed. Output prefix: {output_prefix}"
+            )
         else:
             self._log_error("TREMD demultiplexing failed.")
 
@@ -419,7 +426,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
             )
 
             if success:
-                self._log_success(f"RMSD calculation completed for replica {i+1}. Output: {output_file}")
+                self._log_success(
+                    f"RMSD calculation completed for replica {i+1}. Output: {output_file}"
+                )
             else:
                 self._log_error(f"RMSD calculation failed for replica {i+1}")
 
@@ -463,7 +472,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
             )
 
             if success:
-                self._log_success(f"RMSF calculation completed for replica {i+1}. Output: {output_file}")
+                self._log_success(
+                    f"RMSF calculation completed for replica {i+1}. Output: {output_file}"
+                )
             else:
                 self._log_error(f"RMSF calculation failed for replica {i+1}")
 
@@ -508,7 +519,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
             )
 
             if success:
-                self._log_success(f"PCA analysis completed for replica {i+1}. Output: {covar_file}")
+                self._log_success(
+                    f"PCA analysis completed for replica {i+1}. Output: {covar_file}"
+                )
             else:
                 self._log_error(f"PCA analysis failed for replica {i+1}")
 

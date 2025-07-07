@@ -36,12 +36,12 @@ def _setup_job_logger_worker(log_file: str) -> logging.Logger:
     logger.handlers.clear()
 
     # File handler only (no console handler to avoid redundant output)
-    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler = logging.FileHandler(log_file, mode="w")
     file_handler.setLevel(logging.INFO)
 
     # Formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     file_handler.setFormatter(formatter)
 
@@ -50,8 +50,9 @@ def _setup_job_logger_worker(log_file: str) -> logging.Logger:
     return logger
 
 
-def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: List[str],
-                                        gmx_path: str, debug: bool) -> Dict[str, Any]:
+def _execute_single_job_worker_standalone(
+    job_data: Dict[str, Any], commands: List[str], gmx_path: str, debug: bool
+) -> Dict[str, Any]:
     """
     Standalone worker function for executing a single batch job in a separate process.
     This function runs in a separate process to avoid conflicts.
@@ -69,17 +70,17 @@ def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: Li
     job_logger = _setup_job_logger_worker(job_log_file)
 
     result = {
-        'basename': job.basename,
-        'pdb_path': job.pdb_path,
-        'working_dir': job.working_dir,
-        'status': 'failed',
-        'start_time': job.start_time,
-        'end_time': None,
-        'duration': None,
-        'error_message': None,
-        'output_files': [],
-        'log_file': job_log_file,
-        'job_id': job.job_id
+        "basename": job.basename,
+        "pdb_path": job.pdb_path,
+        "working_dir": job.working_dir,
+        "status": "failed",
+        "start_time": job.start_time,
+        "end_time": None,
+        "duration": None,
+        "error_message": None,
+        "output_files": [],
+        "log_file": job_log_file,
+        "job_id": job.job_id,
     }
 
     try:
@@ -98,14 +99,17 @@ def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: Li
             try:
                 # Create temporary YAGWIP shell for this job
                 from .yagwip import YagwipShell
+
                 yagwip_shell = YagwipShell(gmx_path)
                 yagwip_shell.logger = job_logger
                 yagwip_shell.debug = debug
 
                 # Modify loadpdb command to use the specific PDB filename
-                if command.startswith('loadpdb'):
+                if command.startswith("loadpdb"):
                     if job.ligand_builder:
-                        modified_command = f"loadpdb {job.basename}.pdb --ligand_builder"
+                        modified_command = (
+                            f"loadpdb {job.basename}.pdb --ligand_builder"
+                        )
                     else:
                         modified_command = f"loadpdb {job.basename}.pdb"
                     job_logger.info(f"Modified command: {modified_command}")
@@ -121,24 +125,24 @@ def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: Li
                 raise
 
         # Collect output files
-        result['output_files'] = _collect_output_files_worker(job.working_dir)
-        result['status'] = 'completed'
+        result["output_files"] = _collect_output_files_worker(job.working_dir)
+        result["status"] = "completed"
 
     except Exception as e:
         job_logger.error(f"Job failed: {e}")
-        result['error_message'] = str(e)
-        result['status'] = 'failed'
+        result["error_message"] = str(e)
+        result["status"] = "failed"
 
     finally:
         # Restore original directory
         os.chdir(original_cwd)
         job.end_time = datetime.now()
-        result['end_time'] = job.end_time
-        result['duration'] = (job.end_time - job.start_time).total_seconds()
+        result["end_time"] = job.end_time
+        result["duration"] = (job.end_time - job.start_time).total_seconds()
 
-        job.status = result['status']
-        job.output_files = result['output_files']
-        job.error_message = result['error_message']
+        job.status = result["status"]
+        job.output_files = result["output_files"]
+        job.error_message = result["error_message"]
 
     return result
 
@@ -146,9 +150,9 @@ def _execute_single_job_worker_standalone(job_data: Dict[str, Any], commands: Li
 def _collect_output_files_worker(working_dir: str) -> List[str]:
     """Collect important output files from working directory in worker process."""
     output_files = []
-    important_extensions = ['.gro', '.top', '.itp', '.tpr', '.xtc', '.trr', '.edr']
+    important_extensions = [".gro", ".top", ".itp", ".tpr", ".xtc", ".trr", ".edr"]
 
-    for file_path in Path(working_dir).rglob('*'):
+    for file_path in Path(working_dir).rglob("*"):
         if file_path.is_file():
             if file_path.suffix.lower() in important_extensions:
                 output_files.append(str(file_path.relative_to(working_dir)))
@@ -159,6 +163,7 @@ def _collect_output_files_worker(working_dir: str) -> List[str]:
 @dataclass
 class BatchJob:
     """Represents a single batch job for a PDB file."""
+
     pdb_path: str
     working_dir: str
     basename: str
@@ -177,41 +182,41 @@ class BatchJob:
     def to_dict(self) -> Dict[str, Any]:
         """Convert job to dictionary for serialization."""
         return {
-            'pdb_path': self.pdb_path,
-            'working_dir': self.working_dir,
-            'basename': self.basename,
-            'status': self.status,
-            'start_time': self.start_time.isoformat() if self.start_time else None,
-            'end_time': self.end_time.isoformat() if self.end_time else None,
-            'error_message': self.error_message,
-            'output_files': self.output_files,
-            'ligand_builder': self.ligand_builder,
-            'job_id': self.job_id
+            "pdb_path": self.pdb_path,
+            "working_dir": self.working_dir,
+            "basename": self.basename,
+            "status": self.status,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "error_message": self.error_message,
+            "output_files": self.output_files,
+            "ligand_builder": self.ligand_builder,
+            "job_id": self.job_id,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'BatchJob':
+    def from_dict(cls, data: Dict[str, Any]) -> "BatchJob":
         """Create job from dictionary."""
         # Convert datetime strings back to datetime objects
         start_time = None
-        if data.get('start_time'):
-            start_time = datetime.fromisoformat(data['start_time'])
+        if data.get("start_time"):
+            start_time = datetime.fromisoformat(data["start_time"])
 
         end_time = None
-        if data.get('end_time'):
-            end_time = datetime.fromisoformat(data['end_time'])
+        if data.get("end_time"):
+            end_time = datetime.fromisoformat(data["end_time"])
 
         return cls(
-            pdb_path=data['pdb_path'],
-            working_dir=data['working_dir'],
-            basename=data['basename'],
-            status=data['status'],
+            pdb_path=data["pdb_path"],
+            working_dir=data["working_dir"],
+            basename=data["basename"],
+            status=data["status"],
             start_time=start_time,
             end_time=end_time,
-            error_message=data.get('error_message'),
-            output_files=data.get('output_files', []),
-            ligand_builder=data.get('ligand_builder', False),
-            job_id=data.get('job_id', 0)
+            error_message=data.get("error_message"),
+            output_files=data.get("output_files", []),
+            ligand_builder=data.get("ligand_builder", False),
+            job_id=data.get("job_id", 0),
         )
 
 
@@ -230,8 +235,14 @@ class ParallelBatchProcessor(YagwipBase):
     - Ligand Builder Support: Automatic ligand processing with `--ligand_builder` flag
     """
 
-    def __init__(self, gmx_path: str = "gmx", debug: bool = False, logger=None,
-                 ligand_builder: bool = False, max_workers: Optional[int] = None):
+    def __init__(
+        self,
+        gmx_path: str = "gmx",
+        debug: bool = False,
+        logger=None,
+        ligand_builder: bool = False,
+        max_workers: Optional[int] = None,
+    ):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
         self.jobs: List[BatchJob] = []
         self.batch_config: Dict[str, Any] = {}
@@ -240,7 +251,9 @@ class ParallelBatchProcessor(YagwipBase):
         self.ligand_builder = ligand_builder
 
         # Parallel processing settings
-        self.max_workers = max_workers if max_workers is not None else min(mp.cpu_count(), 8)  # Cap at 8 workers by default
+        self.max_workers = (
+            max_workers if max_workers is not None else min(mp.cpu_count(), 8)
+        )  # Cap at 8 workers by default
         self.progress_queue = Queue()
         self.results_lock = threading.Lock()
 
@@ -248,7 +261,9 @@ class ParallelBatchProcessor(YagwipBase):
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.logs_dir, exist_ok=True)
 
-        self._log_info(f"Initialized parallel batch processor with {self.max_workers} workers")
+        self._log_info(
+            f"Initialized parallel batch processor with {self.max_workers} workers"
+        )
 
     @auto_monitor
     def load_pdb_list(self, pdb_list_file: str) -> List[BatchJob]:
@@ -269,22 +284,26 @@ class ParallelBatchProcessor(YagwipBase):
         """
         jobs = []
 
-        with open(pdb_list_file, 'r', encoding='utf-8') as f:
+        with open(pdb_list_file, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
 
                 # Skip empty lines and comments
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
 
                 # Validate PDB file exists
                 pdb_path = os.path.abspath(line)
                 if not os.path.exists(pdb_path):
-                    self._log_warning(f"PDB file not found (line {line_num}): {pdb_path}")
+                    self._log_warning(
+                        f"PDB file not found (line {line_num}): {pdb_path}"
+                    )
                     continue
 
-                if not pdb_path.lower().endswith('.pdb'):
-                    self._log_warning(f"File doesn't have .pdb extension (line {line_num}): {pdb_path}")
+                if not pdb_path.lower().endswith(".pdb"):
+                    self._log_warning(
+                        f"File doesn't have .pdb extension (line {line_num}): {pdb_path}"
+                    )
                     continue
 
                 # Create working directory in the same location as the source PDB
@@ -298,7 +317,7 @@ class ParallelBatchProcessor(YagwipBase):
                     working_dir=working_dir,
                     basename=basename,
                     ligand_builder=self.ligand_builder,
-                    job_id=len(jobs)
+                    job_id=len(jobs),
                 )
                 jobs.append(job)
 
@@ -309,7 +328,9 @@ class ParallelBatchProcessor(YagwipBase):
         return jobs
 
     @auto_monitor
-    def load_pdb_directory(self, directory_path: str, pattern: str = "*.pdb") -> List[BatchJob]:
+    def load_pdb_directory(
+        self, directory_path: str, pattern: str = "*.pdb"
+    ) -> List[BatchJob]:
         """
         Load all PDB files from a directory.
 
@@ -342,7 +363,7 @@ class ParallelBatchProcessor(YagwipBase):
                     working_dir=working_dir,
                     basename=basename,
                     ligand_builder=self.ligand_builder,
-                    job_id=len(jobs)
+                    job_id=len(jobs),
                 )
                 jobs.append(job)
 
@@ -372,7 +393,7 @@ class ParallelBatchProcessor(YagwipBase):
                 self._log_warning(f"PDB file not found: {pdb_path}")
                 continue
 
-            if not pdb_path.lower().endswith('.pdb'):
+            if not pdb_path.lower().endswith(".pdb"):
                 self._log_warning(f"File doesn't have .pdb extension: {pdb_path}")
                 continue
 
@@ -387,7 +408,7 @@ class ParallelBatchProcessor(YagwipBase):
                 working_dir=working_dir,
                 basename=basename,
                 ligand_builder=self.ligand_builder,
-                job_id=len(jobs)
+                job_id=len(jobs),
             )
             jobs.append(job)
 
@@ -398,7 +419,9 @@ class ParallelBatchProcessor(YagwipBase):
         return jobs
 
     @auto_monitor
-    def execute_batch_parallel(self, command_script: str, resume: bool = False) -> Dict[str, Any]:
+    def execute_batch_parallel(
+        self, command_script: str, resume: bool = False
+    ) -> Dict[str, Any]:
         """
         Execute the same YAGWIP command script for all PDB files using parallel processing.
 
@@ -432,7 +455,7 @@ class ParallelBatchProcessor(YagwipBase):
         jobs_to_process = []
         for job in self.jobs:
             if resume and job.basename in previous_results:
-                if previous_results[job.basename]['status'] == 'completed':
+                if previous_results[job.basename]["status"] == "completed":
                     self._log_info(f"Skipping completed job: {job.basename}")
                     continue
             jobs_to_process.append(job)
@@ -443,18 +466,17 @@ class ParallelBatchProcessor(YagwipBase):
 
         # Execute jobs in parallel
         results = {
-            'start_time': datetime.now(),
-            'total_jobs': len(self.jobs),
-            'completed_jobs': 0,
-            'failed_jobs': 0,
-            'job_results': [],
-            'parallel_workers': self.max_workers
+            "start_time": datetime.now(),
+            "total_jobs": len(self.jobs),
+            "completed_jobs": 0,
+            "failed_jobs": 0,
+            "job_results": [],
+            "parallel_workers": self.max_workers,
         }
 
         # Start progress monitoring thread
         progress_thread = threading.Thread(
-            target=self._monitor_progress,
-            args=(len(jobs_to_process), results)
+            target=self._monitor_progress, args=(len(jobs_to_process), results)
         )
         progress_thread.daemon = True
         progress_thread.start()
@@ -463,8 +485,13 @@ class ParallelBatchProcessor(YagwipBase):
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all jobs with serializable data
             future_to_job = {
-                executor.submit(_execute_single_job_worker_standalone, job.to_dict(), commands,
-                              self.gmx_path or "gmx", self.debug): job
+                executor.submit(
+                    _execute_single_job_worker_standalone,
+                    job.to_dict(),
+                    commands,
+                    self.gmx_path or "gmx",
+                    self.debug,
+                ): job
                 for job in jobs_to_process
             }
 
@@ -474,33 +501,39 @@ class ParallelBatchProcessor(YagwipBase):
                 try:
                     job_result = future.result()
                     with self.results_lock:
-                        results['job_results'].append(job_result)
-                        if job_result['status'] == 'completed':
-                            results['completed_jobs'] += 1
+                        results["job_results"].append(job_result)
+                        if job_result["status"] == "completed":
+                            results["completed_jobs"] += 1
                         else:
-                            results['failed_jobs'] += 1
+                            results["failed_jobs"] += 1
 
                         # Update job status
-                        job.status = job_result['status']
-                        job.output_files = job_result['output_files']
-                        job.error_message = job_result['error_message']
-                        job.start_time = job_result['start_time']
-                        job.end_time = job_result['end_time']
+                        job.status = job_result["status"]
+                        job.output_files = job_result["output_files"]
+                        job.error_message = job_result["error_message"]
+                        job.start_time = job_result["start_time"]
+                        job.end_time = job_result["end_time"]
 
-                        self._log_info(f"Job {job.job_id} ({job.basename}) completed: {job_result['status']}")
+                        self._log_info(
+                            f"Job {job.job_id} ({job.basename}) completed: {job_result['status']}"
+                        )
 
                 except Exception as e:
-                    self._log_error(f"Job {job.job_id} ({job.basename}) failed with exception: {e}")
+                    self._log_error(
+                        f"Job {job.job_id} ({job.basename}) failed with exception: {e}"
+                    )
                     with self.results_lock:
-                        results['failed_jobs'] += 1
-                        job.status = 'failed'
+                        results["failed_jobs"] += 1
+                        job.status = "failed"
                         job.error_message = str(e)
 
         # Wait for progress thread to finish
         progress_thread.join(timeout=5)
 
-        results['end_time'] = datetime.now()
-        results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
+        results["end_time"] = datetime.now()
+        results["duration"] = (
+            results["end_time"] - results["start_time"]
+        ).total_seconds()
 
         # Save results
         self._save_batch_results(results)
@@ -510,8 +543,6 @@ class ParallelBatchProcessor(YagwipBase):
 
         return results
 
-
-
     def _monitor_progress(self, total_jobs: int, results: Dict[str, Any]):
         """Monitor and report progress of parallel batch processing."""
         start_time = time.time()
@@ -519,8 +550,8 @@ class ParallelBatchProcessor(YagwipBase):
 
         while True:
             with self.results_lock:
-                completed = results['completed_jobs']
-                failed = results['failed_jobs']
+                completed = results["completed_jobs"]
+                failed = results["failed_jobs"]
                 total_completed = completed + failed
 
                 if total_completed >= total_jobs:
@@ -543,24 +574,28 @@ class ParallelBatchProcessor(YagwipBase):
 
             time.sleep(5)  # Check every 5 seconds
 
-    def _get_completed_results(self, previous_results: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_completed_results(
+        self, previous_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Get results for already completed jobs."""
         results = {
-            'start_time': datetime.now(),
-            'total_jobs': len(self.jobs),
-            'completed_jobs': len(previous_results),
-            'failed_jobs': 0,
-            'job_results': list(previous_results.values()),
-            'parallel_workers': self.max_workers
+            "start_time": datetime.now(),
+            "total_jobs": len(self.jobs),
+            "completed_jobs": len(previous_results),
+            "failed_jobs": 0,
+            "job_results": list(previous_results.values()),
+            "parallel_workers": self.max_workers,
         }
 
-        results['end_time'] = datetime.now()
-        results['duration'] = 0  # No processing time needed
+        results["end_time"] = datetime.now()
+        results["duration"] = 0  # No processing time needed
 
         return results
 
     @auto_monitor
-    def execute_batch(self, command_script: str, resume: bool = False) -> Dict[str, Any]:
+    def execute_batch(
+        self, command_script: str, resume: bool = False
+    ) -> Dict[str, Any]:
         """
         Execute the same YAGWIP command script for all PDB files.
         This is a wrapper for the parallel execution.
@@ -578,12 +613,12 @@ class ParallelBatchProcessor(YagwipBase):
         """Load and validate YAGWIP commands from script file."""
         commands = []
 
-        with open(script_path, 'r', encoding='utf-8') as f:
+        with open(script_path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
 
                 # Skip empty lines and comments
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
 
                 # Validate command
@@ -597,9 +632,20 @@ class ParallelBatchProcessor(YagwipBase):
     def _is_valid_yagwip_command(self, command: str) -> bool:
         """Check if command is a valid YAGWIP command."""
         valid_commands = {
-            'loadpdb', 'pdb2gmx', 'solvate', 'genions',
-            'em', 'nvt', 'npt', 'production', 'tremd',
-            'source', 'slurm', 'debug', 'show', 'runtime'
+            "loadpdb",
+            "pdb2gmx",
+            "solvate",
+            "genions",
+            "em",
+            "nvt",
+            "npt",
+            "production",
+            "tremd",
+            "source",
+            "slurm",
+            "debug",
+            "show",
+            "runtime",
         }
 
         cmd_parts = command.split()
@@ -617,12 +663,12 @@ class ParallelBatchProcessor(YagwipBase):
         logger.handlers.clear()
 
         # File handler only (no console handler to avoid redundant output)
-        file_handler = logging.FileHandler(log_file, mode='w')
+        file_handler = logging.FileHandler(log_file, mode="w")
         file_handler.setLevel(logging.INFO)
 
         # Formatter
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         file_handler.setFormatter(formatter)
 
@@ -633,9 +679,9 @@ class ParallelBatchProcessor(YagwipBase):
     def _collect_output_files(self, working_dir: str) -> List[str]:
         """Collect important output files from working directory."""
         output_files = []
-        important_extensions = ['.gro', '.top', '.itp', '.tpr', '.xtc', '.trr', '.edr']
+        important_extensions = [".gro", ".top", ".itp", ".tpr", ".xtc", ".trr", ".edr"]
 
-        for file_path in Path(working_dir).rglob('*'):
+        for file_path in Path(working_dir).rglob("*"):
             if file_path.is_file():
                 if file_path.suffix.lower() in important_extensions:
                     output_files.append(str(file_path.relative_to(working_dir)))
@@ -644,12 +690,15 @@ class ParallelBatchProcessor(YagwipBase):
 
     def _save_batch_results(self, results: Dict[str, Any]):
         """Save batch results to JSON file."""
-        results_file = os.path.join(self.results_dir, f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        results_file = os.path.join(
+            self.results_dir,
+            f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        )
 
         # Convert datetime objects to strings for JSON serialization
         serializable_results = self._make_json_serializable(results)
 
-        with open(results_file, 'w', encoding='utf-8') as f:
+        with open(results_file, "w", encoding="utf-8") as f:
             json.dump(serializable_results, f, indent=2)
 
         self._log_info(f"Batch results saved to: {results_file}")
@@ -665,13 +714,13 @@ class ParallelBatchProcessor(YagwipBase):
         latest_file = max(results_files, key=lambda x: x.stat().st_mtime)
 
         try:
-            with open(latest_file, 'r', encoding='utf-8') as f:
+            with open(latest_file, "r", encoding="utf-8") as f:
                 results = json.load(f)
 
             # Convert back to job results dictionary
             job_results = {}
-            for job_result in results.get('job_results', []):
-                job_results[job_result['basename']] = job_result
+            for job_result in results.get("job_results", []):
+                job_results[job_result["basename"]] = job_result
 
             self._log_info(f"Loaded previous results from: {latest_file}")
             return job_results
@@ -697,34 +746,41 @@ class ParallelBatchProcessor(YagwipBase):
         self._log_info(f"Total Jobs: {results['total_jobs']}")
         self._log_info(f"Completed: {results['completed_jobs']}")
         self._log_info(f"Failed: {results['failed_jobs']}")
-        self._log_info(f"Success Rate: {results['completed_jobs'] / results['total_jobs'] * 100:.1f}%")
+        self._log_info(
+            f"Success Rate: {results['completed_jobs'] / results['total_jobs'] * 100:.1f}%"
+        )
         self._log_info(f"Total Duration: {results['duration']:.2f} seconds")
         self._log_info(f"Parallel Workers: {results.get('parallel_workers', 'N/A')}")
 
-        if results['failed_jobs'] > 0:
+        if results["failed_jobs"] > 0:
             self._log_info("\nFailed Jobs:")
-            for job_result in results['job_results']:
-                if job_result['status'] == 'failed':
-                    self._log_info(f"  - {job_result['basename']}: {job_result['error_message']}")
+            for job_result in results["job_results"]:
+                if job_result["status"] == "failed":
+                    self._log_info(
+                        f"  - {job_result['basename']}: {job_result['error_message']}"
+                    )
 
     def get_batch_status(self) -> Dict[str, Any]:
         """Get current batch status."""
         if not self.jobs:
-            return {'status': 'no_jobs_loaded'}
+            return {"status": "no_jobs_loaded"}
 
-        completed = sum(1 for job in self.jobs if job.status == 'completed')
-        failed = sum(1 for job in self.jobs if job.status == 'failed')
-        running = sum(1 for job in self.jobs if job.status == 'running')
-        pending = sum(1 for job in self.jobs if job.status == 'pending')
+        completed = sum(1 for job in self.jobs if job.status == "completed")
+        failed = sum(1 for job in self.jobs if job.status == "failed")
+        running = sum(1 for job in self.jobs if job.status == "running")
+        pending = sum(1 for job in self.jobs if job.status == "pending")
 
         return {
-            'total_jobs': len(self.jobs),
-            'completed': completed,
-            'failed': failed,
-            'running': running,
-            'pending': pending,
-            'parallel_workers': self.max_workers,
-            'jobs': [{'basename': job.basename, 'status': job.status, 'job_id': job.job_id} for job in self.jobs]
+            "total_jobs": len(self.jobs),
+            "completed": completed,
+            "failed": failed,
+            "running": running,
+            "pending": pending,
+            "parallel_workers": self.max_workers,
+            "jobs": [
+                {"basename": job.basename, "status": job.status, "job_id": job.job_id}
+                for job in self.jobs
+            ],
         }
 
 

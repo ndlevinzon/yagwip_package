@@ -9,11 +9,18 @@ from typing import Optional, Dict, Any, List, Tuple, Union
 from pathlib import Path
 from enum import Enum
 
-from .log import LoggingMixin, setup_logger, auto_monitor, runtime_context, command_context
+from .log import (
+    LoggingMixin,
+    setup_logger,
+    auto_monitor,
+    runtime_context,
+    command_context,
+)
 
 
 class LogLevel(Enum):
     """Standardized log levels for consistent messaging."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -35,11 +42,9 @@ class YagwipBase(LoggingMixin, ABC):
     - Automatic runtime monitoring
     """
 
-    def __init__(self,
-                 gmx_path: Optional[str] = None,
-                 debug: bool = False,
-                 logger=None,
-                 **kwargs):
+    def __init__(
+        self, gmx_path: Optional[str] = None, debug: bool = False, logger=None, **kwargs
+    ):
         """
         Initialize base YAGWIP component.
 
@@ -120,7 +125,9 @@ class YagwipBase(LoggingMixin, ABC):
         return True
 
     @auto_monitor
-    def _validate_directory_exists(self, dirpath: str, description: str = "Directory") -> bool:
+    def _validate_directory_exists(
+        self, dirpath: str, description: str = "Directory"
+    ) -> bool:
         """
         Validate that a directory exists and create if needed.
 
@@ -165,11 +172,13 @@ class YagwipBase(LoggingMixin, ABC):
             return False
 
     @auto_monitor
-    def _execute_command(self,
-                         command: str,
-                         description: str = "Command",
-                         pipe_input: Optional[str] = None,
-                         **kwargs) -> bool:
+    def _execute_command(
+        self,
+        command: str,
+        description: str = "Command",
+        pipe_input: Optional[str] = None,
+        **kwargs,
+    ) -> bool:
         """
         Execute a command with standardized error handling and logging.
 
@@ -197,17 +206,24 @@ class YagwipBase(LoggingMixin, ABC):
             # Show current system resources
             try:
                 import psutil
+
                 memory = psutil.virtual_memory()
                 cpu_percent = psutil.cpu_percent()
-                disk = psutil.disk_usage('.')
+                disk = psutil.disk_usage(".")
 
                 self._log_debug("System Resources:")
                 self._log_debug(f"  CPU Usage: {cpu_percent:.1f}%")
-                self._log_debug(f"  Memory Usage: {memory.percent:.1f}% ({memory.used / (1024**3):.2f} GB used)")
+                self._log_debug(
+                    f"  Memory Usage: {memory.percent:.1f}% ({memory.used / (1024**3):.2f} GB used)"
+                )
                 self._log_debug(f"  Disk Usage: {disk.percent:.1f}%")
-                self._log_debug(f"  Available Memory: {memory.available / (1024**3):.2f} GB")
+                self._log_debug(
+                    f"  Available Memory: {memory.available / (1024**3):.2f} GB"
+                )
             except ImportError:
-                self._log_debug("System monitoring not available (psutil not installed)")
+                self._log_debug(
+                    "System monitoring not available (psutil not installed)"
+                )
             except Exception as e:
                 self._log_debug(f"Could not get system info: {e}")
 
@@ -219,11 +235,15 @@ class YagwipBase(LoggingMixin, ABC):
         return self._log_with_runtime(
             f"Execute {description}",
             self._run_gromacs_command_internal,
-            command, pipe_input, **kwargs
+            command,
+            pipe_input,
+            **kwargs,
         )
 
     @auto_monitor
-    def _run_gromacs_command_internal(self, command: str, pipe_input: Optional[str] = None, **kwargs) -> bool:
+    def _run_gromacs_command_internal(
+        self, command: str, pipe_input: Optional[str] = None, **kwargs
+    ) -> bool:
         """Internal method to run GROMACS command with runtime monitoring."""
         from .utils import run_gromacs_command
 
@@ -233,7 +253,7 @@ class YagwipBase(LoggingMixin, ABC):
             pipe_input=pipe_input,
             debug=self.debug,
             logger=self.logger,
-            **kwargs
+            **kwargs,
         )
 
         if success:
@@ -295,7 +315,7 @@ class YagwipBase(LoggingMixin, ABC):
 
     def get_runtime_summary(self) -> Dict[str, Any]:
         """Get runtime summary for this component."""
-        if hasattr(self, 'runtime_monitor'):
+        if hasattr(self, "runtime_monitor"):
             return self.runtime_monitor.get_summary()
         return {}
 
@@ -329,19 +349,19 @@ class FileProcessorMixin:
     @staticmethod
     def read_file_lines(filepath: str) -> List[str]:
         """Read file lines."""
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             return f.readlines()
 
     @staticmethod
     def write_file_lines(filepath: str, lines: List[str]):
         """Write file lines."""
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.writelines(lines)
 
     @staticmethod
     def append_to_file(filepath: str, content: str):
         """Append content to file."""
-        with open(filepath, 'a', encoding='utf-8') as f:
+        with open(filepath, "a", encoding="utf-8") as f:
             f.write(content)
 
     @staticmethod
@@ -355,11 +375,13 @@ class FileProcessorMixin:
 class CommandExecutorMixin:
     """Mixin for command execution with automatic monitoring."""
 
-    def execute_command(self,
-                        command: str,
-                        description: str = "Command",
-                        pipe_input: Optional[str] = None,
-                        **kwargs) -> bool:
+    def execute_command(
+        self,
+        command: str,
+        description: str = "Command",
+        pipe_input: Optional[str] = None,
+        **kwargs,
+    ) -> bool:
         """
         Execute a command with automatic runtime monitoring.
 
@@ -374,8 +396,8 @@ class CommandExecutorMixin:
         """
         from .utils import run_gromacs_command
 
-        logger = getattr(self, 'logger', None)
-        debug = getattr(self, 'debug', False)
+        logger = getattr(self, "logger", None)
+        debug = getattr(self, "debug", False)
 
         if debug:
             if logger:
@@ -386,11 +408,7 @@ class CommandExecutorMixin:
             logger.info(f"Executing: {description}")
 
         success = run_gromacs_command(
-            command=command,
-            pipe_input=pipe_input,
-            debug=debug,
-            logger=logger,
-            **kwargs
+            command=command, pipe_input=pipe_input, debug=debug, logger=logger, **kwargs
         )
 
         if logger:

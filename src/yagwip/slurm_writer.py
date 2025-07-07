@@ -1,6 +1,7 @@
 """
 slurm_writer.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
 """
+
 import os
 import re
 import shutil
@@ -12,6 +13,7 @@ class SlurmWriter(YagwipBase):
     """
     Handles generation and writing of SLURM job scripts for GROMACS and TREMD workflows.
     """
+
     def __init__(self, template_pkg="yagwip.templates", logger=None, debug=False):
         super().__init__(debug=debug, logger=logger)
         self.template_dir = files(template_pkg)
@@ -40,16 +42,24 @@ class SlurmWriter(YagwipBase):
                     with open(str(min_slurm), "r", encoding="utf-8") as f:
                         min_content = f.read()
                     # Replace BASE variable in SLURM script with basename
-                    min_content = re.sub(r"__BASE__", basename or "PLACEHOLDER", min_content)
-                    min_content = re.sub(r"__INIT__", "complex" or "PLACEHOLDER", min_content)
+                    min_content = re.sub(
+                        r"__BASE__", basename or "PLACEHOLDER", min_content
+                    )
+                    min_content = re.sub(
+                        r"__INIT__", "complex" or "PLACEHOLDER", min_content
+                    )
                     out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
                     with open(out_min_slurm, "w", encoding="utf-8") as f:
                         f.write(min_content)
-                    self._log_success(f"Customized SLURM script written: {out_min_slurm}")
+                    self._log_success(
+                        f"Customized SLURM script written: {out_min_slurm}"
+                    )
                 except (OSError, IOError) as e:
                     self._log_error(f"Failed to configure SLURM script: {e}")
             else:
-                self._log_warning("run_gmx_tremd_min_cpu.slurm not found in template directory.")
+                self._log_warning(
+                    "run_gmx_tremd_min_cpu.slurm not found in template directory."
+                )
 
         # Main SLURM template
         slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
@@ -62,7 +72,9 @@ class SlurmWriter(YagwipBase):
             with open(str(slurm_tpl_path), "r", encoding="utf-8") as f:
                 slurm_content = f.read()
             # Replace BASE variable in SLURM script with basename
-            slurm_content = re.sub(r"__BASE__", basename or "PLACEHOLDER", slurm_content)
+            slurm_content = re.sub(
+                r"__BASE__", basename or "PLACEHOLDER", slurm_content
+            )
             # Write modified SLURM script
             out_slurm = f"{slurm_tpl_name}"
             with open(out_slurm, "w", encoding="utf-8") as f:

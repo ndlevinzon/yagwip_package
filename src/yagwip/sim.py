@@ -53,7 +53,9 @@ class Sim(YagwipBase):
 
         try:
             protein_residues, water_residues = count_residues_in_gro(gro_path)
-            self._log_info(f"Found {protein_residues} protein residues and {water_residues} water residues.")
+            self._log_info(
+                f"Found {protein_residues} protein residues and {water_residues} water residues."
+            )
         except Exception as e:
             self._log_error(f"Failed to parse .gro file: {e}")
             return

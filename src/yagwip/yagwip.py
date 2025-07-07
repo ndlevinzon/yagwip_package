@@ -118,6 +118,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.debug = not self.debug
         # Update logger and simulation mode
         from .log import setup_logger
+
         self.logger = setup_logger(debug_mode=self.debug)
 
         if self.debug:
@@ -147,7 +148,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_runtime(self, arg):
         """Show runtime statistics and performance metrics."""
-        if hasattr(self, 'runtime_monitor'):
+        if hasattr(self, "runtime_monitor"):
             summary = self.runtime_monitor.get_summary()
             if summary:
                 self._log_info("=== Runtime Statistics ===")
@@ -155,8 +156,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_info(f"Successful: {summary['successful_operations']}")
                 self._log_info(f"Failed: {summary['failed_operations']}")
                 self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
-                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
-                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
+                self._log_info(
+                    f"Total Duration: {summary['total_duration_seconds']:.2f}s"
+                )
+                self._log_info(
+                    f"Average Duration: {summary['average_duration_seconds']:.2f}s"
+                )
             else:
                 self._log_info("No runtime data available yet.")
         else:
@@ -226,9 +231,15 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Parse arguments
         parser = argparse.ArgumentParser(description="Load PDB file")
         parser.add_argument("pdb_file", help="PDB file to load")
-        parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder")
-        parser.add_argument("--c", type=int, default=0, help="Total charge for QM input")
-        parser.add_argument("--m", type=int, default=1, help="Multiplicity for QM input")
+        parser.add_argument(
+            "--ligand_builder", action="store_true", help="Use ligand builder"
+        )
+        parser.add_argument(
+            "--c", type=int, default=0, help="Total charge for QM input"
+        )
+        parser.add_argument(
+            "--m", type=int, default=1, help="Multiplicity for QM input"
+        )
 
         try:
             args = parser.parse_args(arg.split())
@@ -260,7 +271,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.ligand_pdb_path = os.path.abspath(ligand_file)
             # Open output files for writing protein and ligand portions
             with open(protein_file, "w", encoding="utf-8") as prot_out, open(
-                    ligand_file, "w", encoding="utf-8"
+                ligand_file, "w", encoding="utf-8"
             ) as lig_out:
                 for line in lines:
                     if line.startswith("HETATM"):
@@ -271,9 +282,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         if line[17:20] in ("HSP", "HSD"):
                             line = line[:17] + "HIS" + line[20:]
                         prot_out.write(line)
-            self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
+            self._log_info(
+                f"Detected ligand. Split into: {protein_file}, {ligand_file}"
+            )
             # Determine if the ligand contains hydrogen atoms (important for parameterization)
-            if not any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines):
+            if not any(
+                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
+                for line in hetatm_lines
+            ):
                 self._log_warning(
                     "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
                 )
@@ -284,9 +300,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
-                self._log_info("ligand.itp not found. Running ligand builder pipeline...")
+                self._log_info(
+                    "ligand.itp not found. Running ligand builder pipeline..."
+                )
                 # Copy amber14sb.ff files into current dir
-                amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
+                amber_ff_source = str(
+                    files("yagwip.templates").joinpath("amber14sb.ff/")
+                )
                 amber_ff_dest = os.path.abspath("amber14sb.ff")
 
                 if not os.path.exists(amber_ff_dest):
@@ -295,9 +315,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 try:
                     for item in Path(amber_ff_source).iterdir():
                         if item.is_file():
-                            content = item.read_text(encoding='utf-8')
+                            content = item.read_text(encoding="utf-8")
                             dest_file = os.path.join(amber_ff_dest, item.name)
-                            with open(dest_file, 'w', encoding='utf-8') as f:
+                            with open(dest_file, "w", encoding="utf-8") as f:
                                 f.write(content)
                             self._log_debug(f"Copied {item.name}")
                     self._log_success("Copied all amber14sb.ff files.")
@@ -307,7 +327,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 ligand_pdb = "ligand.pdb"
                 mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
                 if mol2_file is None:
-                    self._log_error("MOL2 generation failed. Aborting ligand pipeline...")
+                    self._log_error(
+                        "MOL2 generation failed. Aborting ligand pipeline..."
+                    )
                     return
                 # Find the start and end of the ATOM section
                 with open(mol2_file, encoding="utf-8") as f:
@@ -317,8 +339,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     if line.strip() == "@<TRIPOS>ATOM":
                         atom_start = i + 1
                     elif (
-                            line.strip().startswith("@<TRIPOS>BOND")
-                            and atom_start is not None
+                        line.strip().startswith("@<TRIPOS>BOND")
+                        and atom_start is not None
                     ):
                         atom_end = i
                         break
@@ -333,8 +355,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     io.StringIO("".join(atom_lines)),
                     sep=r"\s+",
                     header=None,
-                    names=["atom_id", "atom_name", "x", "y", "z", "atom_type",
-                           "subst_id", "subst_name", "charge", "status_bit"],
+                    names=[
+                        "atom_id",
+                        "atom_name",
+                        "x",
+                        "y",
+                        "z",
+                        "atom_type",
+                        "subst_id",
+                        "subst_name",
+                        "charge",
+                        "status_bit",
+                    ],
                 )
                 # Generate ORCA Geometry Optimization input
                 orca_geom_input = mol2_file.replace(".mol2", ".inp")
@@ -358,7 +390,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self.editor.rename_residue_in_itp_atoms_section()
                 return
             else:
-                self._log_info("ligand.itp not found and --ligand_builder not specified.")
+                self._log_info(
+                    "ligand.itp not found and --ligand_builder not specified."
+                )
                 return
         else:
             # If no HETATM lines are found, treat entire file as protein
@@ -474,7 +508,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_success(f"Added ITP file: {itp_file}")
 
         if self.user_itp_paths:
-            self._log_info("Use 'slurm' command to generate scripts with sourced ITP files.")
+            self._log_info(
+                "Use 'slurm' command to generate scripts with sourced ITP files."
+            )
 
     def do_slurm(self, arg):
         """Generate SLURM scripts for MD or TREMD simulations."""
@@ -492,16 +528,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         hardware = args[1].lower()
         basename = args[2] if len(args) > 2 else self.basename
 
-        if sim_type not in ['md', 'tremd']:
+        if sim_type not in ["md", "tremd"]:
             self._log_error("sim_type must be 'md' or 'tremd'")
             return
 
-        if hardware not in ['cpu', 'gpu']:
+        if hardware not in ["cpu", "gpu"]:
             self._log_error("hardware must be 'cpu' or 'gpu'")
             return
 
         slurm_writer = SlurmWriter(logger=self.logger, debug=self.debug)
-        slurm_writer.write_slurm_scripts(sim_type, hardware, basename, self.ligand_pdb_path)
+        slurm_writer.write_slurm_scripts(
+            sim_type, hardware, basename, self.ligand_pdb_path
+        )
 
     def print_random_quote(self):
         """Print a random quote from the quotes file."""
@@ -530,14 +568,41 @@ def main():
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
     )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
-    parser.add_argument("-b", "--batch", type=str, help="Batch process multiple PDBs using command script")
-    parser.add_argument("-p", "--pdb-list", type=str, help="File containing list of PDB paths for batch processing")
-    parser.add_argument("-d", "--pdb-dir", type=str, help="Directory containing PDB files for batch processing")
-    parser.add_argument("-r", "--resume", action="store_true", help="Resume previous batch run")
-    parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder for batch processing")
-    parser.add_argument("--parallel", action="store_true", help="Enable parallel batch processing")
-    parser.add_argument("--workers", type=int, help="Number of parallel workers (default: auto-detect)")
-    parser.add_argument("--gmx-path", type=str, default="gmx", help="GROMACS executable path")
+    parser.add_argument(
+        "-b",
+        "--batch",
+        type=str,
+        help="Batch process multiple PDBs using command script",
+    )
+    parser.add_argument(
+        "-p",
+        "--pdb-list",
+        type=str,
+        help="File containing list of PDB paths for batch processing",
+    )
+    parser.add_argument(
+        "-d",
+        "--pdb-dir",
+        type=str,
+        help="Directory containing PDB files for batch processing",
+    )
+    parser.add_argument(
+        "-r", "--resume", action="store_true", help="Resume previous batch run"
+    )
+    parser.add_argument(
+        "--ligand_builder",
+        action="store_true",
+        help="Use ligand builder for batch processing",
+    )
+    parser.add_argument(
+        "--parallel", action="store_true", help="Enable parallel batch processing"
+    )
+    parser.add_argument(
+        "--workers", type=int, help="Number of parallel workers (default: auto-detect)"
+    )
+    parser.add_argument(
+        "--gmx-path", type=str, default="gmx", help="GROMACS executable path"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
 
@@ -555,17 +620,20 @@ def main():
         max_workers = args.workers
         if args.parallel and not max_workers:
             import multiprocessing as mp
+
             max_workers = min(mp.cpu_count(), 8)  # Auto-detect with cap
 
         # Initialize batch processor
         if args.parallel:
-            print(f"Initializing parallel batch processor with {max_workers} workers...")
+            print(
+                f"Initializing parallel batch processor with {max_workers} workers..."
+            )
             batch_processor = ParallelBatchProcessor(
                 gmx_path=args.gmx_path,
                 debug=args.debug,
                 logger=cli.logger,
                 ligand_builder=args.ligand_builder,
-                max_workers=max_workers
+                max_workers=max_workers,
             )
         else:
             print("Initializing sequential batch processor...")
@@ -574,7 +642,7 @@ def main():
                 debug=args.debug,
                 logger=cli.logger,
                 ligand_builder=args.ligand_builder,
-                max_workers=1  # Sequential processing
+                max_workers=1,  # Sequential processing
             )
 
         # Load PDB files
@@ -585,7 +653,9 @@ def main():
             # Load from directory
             batch_processor.load_pdb_directory(args.pdb_dir)
         else:
-            print("[ERROR] Must specify either --pdb-list or --pdb-dir for batch processing")
+            print(
+                "[ERROR] Must specify either --pdb-list or --pdb-dir for batch processing"
+            )
             sys.exit(1)
 
         # Execute batch
@@ -598,11 +668,17 @@ def main():
         results = batch_processor.execute_batch(args.batch, resume=args.resume)
 
         if results:
-            print(f"Batch processing completed. Results saved in {batch_processor.results_dir}")
-            print(f"Completed: {results['completed_jobs']}/{results['total_jobs']} jobs")
+            print(
+                f"Batch processing completed. Results saved in {batch_processor.results_dir}"
+            )
+            print(
+                f"Completed: {results['completed_jobs']}/{results['total_jobs']} jobs"
+            )
             print(f"Failed: {results['failed_jobs']} jobs")
             if args.parallel:
-                print(f"Parallel workers used: {results.get('parallel_workers', 'N/A')}")
+                print(
+                    f"Parallel workers used: {results.get('parallel_workers', 'N/A')}"
+                )
         else:
             print("Batch processing failed.")
             sys.exit(1)

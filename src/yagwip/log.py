@@ -15,6 +15,7 @@ from contextlib import contextmanager
 
 class LogLevel(Enum):
     """Standardized log levels for consistent messaging."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -26,6 +27,7 @@ class LogLevel(Enum):
 @dataclass
 class SystemInfo:
     """System information snapshot."""
+
     timestamp: datetime
     cpu_percent: float
     memory_percent: float
@@ -41,6 +43,7 @@ class SystemInfo:
 @dataclass
 class RuntimeMetrics:
     """Runtime metrics for an operation."""
+
     operation_name: str
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -60,6 +63,7 @@ class RuntimeMetrics:
 @dataclass
 class CommandMetrics:
     """Metrics for a complete command execution."""
+
     command_name: str
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -77,7 +81,9 @@ class CommandMetrics:
 class RuntimeMonitor:
     """Monitors runtime performance and system metrics."""
 
-    def __init__(self, logger: Optional[logging.Logger] = None, debug_mode: bool = False):
+    def __init__(
+        self, logger: Optional[logging.Logger] = None, debug_mode: bool = False
+    ):
         self.logger = logger
         self.debug_mode = debug_mode
         self.metrics_history: List[RuntimeMetrics] = []
@@ -89,7 +95,7 @@ class RuntimeMonitor:
         """Capture current system information."""
         try:
             memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('.')
+            disk = psutil.disk_usage(".")
             return SystemInfo(
                 timestamp=datetime.now(),
                 cpu_percent=psutil.cpu_percent(interval=0.1),
@@ -100,7 +106,7 @@ class RuntimeMonitor:
                 platform=f"{platform.system()} {platform.release()}",
                 python_version=platform.python_version(),
                 process_id=os.getpid(),
-                thread_id=threading.get_ident()
+                thread_id=threading.get_ident(),
             )
         except Exception as e:
             # Fallback if psutil is not available
@@ -114,7 +120,7 @@ class RuntimeMonitor:
                 platform="Unknown",
                 python_version=platform.python_version(),
                 process_id=os.getpid(),
-                thread_id=threading.get_ident()
+                thread_id=threading.get_ident(),
             )
 
     def start_command(self, command_name: str) -> CommandMetrics:
@@ -123,17 +129,21 @@ class RuntimeMonitor:
             self.current_command = CommandMetrics(
                 command_name=command_name,
                 start_time=datetime.now(),
-                system_info_start=self._get_system_info()
+                system_info_start=self._get_system_info(),
             )
 
             if self.logger and self.debug_mode:
                 self.logger.info(f"Starting command: {command_name}")
                 if self.current_command.system_info_start:
-                    self._log_system_info("COMMAND_START", self.current_command.system_info_start)
+                    self._log_system_info(
+                        "COMMAND_START", self.current_command.system_info_start
+                    )
 
             return self.current_command
 
-    def end_command(self, success: bool = True, error_message: Optional[str] = None) -> Optional[CommandMetrics]:
+    def end_command(
+        self, success: bool = True, error_message: Optional[str] = None
+    ) -> Optional[CommandMetrics]:
         """End monitoring a command and log summary."""
         with self._lock:
             if not self.current_command:
@@ -141,7 +151,7 @@ class RuntimeMonitor:
 
             self.current_command.end_time = datetime.now()
             self.current_command.duration_seconds = (
-                    self.current_command.end_time - self.current_command.start_time
+                self.current_command.end_time - self.current_command.start_time
             ).total_seconds()
             self.current_command.system_info_end = self._get_system_info()
             self.current_command.success = success
@@ -149,10 +159,16 @@ class RuntimeMonitor:
 
             # Calculate summary from sub-operations
             if self.current_command.sub_operations:
-                self.current_command.total_operations = len(self.current_command.sub_operations)
+                self.current_command.total_operations = len(
+                    self.current_command.sub_operations
+                )
                 self.current_command.successful_operations = sum(
-                    1 for op in self.current_command.sub_operations if op.success)
-                self.current_command.failed_operations = self.current_command.total_operations - self.current_command.successful_operations
+                    1 for op in self.current_command.sub_operations if op.success
+                )
+                self.current_command.failed_operations = (
+                    self.current_command.total_operations
+                    - self.current_command.successful_operations
+                )
 
             # Log command summary (always log, regardless of debug mode)
             if self.logger:
@@ -171,18 +187,22 @@ class RuntimeMonitor:
                 operation_name=operation_name,
                 start_time=datetime.now(),
                 system_info_start=self._get_system_info(),
-                additional_info=kwargs
+                additional_info=kwargs,
             )
 
             # Only log detailed info in debug mode
             if self.logger and self.debug_mode:
                 self.logger.info(f"Starting operation: {operation_name}")
                 if self.current_operation.system_info_start:
-                    self._log_system_info("START", self.current_operation.system_info_start)
+                    self._log_system_info(
+                        "START", self.current_operation.system_info_start
+                    )
 
             return self.current_operation
 
-    def end_operation(self, success: bool = True, error_message: Optional[str] = None) -> Optional[RuntimeMetrics]:
+    def end_operation(
+        self, success: bool = True, error_message: Optional[str] = None
+    ) -> Optional[RuntimeMetrics]:
         """End monitoring an operation and calculate metrics."""
         with self._lock:
             if not self.current_operation:
@@ -190,21 +210,24 @@ class RuntimeMonitor:
 
             self.current_operation.end_time = datetime.now()
             self.current_operation.duration_seconds = (
-                    self.current_operation.end_time - self.current_operation.start_time
+                self.current_operation.end_time - self.current_operation.start_time
             ).total_seconds()
             self.current_operation.system_info_end = self._get_system_info()
             self.current_operation.success = success
             self.current_operation.error_message = error_message
 
             # Calculate deltas
-            if self.current_operation.system_info_start and self.current_operation.system_info_end:
+            if (
+                self.current_operation.system_info_start
+                and self.current_operation.system_info_end
+            ):
                 self.current_operation.memory_delta_mb = (
-                        self.current_operation.system_info_end.memory_used_mb -
-                        self.current_operation.system_info_start.memory_used_mb
+                    self.current_operation.system_info_end.memory_used_mb
+                    - self.current_operation.system_info_start.memory_used_mb
                 )
                 self.current_operation.cpu_delta_percent = (
-                        self.current_operation.system_info_end.cpu_percent -
-                        self.current_operation.system_info_start.cpu_percent
+                    self.current_operation.system_info_end.cpu_percent
+                    - self.current_operation.system_info_start.cpu_percent
                 )
 
             # Only log detailed runtime information in debug mode
@@ -232,7 +255,8 @@ class RuntimeMonitor:
         self.logger.info(f"[{prefix}] System Info:")
         self.logger.info(f"  CPU Usage: {system_info.cpu_percent:.1f}%")
         self.logger.info(
-            f"  Memory Usage: {system_info.memory_percent:.1f}% ({system_info.memory_used_mb:.1f} MB used, {system_info.memory_available_mb:.1f} MB available)")
+            f"  Memory Usage: {system_info.memory_percent:.1f}% ({system_info.memory_used_mb:.1f} MB used, {system_info.memory_available_mb:.1f} MB available)"
+        )
         self.logger.info(f"  Disk Usage: {system_info.disk_usage_percent:.1f}%")
         self.logger.info(f"  Platform: {system_info.platform}")
         self.logger.info(f"  Python: {system_info.python_version}")
@@ -246,7 +270,11 @@ class RuntimeMonitor:
             return
 
         status = "SUCCESS" if metrics.success else "FAILED"
-        duration_str = f"{metrics.duration_seconds:.2f}s" if metrics.duration_seconds else "unknown"
+        duration_str = (
+            f"{metrics.duration_seconds:.2f}s"
+            if metrics.duration_seconds
+            else "unknown"
+        )
 
         # Enhanced debug mode: Show detailed information
         if self.debug_mode:
@@ -254,7 +282,9 @@ class RuntimeMonitor:
             self.logger.info(f"DEBUG: {metrics.operation_name} Operation Summary")
             self.logger.info("=" * 50)
             self.logger.info(f"Duration: {duration_str}")
-            self.logger.info(f"Status: {'✓ SUCCESS' if metrics.success else '✗ FAILED'}")
+            self.logger.info(
+                f"Status: {'✓ SUCCESS' if metrics.success else '✗ FAILED'}"
+            )
 
             if metrics.function_name:
                 self.logger.info(f"Function: {metrics.function_name}")
@@ -266,11 +296,14 @@ class RuntimeMonitor:
             if metrics.system_info_start and metrics.system_info_end:
                 self.logger.info("System Resource Changes:")
                 self.logger.info(
-                    f"  CPU: {metrics.system_info_start.cpu_percent:.1f}% → {metrics.system_info_end.cpu_percent:.1f}% (Δ: {metrics.cpu_delta_percent:.1f}%)")
+                    f"  CPU: {metrics.system_info_start.cpu_percent:.1f}% → {metrics.system_info_end.cpu_percent:.1f}% (Δ: {metrics.cpu_delta_percent:.1f}%)"
+                )
                 self.logger.info(
-                    f"  Memory: {metrics.system_info_start.memory_percent:.1f}% → {metrics.system_info_end.memory_percent:.1f}% (Δ: {metrics.memory_delta_mb:.2f} MB)")
+                    f"  Memory: {metrics.system_info_start.memory_percent:.1f}% → {metrics.system_info_end.memory_percent:.1f}% (Δ: {metrics.memory_delta_mb:.2f} MB)"
+                )
                 self.logger.info(
-                    f"  Available Memory: {metrics.system_info_start.memory_available_mb:.1f} MB → {metrics.system_info_end.memory_available_mb:.1f} MB")
+                    f"  Available Memory: {metrics.system_info_start.memory_available_mb:.1f} MB → {metrics.system_info_end.memory_available_mb:.1f} MB"
+                )
 
             if metrics.error_message:
                 self.logger.error(f"Error Details: {metrics.error_message}")
@@ -296,11 +329,15 @@ class RuntimeMonitor:
 
             if metrics.memory_delta_mb is not None:
                 memory_change = "+" if metrics.memory_delta_mb >= 0 else ""
-                self.logger.info(f"  Memory Change: {memory_change}{metrics.memory_delta_mb:.1f} MB")
+                self.logger.info(
+                    f"  Memory Change: {memory_change}{metrics.memory_delta_mb:.1f} MB"
+                )
 
             if metrics.cpu_delta_percent is not None:
                 cpu_change = "+" if metrics.cpu_delta_percent >= 0 else ""
-                self.logger.info(f"  CPU Change: {cpu_change}{metrics.cpu_delta_percent:.1f}%")
+                self.logger.info(
+                    f"  CPU Change: {cpu_change}{metrics.cpu_delta_percent:.1f}%"
+                )
 
             if metrics.error_message:
                 self.logger.error(f"  Error: {metrics.error_message}")
@@ -316,7 +353,11 @@ class RuntimeMonitor:
             return
 
         status = "SUCCESS" if metrics.success else "FAILED"
-        duration_str = f"{metrics.duration_seconds:.2f}s" if metrics.duration_seconds else "unknown"
+        duration_str = (
+            f"{metrics.duration_seconds:.2f}s"
+            if metrics.duration_seconds
+            else "unknown"
+        )
 
         self.logger.info(f"[COMMAND_SUMMARY] Command: {metrics.command_name}")
         self.logger.info(f"  Status: {status}")
@@ -326,13 +367,21 @@ class RuntimeMonitor:
         self.logger.info(f"  Failed Operations: {metrics.failed_operations}")
 
         if metrics.system_info_start and metrics.system_info_end:
-            memory_delta = metrics.system_info_end.memory_used_mb - metrics.system_info_start.memory_used_mb
-            cpu_delta = metrics.system_info_end.cpu_percent - metrics.system_info_start.cpu_percent
+            memory_delta = (
+                metrics.system_info_end.memory_used_mb
+                - metrics.system_info_start.memory_used_mb
+            )
+            cpu_delta = (
+                metrics.system_info_end.cpu_percent
+                - metrics.system_info_start.cpu_percent
+            )
 
             memory_change = "+" if memory_delta >= 0 else ""
             cpu_change = "+" if cpu_delta >= 0 else ""
 
-            self.logger.info(f"  Total Memory Change: {memory_change}{memory_delta:.1f} MB")
+            self.logger.info(
+                f"  Total Memory Change: {memory_change}{memory_delta:.1f} MB"
+            )
             self.logger.info(f"  Total CPU Change: {cpu_change}{cpu_delta:.1f}%")
 
         if metrics.error_message:
@@ -342,7 +391,9 @@ class RuntimeMonitor:
         if self.debug_mode and metrics.sub_operations:
             self.logger.info("  Sub-operations:")
             for op in metrics.sub_operations:
-                duration = f"{op.duration_seconds:.2f}s" if op.duration_seconds else "unknown"
+                duration = (
+                    f"{op.duration_seconds:.2f}s" if op.duration_seconds else "unknown"
+                )
                 status = "SUCCESS" if op.success else "FAILED"
                 self.logger.info(f"    - {op.operation_name}: {duration} ({status})")
 
@@ -362,7 +413,9 @@ class RuntimeMonitor:
             "failed_operations": total_operations - successful_operations,
             "total_duration_seconds": total_duration,
             "average_duration_seconds": avg_duration,
-            "success_rate": successful_operations / total_operations if total_operations > 0 else 0
+            "success_rate": (
+                successful_operations / total_operations if total_operations > 0 else 0
+            ),
         }
 
 
@@ -370,7 +423,9 @@ class LoggingMixin:
     """Enhanced mixin class to provide consistent logging functionality with runtime monitoring."""
 
     def __init__(self):
-        self.runtime_monitor = RuntimeMonitor(getattr(self, 'logger', None), getattr(self, 'debug', False))
+        self.runtime_monitor = RuntimeMonitor(
+            getattr(self, "logger", None), getattr(self, "debug", False)
+        )
 
     def _log(self, msg):
         """Log message using logger or print if no logger available."""
@@ -402,7 +457,7 @@ class LoggingMixin:
                 op_name = operation_name or f"{func.__name__}"
 
                 # Get the runtime monitor from the instance
-                if hasattr(args[0], 'runtime_monitor'):
+                if hasattr(args[0], "runtime_monitor"):
                     monitor = args[0].runtime_monitor
                 else:
                     # Fallback to basic timing
@@ -410,15 +465,17 @@ class LoggingMixin:
                     try:
                         result = func(*args, **kwargs)
                         duration = time.time() - start_time
-                        logger = getattr(args[0], 'logger', None)
+                        logger = getattr(args[0], "logger", None)
                         if logger:
                             logger.info(f"[RUNTIME] {op_name}: {duration:.2f}s")
                         return result
                     except Exception as e:
                         duration = time.time() - start_time
-                        logger = getattr(args[0], 'logger', None)
+                        logger = getattr(args[0], "logger", None)
                         if logger:
-                            logger.error(f"[RUNTIME] {op_name} FAILED: {duration:.2f}s - {str(e)}")
+                            logger.error(
+                                f"[RUNTIME] {op_name} FAILED: {duration:.2f}s - {str(e)}"
+                            )
                         raise
 
                 # Use the runtime monitor
@@ -440,7 +497,9 @@ class LoggingMixin:
 _global_runtime_monitor = RuntimeMonitor(logging.getLogger("yagwip"), debug_mode=False)
 
 
-def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[str] = None):
+def auto_monitor(
+    func: Optional[Callable] = None, *, operation_name: Optional[str] = None
+):
     """
     Automatic runtime monitoring decorator that can be applied to any function.
 
@@ -465,21 +524,22 @@ def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[st
         def wrapper(*args, **kwargs):
             # Get function metadata
             import inspect
+
             frame = inspect.currentframe()
             if frame:
                 try:
                     # Get caller information
                     caller_frame = frame.f_back
                     if caller_frame:
-                        module_name = caller_frame.f_globals.get('__name__', 'unknown')
+                        module_name = caller_frame.f_globals.get("__name__", "unknown")
                         line_number = caller_frame.f_lineno
                     else:
-                        module_name = 'unknown'
+                        module_name = "unknown"
                         line_number = 0
                 finally:
                     frame = None
             else:
-                module_name = 'unknown'
+                module_name = "unknown"
                 line_number = 0
 
             # Determine operation name
@@ -490,7 +550,7 @@ def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[st
                 op_name,
                 function_name=func_to_monitor.__name__,
                 module_name=module_name,
-                line_number=line_number
+                line_number=line_number,
             )
 
             try:
@@ -498,7 +558,9 @@ def auto_monitor(func: Optional[Callable] = None, *, operation_name: Optional[st
                 _global_runtime_monitor.end_operation(success=True)
                 return result
             except Exception as e:
-                _global_runtime_monitor.end_operation(success=False, error_message=str(e))
+                _global_runtime_monitor.end_operation(
+                    success=False, error_message=str(e)
+                )
                 raise
 
         return wrapper
@@ -523,7 +585,11 @@ def update_global_monitor_debug_mode(debug_mode: bool):
 
 
 @contextmanager
-def runtime_context(operation_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False):
+def runtime_context(
+    operation_name: str,
+    logger: Optional[logging.Logger] = None,
+    debug_mode: bool = False,
+):
     """
     Context manager for runtime monitoring of code blocks.
 
@@ -544,7 +610,9 @@ def runtime_context(operation_name: str, logger: Optional[logging.Logger] = None
 
 
 @contextmanager
-def command_context(command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False):
+def command_context(
+    command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False
+):
     """
     Context manager for monitoring complete commands.
 
@@ -614,7 +682,7 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
     # Enhanced formatter for file logging with more details
     file_formatter = logging.Formatter(
         "[%(asctime)s] %(levelname)s - %(name)s:%(lineno)d - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     fh.setFormatter(file_formatter)
 
@@ -624,13 +692,16 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
     # Log initial system information
     try:
         import psutil
+
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('.')
+        disk = psutil.disk_usage(".")
         logger.info("=== YAGWIP Runtime Monitoring Started ===")
         logger.info(f"Platform: {platform.system()} {platform.release()}")
         logger.info(f"Python Version: {platform.python_version()}")
         logger.info(f"Process ID: {os.getpid()}")
-        logger.info(f"Initial Memory Usage: {memory.percent:.1f}% ({memory.used / (1024 ** 3):.2f} GB used)")
+        logger.info(
+            f"Initial Memory Usage: {memory.percent:.1f}% ({memory.used / (1024 ** 3):.2f} GB used)"
+        )
         logger.info(f"Initial Disk Usage: {disk.percent:.1f}%")
         logger.info(f"CPU Cores: {psutil.cpu_count()}")
         logger.info("=" * 50)
@@ -688,4 +759,3 @@ def get_global_runtime_summary() -> Dict[str, Any]:
 def clear_global_runtime_history():
     """Clear the global runtime monitoring history."""
     _global_runtime_monitor.metrics_history.clear()
-

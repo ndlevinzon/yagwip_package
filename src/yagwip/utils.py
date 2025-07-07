@@ -78,9 +78,9 @@ class ToolChecker:
             )
             return result.returncode == 0
         except (
-                subprocess.TimeoutExpired,
-                FileNotFoundError,
-                subprocess.SubprocessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            subprocess.SubprocessError,
         ):
             return False
 
@@ -317,7 +317,7 @@ def build_adjacency_matrix_fast(df_atoms, df_bonds):
     adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
 
     # Create atom_id to index mapping for O(1) lookups
-    atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms['atom_id'])}
+    atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms["atom_id"])}
 
     # Build adjacency matrix from bonds in O(bonds) time
     for _, bond in df_bonds.iterrows():
@@ -438,13 +438,15 @@ def find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, logger=
                 if 0.4 < dist < max_bond:
                     # Validate bond is chemically possible
                     if is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                        bonds.append({
-                            "bond_id": bond_id,
-                            "origin_atom_id": i + 1,  # 1-based indexing
-                            "target_atom_id": j + 1,
-                            "bond_type": "1",
-                            "status_bit": "",
-                        })
+                        bonds.append(
+                            {
+                                "bond_id": bond_id,
+                                "origin_atom_id": i + 1,  # 1-based indexing
+                                "target_atom_id": j + 1,
+                                "bond_type": "1",
+                                "status_bit": "",
+                            }
+                        )
                         # Update bond tracking
                         atom_bonds[i].append(j)
                         atom_bonds[j].append(i)
@@ -556,7 +558,7 @@ def complete_filename(text, suffix, line=None, begidx=None, endidx=None):
 
 class Editor(LoggingMixin):
     def __init__(
-            self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
+        self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
     ):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
@@ -716,7 +718,7 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-            self, protein_gro, ligand_pdb, combined_gro="complex.gro"
+        self, protein_gro, ligand_pdb, combined_gro="complex.gro"
     ):
         coords = []
         with open(ligand_pdb, "r", encoding="utf-8") as f:
@@ -763,9 +765,9 @@ class Editor(LoggingMixin):
             stripped = line.strip()
 
             if (
-                    not inserted_include
-                    and "#include" in stripped
-                    and "forcefield.itp" in stripped
+                not inserted_include
+                and "#include" in stripped
+                and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
                 new_lines.append(f'#include "./{self.ligand_itp}"\n')
@@ -799,9 +801,7 @@ class Editor(LoggingMixin):
         with open(topol_top, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
 
-        self._log(
-            f"Included {self.ligand_itp} and {ligand_name} entry in {topol_top}"
-        )
+        self._log(f"Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
 
     def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
         """
@@ -847,9 +847,7 @@ class Editor(LoggingMixin):
             with open(top_file, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
 
-            self._log(
-                f"Injected {len(itp_path_list)} custom includes into {top_file}"
-            )
+            self._log(f"Injected {len(itp_path_list)} custom includes into {top_file}")
 
 
 # === T-REMD Utilities ===
@@ -904,7 +902,7 @@ def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
 
 
 def tremd_temperature_ladder(
-        Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Tol=0.001
+    Nw, Np, Tlow, Thigh, Pdes, WC=3, PC=1, Hff=0, Vs=0, Tol=0.001
 ):
     """
     Generate a temperature ladder for temperature replica exchange molecular dynamics (T-REMD).
@@ -950,7 +948,7 @@ def tremd_temperature_ladder(
 
     # Probability evaluation function for exchange efficiency
     def myeval(m12, s12, CC, u):
-        arg = -CC * u - (u - m12) ** 2 / (2 * s12 ** 2)
+        arg = -CC * u - (u - m12) ** 2 / (2 * s12**2)
         return np.exp(arg)
 
     # Numerical integration using midpoint method for exchange probability contribution
@@ -979,7 +977,7 @@ def tremd_temperature_ladder(
             iter_count += 1
             mu12 = (T2 - T1) * ((A1 * Nw) + (B1 * Nprot) - FlexEner)
             CC = (1 / kB) * ((1 / T1) - (1 / T2))
-            var = Ndf * (D1 ** 2 * (T1 ** 2 + T2 ** 2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0 ** 2)
+            var = Ndf * (D1**2 * (T1**2 + T2**2) + 2 * D1 * D0 * (T1 + T2) + 2 * D0**2)
             sig12 = np.sqrt(var)
 
             # Two components of the exchange probability
