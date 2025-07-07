@@ -232,56 +232,68 @@ def run_gromacs_command(command, pipe_input=None, debug=False, logger=None):
                 if match:
                     line_num = int(match.group(1))
                     top_path = "./topol.top"
-
-                    try:
-                        with open(top_path, "r", encoding="utf-8") as f:
-                            lines = f.readlines()
-                        if 0 <= line_num - 1 < len(lines):
-                            if not lines[line_num - 1].strip().startswith(";"):
-                                lines[line_num - 1] = f";{lines[line_num - 1]}"
-                                with open(top_path, "w", encoding="utf-8") as f:
-                                    f.writelines(lines)
-
-                                msg = (
-                                    f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
-                                    f" Commenting out line {line_num} in topol.top and rerunning..."
-                                )
-                                if logger:
-                                    logger.warning(msg)
-                                else:
-                                    print(msg)
-
-                                # Retry the command
-                                retry_msg = (
-                                    "[#] Rerunning command after modifying topol.top..."
-                                )
-                                if logger:
-                                    logger.info(retry_msg)
-                                else:
-                                    print(retry_msg)
-
-                                # Important: recursive retry, but prevent infinite loops
-                                return run_gromacs_command(
-                                    command,
-                                    pipe_input=pipe_input,
-                                    debug=debug,
-                                    logger=logger,
-                                )
-
-                    except Exception as e:
-                        fail_msg = f"[!] Failed to modify topol.top: {e}"
-                        if logger:
-                            logger.error(fail_msg)
-                        else:
-                            print(fail_msg)
+                    for attempt in range(10):
+                        try:
+                            with open(top_path, "r", encoding="utf-8") as f:
+                                lines = f.readlines()
+                            if 0 <= line_num - 1 < len(lines):
+                                if not lines[line_num - 1].strip().startswith(";"):
+                                    lines[line_num - 1] = f";{lines[line_num - 1]}"
+                                    with open(top_path, "w", encoding="utf-8") as f:
+                                        f.writelines(lines)
+                                    msg = (
+                                        f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
+                                        f" Commenting out line {line_num} in topol.top and rerunning (attempt {attempt + 1}/10)..."
+                                    )
+                                    if logger:
+                                        logger.warning(msg)
+                                    else:
+                                        print(msg)
+                            retry_msg = f"[#] Rerunning command after modifying topol.top (attempt {attempt + 1}/10)..."
+                            if logger:
+                                logger.info(retry_msg)
+                            else:
+                                print(retry_msg)
+                            # Rerun the command
+                            result = subprocess.run(
+                                command,
+                                input=pipe_input,
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                            )
+                            stderr = result.stderr.strip()
+                            stdout = result.stdout.strip()
+                            error_text = f"{stderr}\n{stdout}".lower()
+                            if result.returncode == 0:
+                                if stdout:
+                                    if logger:
+                                        logger.info("[STDOUT] %s", stdout)
+                                    else:
+                                        print(stdout)
+                                return True
+                            if "no default periodic improper dih. types" not in error_text:
+                                break  # Different error, stop retrying
+                        except Exception as e:
+                            fail_msg = f"[ERROR] Failed to modify topol.top: {e}"
+                            if logger:
+                                logger.error(fail_msg)
+                            else:
+                                print(fail_msg)
+                    # If we get here, all attempts failed
+                    fail_msg = "[!] Failed to resolve improper dihedral error after 10 attempts."
+                    if logger:
+                        logger.error(fail_msg)
+                    else:
+                        print(fail_msg)
                 else:
                     fallback_msg = "[!] Detected dihedral error, but couldn't find line number in topol.top."
                     if logger:
                         logger.warning(fallback_msg)
                     else:
                         print(fallback_msg)
-
-            return False  # Final return if not resolved
+                return False
 
         else:
             # If successful, optionally print/log stdout
