@@ -268,7 +268,7 @@ class ToolChecker(LoggingMixin):
     @auto_monitor
     def _detect_dependency(self, dep_info: DependencyInfo) -> Optional[str]:
         """
-        Detect individual dependency using multiple strategies.
+        Detect individual dependency using intensive HPC-aware strategies.
 
         Args:
             dep_info: Dependency information
@@ -276,23 +276,69 @@ class ToolChecker(LoggingMixin):
         Returns:
             Path to executable if found, None otherwise
         """
-        # Strategy 1: Check PATH
+        self._log_debug(f"Intensive detection for {dep_info.name} ({dep_info.executable})")
+
+        # Strategy 1: Check current PATH
         path = shutil.which(dep_info.executable)
         if path:
+            self._log_debug(f"Found in PATH: {path}")
             return path
 
-        # Strategy 2: Check common installation directories
+        # Strategy 2: Check environment variables (multiple variations)
+        env_vars = [
+            f"{dep_info.name.upper()}_PATH",
+            f"{dep_info.name.upper()}_HOME",
+            f"{dep_info.name.upper()}_DIR",
+            f"{dep_info.executable.upper()}_PATH",
+            f"{dep_info.executable.upper()}_HOME"
+        ]
+
+        for env_var in env_vars:
+            env_path = os.environ.get(env_var)
+            if env_path:
+                # Check if it's a directory or file
+                if os.path.isdir(env_path):
+                    potential_path = os.path.join(env_path, dep_info.executable)
+                    if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
+                        self._log_debug(f"Found via env var {env_var}: {potential_path}")
+                        return potential_path
+                elif os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+                    self._log_debug(f"Found via env var {env_var}: {env_path}")
+                    return env_path
+
+        # Strategy 3: Check module system (Lmod/Environment Modules)
+        module_path = self._check_module_system(dep_info)
+        if module_path:
+            self._log_debug(f"Found via module system: {module_path}")
+            return module_path
+
+        # Strategy 4: Check common installation directories
         common_paths = self._get_common_paths(dep_info.name)
         for common_path in common_paths:
             if os.path.exists(common_path) and os.access(common_path, os.X_OK):
+                self._log_debug(f"Found in common path: {common_path}")
                 return common_path
 
-        # Strategy 3: Check environment variables
-        env_var = f"{dep_info.name.upper()}_PATH"
-        env_path = os.environ.get(env_var)
-        if env_path and os.path.exists(env_path):
-            return env_path
+        # Strategy 5: Check HPC-specific paths
+        hpc_paths = self._get_hpc_paths(dep_info)
+        for hpc_path in hpc_paths:
+            if os.path.exists(hpc_path) and os.access(hpc_path, os.X_OK):
+                self._log_debug(f"Found in HPC path: {hpc_path}")
+                return hpc_path
 
+        # Strategy 6: Interactive shell probing
+        shell_path = self._probe_shell_environment(dep_info)
+        if shell_path:
+            self._log_debug(f"Found via shell probe: {shell_path}")
+            return shell_path
+
+        # Strategy 7: Extended PATH checking with subprocess
+        extended_path = self._check_extended_path(dep_info)
+        if extended_path:
+            self._log_debug(f"Found via extended PATH: {extended_path}")
+            return extended_path
+
+        self._log_debug(f"No path found for {dep_info.name}")
         return None
 
     def _get_common_paths(self, tool_name: str) -> List[str]:
@@ -341,6 +387,139 @@ class ToolChecker(LoggingMixin):
         }
 
         return common_paths.get(tool_name.lower(), [])
+
+    def _check_module_system(self, dep_info: DependencyInfo) -> Optional[str]:
+        """Check if dependency is available through module system (Lmod/Environment Modules)."""
+        try:
+            # Try to get module path using 'which' after loading module
+            module_names = [
+                dep_info.name.lower(),
+                dep_info.executable,
+                f"{dep_info.name.lower()}/{dep_info.executable}",
+                f"{dep_info.executable}/{dep_info.name.lower()}"
+            ]
+
+            for module_name in module_names:
+                try:
+                    # Try to get the path using module show
+                    result = subprocess.run(
+                        ["module", "show", module_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        # Parse module show output to find PATH additions
+                        for line in result.stdout.split('\n'):
+                            if 'PATH' in line and '=' in line:
+                                path_part = line.split('=')[1].strip()
+                                potential_path = os.path.join(path_part, dep_info.executable)
+                                if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
+                                    return potential_path
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    continue
+
+        except Exception as e:
+            self._log_debug(f"Module system check failed: {e}")
+
+        return None
+
+    def _get_hpc_paths(self, dep_info: DependencyInfo) -> List[str]:
+        """Get HPC-specific installation paths."""
+        hpc_paths = []
+
+        # Common HPC installation directories
+        hpc_dirs = [
+            "/opt/apps",
+            "/usr/local/apps",
+            "/sw",
+            "/apps",
+            "/opt/software",
+            "/usr/local/software",
+            "/opt/modules",
+            "/usr/local/modules",
+            "/opt/packages",
+            "/usr/local/packages"
+        ]
+
+        for hpc_dir in hpc_dirs:
+            if os.path.exists(hpc_dir):
+                # Look for tool-specific directories
+                tool_dirs = [
+                    os.path.join(hpc_dir, dep_info.name.lower()),
+                    os.path.join(hpc_dir, dep_info.executable),
+                    os.path.join(hpc_dir, dep_info.name.upper()),
+                    os.path.join(hpc_dir, dep_info.executable.upper())
+                ]
+
+                for tool_dir in tool_dirs:
+                    if os.path.exists(tool_dir):
+                        # Look for bin directory
+                        bin_dir = os.path.join(tool_dir, "bin")
+                        if os.path.exists(bin_dir):
+                            potential_path = os.path.join(bin_dir, dep_info.executable)
+                            hpc_paths.append(potential_path)
+
+                        # Also check the tool_dir itself
+                        potential_path = os.path.join(tool_dir, dep_info.executable)
+                        hpc_paths.append(potential_path)
+
+        return hpc_paths
+
+    def _probe_shell_environment(self, dep_info: DependencyInfo) -> Optional[str]:
+        """Probe shell environment for the dependency."""
+        try:
+            # Try to get path using shell command
+            shell_commands = [
+                f"which {dep_info.executable}",
+                f"command -v {dep_info.executable}",
+                f"type -p {dep_info.executable}"
+            ]
+
+            for cmd in shell_commands:
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        path = result.stdout.strip()
+                        if os.path.exists(path) and os.access(path, os.X_OK):
+                            return path
+                except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+                    continue
+
+        except Exception as e:
+            self._log_debug(f"Shell environment probe failed: {e}")
+
+        return None
+
+    def _check_extended_path(self, dep_info: DependencyInfo) -> Optional[str]:
+        """Check extended PATH using subprocess."""
+        try:
+            # Get extended PATH from shell
+            result = subprocess.run(
+                "echo $PATH",
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                path_dirs = result.stdout.strip().split(':')
+                for path_dir in path_dirs:
+                    potential_path = os.path.join(path_dir, dep_info.executable)
+                    if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
+                        return potential_path
+
+        except Exception as e:
+            self._log_debug(f"Extended PATH check failed: {e}")
+
+        return None
 
     @auto_monitor
     def _get_dependency_version(self, dep_name: str, path: str) -> Optional[str]:
