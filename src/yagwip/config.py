@@ -467,34 +467,26 @@ class ToolChecker(LoggingMixin):
         return hpc_paths
 
     def _probe_shell_environment(self, dep_info: DependencyInfo) -> Optional[str]:
-        """Probe shell environment for the dependency."""
         try:
-            # Try to get path using shell command
+            # Try to get path using an interactive shell that sources .bashrc
             shell_commands = [
-                f"which {dep_info.executable}",
-                f"command -v {dep_info.executable}",
-                f"type -p {dep_info.executable}"
+                f"bash -i -c 'source ~/.bashrc && which {dep_info.executable}'",
+                f"bash -i -c 'module load {dep_info.name.lower()} && which {dep_info.executable}'"
             ]
-
             for cmd in shell_commands:
-                try:
-                    result = subprocess.run(
-                        cmd,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    if result.returncode == 0 and result.stdout.strip():
-                        path = result.stdout.strip()
-                        if os.path.exists(path) and os.access(path, os.X_OK):
-                            return path
-                except (subprocess.TimeoutExpired, subprocess.SubprocessError):
-                    continue
-
+                result = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    path = result.stdout.strip()
+                    if os.path.exists(path) and os.access(path, os.X_OK):
+                        return path
         except Exception as e:
             self._log_debug(f"Shell environment probe failed: {e}")
-
         return None
 
     def _check_extended_path(self, dep_info: DependencyInfo) -> Optional[str]:
