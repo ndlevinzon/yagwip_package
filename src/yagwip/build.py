@@ -18,10 +18,10 @@ import numpy as np
 from .base import YagwipBase
 from .utils import (
     run_gromacs_command,
-    ToolChecker,
     build_adjacency_matrix_fast,
     find_bonds_spatial,
 )
+from .config import get_tool_checker
 from .log import auto_monitor
 
 # Constants for GROMACS command inputs
@@ -497,11 +497,15 @@ class LigandPipeline(YagwipBase):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        orca_path = ToolChecker.check_orca_available()  # Check if ORCA is available
+        # Get ToolChecker instance with configuration
+        from .config import get_tool_checker
+        tool_checker = get_tool_checker()
+
+        orca_path = tool_checker.check_orca_available()  # Check if ORCA is available
         if orca_path is None:
             return False
         openmpi_path = (
-            ToolChecker.check_openmpi_available()
+            tool_checker.check_openmpi_available()
         )  # Check if OpenMPI is available
         if openmpi_path is None:
             return False
@@ -671,11 +675,15 @@ class LigandPipeline(YagwipBase):
         Args:
             mol2_file (str): Path to the input .mol2 file.
         """
-        acpype_path = ToolChecker.check_acpype_available()
+        # Get ToolChecker instance with configuration
+        from .config import get_tool_checker
+        tool_checker = get_tool_checker()
+
+        acpype_path = tool_checker.check_acpype_available()
         if acpype_path is None:
             self._log_warning("[ERROR] ACPYPE not found. Skipping acpype step.")
             return False
-        cmd = f"{acpype_path} -i {mol2_file} -c user"
+        cmd = f"{acpype_path} -i {mol2_file}"
         self._log_info(f"[RUNNING] {cmd}")
         try:
             result = subprocess.run(
