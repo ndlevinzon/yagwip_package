@@ -69,42 +69,7 @@ class YagwipBase(LoggingMixin, ABC):
         """Component-specific initialization. Override in subclasses."""
         pass
 
-    def _log_message(self, level: LogLevel, message: str, **kwargs):
-        """
-        Standardized logging method with consistent formatting.
 
-        Args:
-            level: Log level from LogLevel enum
-            message: Message to log
-            **kwargs: Additional context
-        """
-        formatted_message = f"[{level.value}] {message}"
-        if kwargs:
-            context = " ".join(f"{k}={v}" for k, v in kwargs.items())
-            formatted_message += f" ({context})"
-
-        self._log(formatted_message)
-
-    def _log_debug(self, message: str, **kwargs):
-        """Log debug message."""
-        if self.debug:
-            self._log_message(LogLevel.DEBUG, message, **kwargs)
-
-    def _log_info(self, message: str, **kwargs):
-        """Log info message."""
-        self._log_message(LogLevel.INFO, message, **kwargs)
-
-    def _log_warning(self, message: str, **kwargs):
-        """Log warning message."""
-        self._log_message(LogLevel.WARNING, message, **kwargs)
-
-    def _log_error(self, message: str, **kwargs):
-        """Log error message."""
-        self._log_message(LogLevel.ERROR, message, **kwargs)
-
-    def _log_success(self, message: str, **kwargs):
-        """Log success message."""
-        self._log_message(LogLevel.SUCCESS, message, **kwargs)
 
     @auto_monitor
     def _validate_file_exists(self, filepath: str, description: str = "File") -> bool:
