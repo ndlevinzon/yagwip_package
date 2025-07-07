@@ -18,7 +18,7 @@ module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 # ------------------------
 # VARIABLES
 # ------------------------
-init="__INIT__"
+init="__INIT__.solv.ions"
 mini_prefix="em"
 nvt_prefix="nvt"
 npt_prefix="npt"
