@@ -156,7 +156,6 @@ class YagwipBase(LoggingMixin, ABC):
         Returns:
             True if command successful, False otherwise
         """
-        from .utils import run_gromacs_command
 
         # Enhanced debug mode: Show detailed information but still execute
         if self.debug:

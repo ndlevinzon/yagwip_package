@@ -23,6 +23,7 @@ import sys
 from .base import YagwipBase
 from .utils import *
 from importlib.resources import files
+from .config import validate_gromacs_installation
 import importlib.metadata
 import random
 
