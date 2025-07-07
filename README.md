@@ -420,7 +420,7 @@ If you use YAGWIP in your research, please cite:
 @software{yagwip2024,
   title={YAGWIP: Yet Another GROMACS Wrapper In Python},
   author={Levinzon, Nate and Mailhot, Olivier},
-  year={2024},
+  year={2025},
   url={https://github.com/ndlevinzon/yagwip_package}
 }
 ```
