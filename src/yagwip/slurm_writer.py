@@ -38,7 +38,7 @@ class SlurmWriter(YagwipBase):
 
         # Copy minimization SLURM file for tremd
         if sim_type == "tremd":
-            min_slurm = self.template_dir / "run_gmx_tremd_min_cpu.slurm"
+            min_slurm = self.template_dir / "run_gmx_min_cpu.slurm"
             if min_slurm.is_file():
                 try:
                     with open(str(min_slurm), "r", encoding="utf-8") as f:
@@ -50,7 +50,7 @@ class SlurmWriter(YagwipBase):
                     min_content = re.sub(
                         r"__INIT__", "complex" or "PLACEHOLDER", min_content
                     )
-                    out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
+                    out_min_slurm = "run_gmx_min_cpu.slurm"
                     with open(out_min_slurm, "w", encoding="utf-8") as f:
                         f.write(min_content)
                     self._log_success(
@@ -60,7 +60,7 @@ class SlurmWriter(YagwipBase):
                     self._log_error(f"Failed to configure SLURM script: {e}")
             else:
                 self._log_warning(
-                    "run_gmx_tremd_min_cpu.slurm not found in template directory."
+                    "run_gmx_min_cpu.slurm not found in template directory."
                 )
 
         # Main SLURM template
