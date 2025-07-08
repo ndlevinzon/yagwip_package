@@ -42,7 +42,9 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
     prompt = "YAGTRAJ> "
 
     def __init__(self, gmx_path):
-        super().__init__(gmx_path=gmx_path, debug=False)
+        cmd.Cmd.__init__(self)
+        # Initialize YagwipBase with our parameters
+        YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
         self.current_tpr = None  # Current TPR file
         self.current_traj = None  # Current trajectory file
         self.print_banner()  # Prints intro banner to command line
