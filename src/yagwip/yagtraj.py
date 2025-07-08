@@ -574,9 +574,9 @@ def analyze_replica(replica: str, outdir: str, deffnm: str = "remd"):
     if os.path.exists(tpr_src):
         shutil.copy(tpr_src, tpr_dst)
     # RMSD
-    subprocess.run(f"echo 4 4 | gmx rms -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsd.xvg -res", shell=True, check=True)
+    subprocess.run(f"echo 4 4 | gmx rms -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsd.xvg", shell=True, check=True)
     # RMSF
-    subprocess.run(f"echo 4 | gmx rmsf -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsf.xvg -res", shell=True, check=True)
+    subprocess.run(f"echo 4 | gmx rmsf -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsf.xvg", shell=True, check=True)
     # PCA
     centered = os.path.join(outdir, "traj_centered.xtc")
     centered_rt = os.path.join(outdir, "traj_centered_rot_trans.xtc")
