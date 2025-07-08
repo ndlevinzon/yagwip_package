@@ -353,11 +353,11 @@ def is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
 
     # Check for common invalid combinations
     invalid_pairs = [
-        ("H", "H"),  # H-H bonds
-        ("F", "F"),  # F-F bonds (rare and unstable)
+        ("H", "H"),    # H-H bonds
+        ("F", "F"),    # F-F bonds (rare and unstable)
         ("CL", "CL"),  # Cl-Cl bonds (rare in organic molecules)
         ("BR", "BR"),  # Br-Br bonds (rare in organic molecules)
-        ("I", "I"),  # I-I bonds (rare in organic molecules)
+        ("I", "I"),    # I-I bonds (rare in organic molecules)
     ]
 
     for invalid_i, invalid_j in invalid_pairs:

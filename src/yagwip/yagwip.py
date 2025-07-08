@@ -63,11 +63,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
 
         self.current_pdb_path = None  # Full path to the loaded PDB file
-        self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
-        self.basename = None  # Base PDB filename (without extension)
-        self.print_banner()  # Prints intro banner to command line
-        self.user_itp_paths = []  # Stores user input paths for do_source
-        self.editor = Editor()  # Initialize the file Editor class from utils.py
+        self.ligand_pdb_path = None   # Full path to the ligand PDB file, if any
+        self.basename = None          # Base PDB filename (without extension)
+        self.print_banner()           # Prints intro banner to command line
+        self.user_itp_paths = []      # Stores user input paths for do_source
+        self.editor = Editor()        # Initialize the file Editor class from utils.py
         self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
         # Initialize the Editor class from utils.py
         self.modeller = Modeller(
