@@ -460,202 +460,65 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         except Exception as e:
             self._log_error(f"T-REMD demux pipeline failed: {e}")
 
-    def do_tremd_rmsd(self, arg):
+    def do_analyze_replicas(self, arg):
         """
-        Calculate RMSD for TREMD trajectories.
-        Usage: tremd_rmsd <replica_count> [output_prefix]
+        Run the full T-REMD analysis pipeline:
+        - Detect replica directories
+        - Aggregate logs
+        - Run demux
+        - Demultiplex trajectories
+        - Analyze each replica (move/copy files, run GROMACS analyses: RMSD, RMSF, PCA, temperature extraction)
+        - Combine energy files and extract potential
+
+        Usage: analyze_replicas <input_dir> <deffnm> <demux_script>
+        Example: analyze_replicas . remd demux.pl
         """
-        if not self._require_files():
+        args = arg.strip().split()
+        if len(args) < 3:
+            self._log_error("Usage: analyze_replicas <input_dir> <deffnm> <demux_script>")
             return
 
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log_error("Usage: tremd_rmsd <replica_count> [output_prefix]")
-            return
+        input_dir, deffnm, demux_script = args[0], args[1], args[2]
+        out_dir = os.path.join(input_dir, "remd_analysis_results")
+        log_tmp = os.path.join(out_dir, "remd_logs")
+        os.makedirs(out_dir, exist_ok=True)
 
         try:
-            replica_count = int(args[0])
-        except ValueError:
-            self._log_error("Replica count must be an integer")
-            return
+            # 1. Detect replicas
+            replicas = detect_replicas(input_dir)
+            self._log_info(f"Found {len(replicas)} TREMD directories: {replicas}")
 
-        output_prefix = args[1] if len(args) > 1 else "tremd_rmsd"
+            # 2. Aggregate logs
+            aggregate_logs(replicas, f"{deffnm}.log", log_tmp)
+            self._log_info("Aggregated logs.")
 
-        self._log_info(f"Calculating RMSD for {replica_count} TREMD replicas")
+            # 3. Run demux
+            run_demux(os.path.join(log_tmp, "REMD.log"), out_dir, demux_script)
+            self._log_info("Ran demux.")
 
-        for i in range(replica_count):
-            traj_file = f"demux{i+1}.xtc"
-            if not os.path.exists(traj_file):
-                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
-                continue
+            # 4. Demultiplex trajectories
+            xtc_files = [f"{i}/{deffnm}.xtc" for i in replicas]
+            demux_trajectories(xtc_files, os.path.join(out_dir, "replica_index.xvg"))
+            self._log_info("Demultiplexed trajectories.")
 
-            output_file = f"{output_prefix}_replica{i+1}.xvg"
-            command = f"{self.gmx_path} rms -s {self.current_tpr} -f {traj_file} -o {output_file}"
+            # 5. Analyze each replica
+            for replica in replicas:
+                self._log_info(f"Processing replica {replica}...")
+                rep_outdir = os.path.join(out_dir, f"replica_{replica}")
+                analyze_replica(replica, rep_outdir, deffnm)
+                self._log_info(f"Replica {replica} analysis complete.")
 
-            success = run_gromacs_command(
-                command=command,
-                pipe_input="4\n4\n",  # Select backbone for both reference and fit
-                debug=self.debug,
-                logger=self.logger,
-            )
+            # 6. Combine energy files and extract potential
+            edr_files = [f"{i}/{deffnm}.edr" for i in replicas if os.path.exists(f"{i}/{deffnm}.edr")]
+            combined_edr = os.path.join(out_dir, "combined.edr")
+            if edr_files:
+                combine_energies(edr_files, combined_edr)
+                extract_potential(combined_edr, os.path.join(out_dir, "kbT_scalar.xvg"))
+                self._log_info("Combined energy files and extracted potential.")
 
-            if success:
-                self._log_success(
-                    f"RMSD calculation completed for replica {i+1}. Output: {output_file}"
-                )
-            else:
-                self._log_error(f"RMSD calculation failed for replica {i+1}")
-
-    def do_tremd_rmsf(self, arg):
-        """
-        Calculate RMSF for TREMD trajectories.
-        Usage: tremd_rmsf <replica_count> [output_prefix]
-        """
-        if not self._require_files():
-            return
-
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log_error("Usage: tremd_rmsf <replica_count> [output_prefix]")
-            return
-
-        try:
-            replica_count = int(args[0])
-        except ValueError:
-            self._log_error("Replica count must be an integer")
-            return
-
-        output_prefix = args[1] if len(args) > 1 else "tremd_rmsf"
-
-        self._log_info(f"Calculating RMSF for {replica_count} TREMD replicas")
-
-        for i in range(replica_count):
-            traj_file = f"demux{i+1}.xtc"
-            if not os.path.exists(traj_file):
-                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
-                continue
-
-            output_file = f"{output_prefix}_replica{i+1}.xvg"
-            command = f"{self.gmx_path} rmsf -s {self.current_tpr} -f {traj_file} -o {output_file}"
-
-            success = run_gromacs_command(
-                command=command,
-                pipe_input="4\n",  # Select backbone
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if success:
-                self._log_success(
-                    f"RMSF calculation completed for replica {i+1}. Output: {output_file}"
-                )
-            else:
-                self._log_error(f"RMSF calculation failed for replica {i+1}")
-
-    def do_tremd_pca(self, arg):
-        """
-        Perform PCA analysis on TREMD trajectories.
-        Usage: tremd_pca <replica_count> [output_prefix]
-        """
-        if not self._require_files():
-            return
-
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log_error("Usage: tremd_pca <replica_count> [output_prefix]")
-            return
-
-        try:
-            replica_count = int(args[0])
-        except ValueError:
-            self._log_error("Replica count must be an integer")
-            return
-
-        output_prefix = args[1] if len(args) > 1 else "tremd_pca"
-
-        self._log_info(f"Performing PCA analysis for {replica_count} TREMD replicas")
-
-        for i in range(replica_count):
-            traj_file = f"demux{i+1}.xtc"
-            if not os.path.exists(traj_file):
-                self._log_warning(f"Trajectory file {traj_file} not found, skipping")
-                continue
-
-            # Covariance matrix
-            covar_file = f"{output_prefix}_replica{i+1}_covar.xvg"
-            command = f"{self.gmx_path} covar -s {self.current_tpr} -f {traj_file} -o {covar_file}"
-
-            success = run_gromacs_command(
-                command=command,
-                pipe_input="4\n4\n",  # Select backbone for both reference and fit
-                debug=self.debug,
-                logger=self.logger,
-            )
-
-            if success:
-                self._log_success(
-                    f"PCA analysis completed for replica {i+1}. Output: {covar_file}"
-                )
-            else:
-                self._log_error(f"PCA analysis failed for replica {i+1}")
-
-    def do_tremd_temp(self, arg):
-        """
-        Analyze temperature exchange in TREMD simulations.
-        Usage: tremd_temp [output_file]
-        """
-        if not self._require_files():
-            return
-
-        output_file = arg.strip() if arg.strip() else "tremd_temp.xvg"
-
-        command = f"{self.gmx_path} energy -s {self.current_tpr}"
-        if self.current_traj:
-            command += f" -f {self.current_traj}"
-        command += f" -o {output_file}"
-
-        self._log_info("Analyzing temperature exchange in TREMD simulation")
-
-        success = run_gromacs_command(
-            command=command,
-            pipe_input="16\n",  # Select temperature
-            debug=self.debug,
-            logger=self.logger,
-        )
-
-        if success:
-            self._log_success(f"Temperature analysis completed. Output: {output_file}")
-        else:
-            self._log_error("Temperature analysis failed.")
-
-    def do_tremd_energy(self, arg):
-        """
-        Analyze energy exchange in TREMD simulations.
-        Usage: tremd_energy [output_file]
-        """
-        if not self._require_files():
-            return
-
-        output_file = arg.strip() if arg.strip() else "tremd_energy.xvg"
-
-        command = f"{self.gmx_path} energy -s {self.current_tpr}"
-        if self.current_traj:
-            command += f" -f {self.current_traj}"
-        command += f" -o {output_file}"
-
-        self._log_info("Analyzing energy exchange in TREMD simulation")
-
-        success = run_gromacs_command(
-            command=command,
-            pipe_input="10\n",  # Select potential energy
-            debug=self.debug,
-            logger=self.logger,
-        )
-
-        if success:
-            self._log_success(f"Energy analysis completed. Output: {output_file}")
-        else:
-            self._log_error("Energy analysis failed.")
+            self._log_success(f"Full T-REMD analysis pipeline complete. Results in {out_dir}")
+        except Exception as e:
+            self._log_error(f"T-REMD analysis pipeline failed: {e}")
 
     def do_info(self, arg):
         """Show information about loaded files."""
