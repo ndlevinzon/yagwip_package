@@ -486,20 +486,6 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         try:
             # 1. Detect replicas
             replicas = detect_replicas(input_dir)
-            self._log_info(f"Found {len(replicas)} TREMD directories: {replicas}")
-
-            # 2. Aggregate logs
-            aggregate_logs(replicas, f"{deffnm}.log", log_tmp)
-            self._log_info("Aggregated logs.")
-
-            # 3. Run demux
-            run_demux(os.path.join(log_tmp, "REMD.log"), out_dir, demux_script)
-            self._log_info("Ran demux.")
-
-            # 4. Demultiplex trajectories
-            xtc_files = [f"{i}/{deffnm}.xtc" for i in replicas]
-            demux_trajectories(xtc_files, os.path.join(out_dir, "replica_index.xvg"))
-            self._log_info("Demultiplexed trajectories.")
 
             # 5. Analyze each replica
             for replica in replicas:
