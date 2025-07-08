@@ -419,24 +419,24 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
     def do_tremd_demux(self, arg):
         """
-        Perform full T-REMD demultiplexing pipeline:
-        - Detect replica directories
-        - Aggregate logs
-        - Run demux
-        - Demultiplex trajectories
-
-        Usage: tremd_demux <input_dir> <deffnm> <demux_script>
-        Example: tremd_demux . remd demux.pl
+        Perform full T-REMD demultiplexing pipeline using defaults:
+        - input_dir: current working directory
+        - deffnm: 'remd'
+        - demux_script: 'demux.pl'
+        Usage: tremd_demux
         """
-        args = arg.strip().split()
-        if len(args) < 3:
-            self._log_error("Usage: tremd_demux <input_dir> <deffnm> <demux_script>")
-            return
-
-        input_dir, deffnm, demux_script = args[0], args[1], args[2]
+        import os
+        input_dir = os.getcwd()
+        deffnm = 'remd'
+        demux_script = 'demux.pl'
         out_dir = os.path.join(input_dir, "remd_analysis_results")
         log_tmp = os.path.join(out_dir, "remd_logs")
         os.makedirs(out_dir, exist_ok=True)
+
+        # Store for later use by analyze_replicas
+        self.last_tremd_input_dir = input_dir
+        self.last_tremd_deffnm = deffnm
+        self.last_tremd_demux_script = demux_script
 
         try:
             # 1. Detect replicas
