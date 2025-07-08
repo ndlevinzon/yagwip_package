@@ -462,39 +462,36 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
     def do_analyze_replicas(self, arg):
         """
-        Run the full T-REMD analysis pipeline:
-        - Detect replica directories
-        - Aggregate logs
-        - Run demux
-        - Demultiplex trajectories
-        - Analyze each replica (move/copy files, run GROMACS analyses: RMSD, RMSF, PCA, temperature extraction)
-        - Combine energy files and extract potential
-
-        Usage: analyze_replicas <input_dir> <deffnm> <demux_script>
-        Example: analyze_replicas . remd demux.pl
+        Analyze each demuxed replica after demuxing has been performed.
+        Usage: analyze_replicas
         """
-        args = arg.strip().split()
-        if len(args) < 3:
-            self._log_error("Usage: analyze_replicas <input_dir> <deffnm> <demux_script>")
+        # Use last values from tremd_demux
+        input_dir = getattr(self, "last_tremd_input_dir", None)
+        deffnm = getattr(self, "last_tremd_deffnm", None)
+        demux_script = getattr(self, "last_tremd_demux_script", None)
+        if not input_dir or not deffnm or not demux_script:
+            self._log_error("You must run tremd_demux before analyze_replicas.")
             return
 
-        input_dir, deffnm, demux_script = args[0], args[1], args[2]
         out_dir = os.path.join(input_dir, "remd_analysis_results")
-        log_tmp = os.path.join(out_dir, "remd_logs")
-        os.makedirs(out_dir, exist_ok=True)
+        replica_index_path = os.path.join(out_dir, "replica_index.xvg")
+        if not os.path.exists(replica_index_path):
+            self._log_error("Demuxing has not been performed. Run tremd_demux first.")
+            return
 
         try:
-            # 1. Detect replicas
+            # Detect replicas
             replicas = detect_replicas(input_dir)
+            self._log_info(f"Found {len(replicas)} TREMD directories: {replicas}")
 
-            # 5. Analyze each replica
+            # Analyze each replica
             for replica in replicas:
                 self._log_info(f"Processing replica {replica}...")
                 rep_outdir = os.path.join(out_dir, f"replica_{replica}")
                 analyze_replica(replica, rep_outdir, deffnm)
                 self._log_info(f"Replica {replica} analysis complete.")
 
-            # 6. Combine energy files and extract potential
+            # Combine energy files and extract potential
             edr_files = [f"{i}/{deffnm}.edr" for i in replicas if os.path.exists(f"{i}/{deffnm}.edr")]
             combined_edr = os.path.join(out_dir, "combined.edr")
             if edr_files:
@@ -502,7 +499,7 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
                 extract_potential(combined_edr, os.path.join(out_dir, "kbT_scalar.xvg"))
                 self._log_info("Combined energy files and extracted potential.")
 
-            self._log_success(f"Full T-REMD analysis pipeline complete. Results in {out_dir}")
+            self._log_success(f"Replica analysis complete. Results in {out_dir}")
         except Exception as e:
             self._log_error(f"T-REMD analysis pipeline failed: {e}")
 
@@ -594,39 +591,15 @@ def analyze_replica(replica: str, outdir: str, deffnm: str = "remd"):
         shutil.copy(edr_src, edr_dst)
         subprocess.run(f"echo Temperature | gmx energy -f {edr_dst} -o {outdir}/temp.xvg", shell=True, check=True)
 
+
 def combine_energies(edr_files: List[str], out_file: str):
     cmd = ["gmx", "eneconv", "-f"] + edr_files + ["-o", out_file]
     subprocess.run(cmd, check=True)
 
+
 def extract_potential(edr_file: str, out_file: str):
     cmd = ["gmx", "energy", "-f", edr_file, "-o", out_file]
     subprocess.run(cmd, input="Potential\n", text=True, check=True)
-
-def tremd_analyze(input_dir: str, out_dir: str, deffnm: str = "remd", demux_script: str = "demux.pl"):
-    print(f"Detecting replica directories in {input_dir}...")
-    replicas = detect_replicas(input_dir)
-    print(f"Found {len(replicas)} TREMD directories: {replicas}")
-    os.makedirs(out_dir, exist_ok=True)
-    log_tmp = os.path.join(out_dir, "remd_logs")
-    print("Aggregating logs...")
-    aggregate_logs(replicas, f"{deffnm}.log", log_tmp)
-    print("Running demux...")
-    run_demux(os.path.join(log_tmp, "REMD.log"), out_dir, demux_script)
-    print("Demultiplexing trajectories...")
-    xtc_files = [f"{i}/{deffnm}.xtc" for i in replicas]
-    demux_trajectories(xtc_files, os.path.join(out_dir, "replica_index.xvg"))
-    for replica in replicas:
-        print(f"Processing replica {replica}...")
-        rep_outdir = os.path.join(out_dir, f"replica_{replica}")
-        analyze_replica(replica, rep_outdir, deffnm)
-        print(f"Replica {replica} complete.")
-    print("Combining energy files...")
-    edr_files = [f"{i}/{deffnm}.edr" for i in replicas if os.path.exists(f"{i}/{deffnm}.edr")]
-    combined_edr = os.path.join(out_dir, "combined.edr")
-    if edr_files:
-        combine_energies(edr_files, combined_edr)
-        extract_potential(combined_edr, os.path.join(out_dir, "kbT_scalar.xvg"))
-    print(f"All REMD replicas analyzed. Results in {out_dir}/")
 
 
 def main():
@@ -635,18 +608,11 @@ def main():
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
     )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
-    parser.add_argument("--tremd_analysis", action="store_true", help="Run T-REMD analysis pipeline")
     parser.add_argument("--input", type=str, help="Input directory for T-REMD analysis")
     parser.add_argument("--out", type=str, help="Output directory for T-REMD analysis")
     parser.add_argument("--deffnm", default="remd", help="Base name for trajectory/log files (T-REMD)")
     parser.add_argument("--demux-script", default="demux.pl", help="Demux script (default: demux.pl) (T-REMD)")
     args = parser.parse_args()
-    if args.tremd_analysis:
-        if not args.input or not args.out:
-            print("[!] --input and --out are required with --tremd_analysis")
-            _sys.exit(1)
-        tremd_analyze(args.input, args.out, args.deffnm, args.demux_script)
-        _sys.exit(0)
     cli = YagtrajShell("gmx")
     if args.file:
         try:
