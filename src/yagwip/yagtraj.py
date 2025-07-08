@@ -43,19 +43,20 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
     def __init__(self, gmx_path):
         cmd.Cmd.__init__(self)
-        # Initialize YagwipBase with our parameters
         YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
         self.current_tpr = None  # Current TPR file
         self.current_traj = None  # Current trajectory file
+        self.basename = None  # Base name for loaded TPR
+        self.user_itp_paths = []  # For future extensibility
+        self.custom_cmds = {k: "" for k in ("rmsd", "rgyr", "sasa", "hbond", "distance", "energy", "trjconv")}  # Example for traj analysis
         self.print_banner()  # Prints intro banner to command line
-
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             self._log_error(f"GROMACS Validation Error: {e}")
             self._log_error(
-                "YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
+                "YAGTRAJ cannot start without GROMACS. Please install GROMACS and try again."
             )
             sys.exit(1)
 
@@ -65,27 +66,90 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
     def do_debug(self, arg):
         """
-        Debug Mode: Simply prints commands to the command line that
-        would have otherwise be executed. Prints to console instead of log
+        Debug Mode: Enhanced logging with detailed resource statistics and command information.
+        Commands are still executed, but with verbose output including system resources.
 
-        Usage: Toggle with 'debug', 'debug on', or 'debug off'"
+        Usage: Toggle with 'debug', 'debug on', or 'debug off'
         """
         arg = arg.lower().strip()
-
-        # Parse input to determine new debug state
         if arg == "on":
             self.debug = True
         elif arg == "off":
             self.debug = False
         else:
             self.debug = not self.debug
-
-        # Update logger and simulation mode
         from .log import setup_logger
-
         self.logger = setup_logger(debug_mode=self.debug)
+        if self.debug:
+            self._log_info("Debug mode is now ON")
+            self._log_info("Enhanced debug mode will show:")
+            self._log_info("  - Detailed command information")
+            self._log_info("  - System resource statistics")
+            self._log_info("  - Runtime monitoring data")
+            self._log_info("  - All commands will still be executed")
+        else:
+            self._log_info("Debug mode is now OFF")
 
-        self._log_info(f"Debug mode is now {'ON' if self.debug else 'OFF'}")
+    def do_set(self, arg):
+        """
+        Edit the default command string for rmsd, rgyr, sasa, hbond, distance, energy, trjconv.
+        Usage:
+            set rmsd
+            set rgyr
+            set sasa
+            set hbond
+            set distance
+            set energy
+            set trjconv
+        The user is shown the current command and can modify it inline.
+        Press ENTER to accept the modified command.
+        Type 'quit' to cancel.
+        """
+        valid_keys = list(self.custom_cmds.keys())
+        cmd_key = arg.strip().lower()
+        if cmd_key not in valid_keys:
+            self._log_error(f"Usage: set <{'|'.join(valid_keys)}>")
+            return
+        default = self.custom_cmds[cmd_key] or f"[DEFAULT {cmd_key.upper()} COMMAND]"
+        self._log_info(f"Current command for {cmd_key}: {default}")
+        new_cmd = input(f"Edit command for {cmd_key} (ENTER to keep, 'quit' to cancel): ")
+        if new_cmd.strip().lower() == "quit":
+            self._log_info("Edit cancelled.")
+            return
+        if new_cmd.strip():
+            self.custom_cmds[cmd_key] = new_cmd.strip()
+            self._log_success(f"Custom command for {cmd_key} set.")
+        else:
+            self._log_info("No changes made.")
+
+    def do_show(self, arg):
+        """
+        Show current custom or default commands for trajectory analysis.
+        Usage: show
+        """
+        for k in self.custom_cmds:
+            cmd_str = self.custom_cmds.get(k)
+            self._log_info(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
+
+    def do_runtime(self, arg):
+        """
+        Show runtime statistics and performance metrics.
+        Usage: runtime
+        """
+        if hasattr(self, "runtime_monitor"):
+            summary = self.runtime_monitor.get_summary()
+            if summary:
+                self._log_info("=== Runtime Statistics ===")
+                self._log_info(f"Total Operations: {summary['total_operations']}")
+                self._log_info(f"Successful: {summary['successful_operations']}")
+                self._log_info(f"Failed: {summary['failed_operations']}")
+                self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
+                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
+                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
+            else:
+                self._log_info("No runtime data available yet.")
+        else:
+            self._log_info("Runtime monitoring not available.")
 
     def print_banner(self):
         """
