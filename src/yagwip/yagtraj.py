@@ -419,44 +419,46 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
 
     def do_tremd_demux(self, arg):
         """
-        Demultiplex TREMD trajectory.
-        Usage: tremd_demux <replica_count> [output_prefix]
+        Perform full T-REMD demultiplexing pipeline:
+        - Detect replica directories
+        - Aggregate logs
+        - Run demux
+        - Demultiplex trajectories
+
+        Usage: tremd_demux <input_dir> <deffnm> <demux_script>
+        Example: tremd_demux . remd demux.pl
         """
-        if not self._require_files():
+        args = arg.strip().split()
+        if len(args) < 3:
+            self._log_error("Usage: tremd_demux <input_dir> <deffnm> <demux_script>")
             return
 
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log_error("Usage: tremd_demux <replica_count> [output_prefix]")
-            return
+        input_dir, deffnm, demux_script = args[0], args[1], args[2]
+        out_dir = os.path.join(input_dir, "remd_analysis_results")
+        log_tmp = os.path.join(out_dir, "remd_logs")
+        os.makedirs(out_dir, exist_ok=True)
 
         try:
-            replica_count = int(args[0])
-        except ValueError:
-            self._log_error("Replica count must be an integer")
-            return
+            # 1. Detect replicas
+            replicas = detect_replicas(input_dir)
+            self._log_info(f"Found {len(replicas)} TREMD directories: {replicas}")
 
-        output_prefix = args[1] if len(args) > 1 else "demux"
+            # 2. Aggregate logs
+            aggregate_logs(replicas, f"{deffnm}.log", log_tmp)
+            self._log_info("Aggregated logs.")
 
-        command = f"{self.gmx_path} trjcat -s {self.current_tpr}"
-        if self.current_traj:
-            command += f" -f {self.current_traj}"
-        command += f" -demux {output_prefix} -n {replica_count}"
+            # 3. Run demux
+            run_demux(os.path.join(log_tmp, "REMD.log"), out_dir, demux_script)
+            self._log_info("Ran demux.")
 
-        self._log_info(f"Demultiplexing TREMD trajectory for {replica_count} replicas")
+            # 4. Demultiplex trajectories
+            xtc_files = [f"{i}/{deffnm}.xtc" for i in replicas]
+            demux_trajectories(xtc_files, os.path.join(out_dir, "replica_index.xvg"))
+            self._log_info("Demultiplexed trajectories.")
 
-        success = run_gromacs_command(
-            command=command,
-            debug=self.debug,
-            logger=self.logger,
-        )
-
-        if success:
-            self._log_success(
-                f"TREMD demultiplexing completed. Output prefix: {output_prefix}"
-            )
-        else:
-            self._log_error("TREMD demultiplexing failed.")
+            self._log_success(f"T-REMD demux pipeline complete. Results in {out_dir}")
+        except Exception as e:
+            self._log_error(f"T-REMD demux pipeline failed: {e}")
 
     def do_tremd_rmsd(self, arg):
         """
