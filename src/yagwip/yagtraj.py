@@ -778,7 +778,7 @@ def tremd_analyze(input_dir: str, out_dir: str, deffnm: str = "remd", demux_scri
     print(f"All REMD replicas analyzed. Results in {out_dir}/")
 
 
-def _main_with_tremd():
+def __main__():
     parser = _argparse.ArgumentParser(description="YAGTRAJ - GROMACS MD Analysis")
     parser.add_argument(
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
@@ -814,4 +814,4 @@ def _main_with_tremd():
 
 # Patch the entrypoint
 if __name__ == "__main__":
-    _main_with_tremd()
+    __main__
