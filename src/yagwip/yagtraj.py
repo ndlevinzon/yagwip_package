@@ -20,10 +20,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 import cmd
 import sys
+import os
 from .base import YagwipBase
-from .utils import *
-from importlib.resources import files
 from .config import validate_gromacs_installation
+from .utils import *
+import argparse as _argparse
+import shutil
+import subprocess
+from typing import List
+import sys as _sys
+from importlib.resources import files
 import importlib.metadata
 import random
 
@@ -611,35 +617,135 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
         self._log_info("Goodbye!")
         return True
 
+# --- T-REMD Analysis Utilities ---
 
-def main():
-    parser = argparse.ArgumentParser(description="YAGTRAJ - GROMACS MD Analysis")
+def detect_replicas(input_dir: str) -> List[str]:
+    """Detect replica directories named as integers."""
+    return sorted([d for d in os.listdir(input_dir) if d.isdigit() and os.path.isdir(os.path.join(input_dir, d))], key=int)
+
+def aggregate_logs(replicas: List[str], log_name: str, log_tmp: str):
+    os.makedirs(log_tmp, exist_ok=True)
+    for i in replicas:
+        src = f"{i}/{log_name}"
+        dst = f"{log_tmp}/remd_{i}.log"
+        if os.path.exists(src):
+            shutil.copy(src, dst)
+    with open(f"{log_tmp}/REMD.log", "w") as outfile:
+        for i in replicas:
+            log_path = f"{log_tmp}/remd_{i}.log"
+            if os.path.exists(log_path):
+                with open(log_path) as infile:
+                    outfile.write(infile.read())
+
+def run_demux(log_file: str, out_dir: str, demux_script: str = "demux.pl"):
+    subprocess.run([demux_script, log_file], check=True)
+    for fname in ["replica_index.xvg", "replica_temp.xvg"]:
+        if os.path.exists(fname):
+            shutil.move(fname, out_dir)
+
+def demux_trajectories(xtc_files: List[str], index_file: str):
+    cmd = ["gmx", "trjcat", "-f"] + xtc_files + ["-demux", index_file]
+    subprocess.run(cmd, check=True)
+
+def analyze_replica(replica: str, outdir: str, deffnm: str = "remd"):
+    os.makedirs(outdir, exist_ok=True)
+    # Move demuxed .xtc
+    xtc_src = f"{replica}_trajout.xtc"
+    xtc_dst = os.path.join(outdir, f"{replica}_trajout.xtc")
+    if os.path.exists(xtc_src):
+        shutil.move(xtc_src, xtc_dst)
+    # Copy .tpr
+    tpr_src = f"{replica}/{deffnm}.tpr"
+    tpr_dst = os.path.join(outdir, f"demuxed_{replica}.tpr")
+    if os.path.exists(tpr_src):
+        shutil.copy(tpr_src, tpr_dst)
+    # RMSD
+    subprocess.run(f"echo 4 4 | gmx rms -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsd.xvg -res", shell=True, check=True)
+    # RMSF
+    subprocess.run(f"echo 4 | gmx rmsf -s {tpr_dst} -f {xtc_dst} -o {outdir}/rmsf.xvg -res", shell=True, check=True)
+    # PCA
+    centered = os.path.join(outdir, "traj_centered.xtc")
+    centered_rt = os.path.join(outdir, "traj_centered_rot_trans.xtc")
+    subprocess.run(f"echo 0 0 | gmx trjconv -s {tpr_dst} -f {xtc_dst} -o {centered} -center -pbc mol", shell=True, check=True)
+    subprocess.run(f"echo 0 0 | gmx trjconv -s {tpr_dst} -f {centered} -o {centered_rt} -ur compact -fit rot+trans", shell=True, check=True)
+    subprocess.run(f"echo 4 4 | gmx covar -s {tpr_dst} -f {centered_rt} -o {outdir}/eigenval.xvg -v {outdir}/eigenvec.trr", shell=True, check=True)
+    subprocess.run(f"echo 4 4 | gmx anaeig -v {outdir}/eigenvec.trr -s {tpr_dst} -f {centered_rt} -proj {outdir}/proj.xvg", shell=True, check=True)
+    # Temperature extraction
+    edr_src = f"{replica}/{deffnm}.edr"
+    edr_dst = os.path.join(outdir, "ener.edr")
+    if os.path.exists(edr_src):
+        shutil.copy(edr_src, edr_dst)
+        subprocess.run(f"echo Temperature | gmx energy -f {edr_dst} -o {outdir}/temp.xvg", shell=True, check=True)
+
+def combine_energies(edr_files: List[str], out_file: str):
+    cmd = ["gmx", "eneconv", "-f"] + edr_files + ["-o", out_file]
+    subprocess.run(cmd, check=True)
+
+def extract_potential(edr_file: str, out_file: str):
+    cmd = ["gmx", "energy", "-f", edr_file, "-o", out_file]
+    subprocess.run(cmd, input="Potential\n", text=True, check=True)
+
+def tremd_analyze(input_dir: str, out_dir: str, deffnm: str = "remd", demux_script: str = "demux.pl"):
+    print(f"Detecting replica directories in {input_dir}...")
+    replicas = detect_replicas(input_dir)
+    print(f"Found {len(replicas)} TREMD directories: {replicas}")
+    os.makedirs(out_dir, exist_ok=True)
+    log_tmp = os.path.join(out_dir, "remd_logs")
+    print("Aggregating logs...")
+    aggregate_logs(replicas, f"{deffnm}.log", log_tmp)
+    print("Running demux...")
+    run_demux(os.path.join(log_tmp, "REMD.log"), out_dir, demux_script)
+    print("Demultiplexing trajectories...")
+    xtc_files = [f"{i}/{deffnm}.xtc" for i in replicas]
+    demux_trajectories(xtc_files, os.path.join(out_dir, "replica_index.xvg"))
+    for replica in replicas:
+        print(f"Processing replica {replica}...")
+        rep_outdir = os.path.join(out_dir, f"replica_{replica}")
+        analyze_replica(replica, rep_outdir, deffnm)
+        print(f"Replica {replica} complete.")
+    print("Combining energy files...")
+    edr_files = [f"{i}/{deffnm}.edr" for i in replicas if os.path.exists(f"{i}/{deffnm}.edr")]
+    combined_edr = os.path.join(out_dir, "combined.edr")
+    if edr_files:
+        combine_energies(edr_files, combined_edr)
+        extract_potential(combined_edr, os.path.join(out_dir, "kbT_scalar.xvg"))
+    print(f"All REMD replicas analyzed. Results in {out_dir}/")
+
+
+def _main_with_tremd():
+    parser = _argparse.ArgumentParser(description="YAGTRAJ - GROMACS MD Analysis")
     parser.add_argument(
         "-i", "--interactive", action="store_true", help="Run interactive CLI"
     )
     parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
-
+    parser.add_argument("--tremd_analysis", action="store_true", help="Run T-REMD analysis pipeline")
+    parser.add_argument("--input", type=str, help="Input directory for T-REMD analysis")
+    parser.add_argument("--out", type=str, help="Output directory for T-REMD analysis")
+    parser.add_argument("--deffnm", default="remd", help="Base name for trajectory/log files (T-REMD)")
+    parser.add_argument("--demux-script", default="demux.pl", help="Demux script (default: demux.pl) (T-REMD)")
     args = parser.parse_args()
+    if args.tremd_analysis:
+        if not args.input or not args.out:
+            print("[!] --input and --out are required with --tremd_analysis")
+            _sys.exit(1)
+        tremd_analyze(args.input, args.out, args.deffnm, args.demux_script)
+        _sys.exit(0)
     cli = YagtrajShell("gmx")
-
     if args.file:
-        # Batch mode: read and execute commands from file
         try:
             with open(args.file, "r") as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith(
-                        "#"
-                    ):  # skip empty lines and comments
+                    if line and not line.startswith("#"):
                         print(f"YAGTRAJ> {line}")
                         cli.onecmd(line)
         except FileNotFoundError:
             print(f"[!] File '{args.file}' not found.")
-            sys.exit(1)
+            _sys.exit(1)
     else:
-        # Interactive mode
         cli.cmdloop()
 
 
+# Patch the entrypoint
 if __name__ == "__main__":
-    main()
+    _main_with_tremd()

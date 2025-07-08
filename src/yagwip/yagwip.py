@@ -305,6 +305,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     "ligand.itp not found. Running ligand builder pipeline..."
                 )
                 # Copy amber14sb.ff files into current dir
+                # Source: https://www.gromacs.org/user_contributions.html
                 amber_ff_source = str(
                     files("yagwip.templates").joinpath("amber14sb.ff/")
                 )
