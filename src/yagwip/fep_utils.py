@@ -647,7 +647,7 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
             coord = coordB
         else:
             coord = (0.0, 0.0, 0.0)
-        pdb_lines.append(f"ATOM  {i+1:5d} {atom_name:<4s} LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
+        pdb_lines.append(f"HETATM  {i+1:5d}  {atom_name:<4s} LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
     with open(out_pdb, 'w') as f:
         for line in pdb_lines:
             f.write(line)
