@@ -37,9 +37,10 @@ import pandas as pd
 from .build import Builder, Modeller, LigandPipeline
 from .sim import Sim
 from .base import YagwipBase
-from .utils import Editor, complete_filename
+from .utils import complete_filename
 from .config import validate_gromacs_installation
 from .slurm_utils import SlurmWriter
+from .forcefield_utils import Editor
 
 # === Metadata ===
 __author__ = "NDL, gregorpatof"
