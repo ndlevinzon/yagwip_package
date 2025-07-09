@@ -545,6 +545,7 @@ def filter_topology_sections(df, present_indices):
     """
     Filter a topology DataFrame (e.g., bonds, angles) to only include terms where all atom indices are present.
     Also renumber atom indices to be sequential starting from 1.
+    Filter out bonds where an atom is bound to itself (ai == aj).
     """
     present = set(present_indices)
     if 'ai' in df.columns:
@@ -552,6 +553,11 @@ def filter_topology_sections(df, present_indices):
         for col in ['aj', 'ak', 'al']:
             if col in df.columns:
                 mask &= df[col].astype(int).isin(present)
+
+        # For bonds, filter out self-bonds (ai == aj)
+        if 'aj' in df.columns and 'ai' in df.columns:
+            mask &= (df['ai'].astype(int) != df['aj'].astype(int))
+
         filtered_df = df[mask].copy()
 
         # Create a mapping from old indices to new sequential indices
