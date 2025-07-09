@@ -583,46 +583,6 @@ def filter_topology_sections(df, present_indices):
     return df.copy()
 
 
-def filter_hybrid_terms(hybrid_terms, present_indices):
-    """
-    Filter hybrid terms (bonds, angles, dihedrals) to only include terms where all atom indices are present.
-    Filter out self-bonds and terms with out-of-bounds atom indices.
-    """
-    present = set(present_indices)
-    max_atom_idx = max(present) if present else 0
-    filtered_terms = []
-
-    for term in hybrid_terms:
-        # Get atom indices from the term
-        if hasattr(term, 'ai') and hasattr(term, 'aj'):
-            ai, aj = term.ai, term.aj
-            # Check if both atoms are present and not the same
-            if ai in present and aj in present and ai != aj:
-                # Check bounds
-                if ai <= max_atom_idx and aj <= max_atom_idx:
-                    filtered_terms.append(term)
-        elif hasattr(term, 'ai') and hasattr(term, 'aj') and hasattr(term, 'ak'):
-            ai, aj, ak = term.ai, term.aj, term.ak
-            # Check if all atoms are present and not the same
-            if ai in present and aj in present and ak in present:
-                # Check bounds
-                if ai <= max_atom_idx and aj <= max_atom_idx and ak <= max_atom_idx:
-                    # Check for invalid angles (any two atoms the same)
-                    if ai != aj and aj != ak and ai != ak:
-                        filtered_terms.append(term)
-        elif hasattr(term, 'ai') and hasattr(term, 'aj') and hasattr(term, 'ak') and hasattr(term, 'al'):
-            ai, aj, ak, al = term.ai, term.aj, term.ak, term.al
-            # Check if all atoms are present
-            if ai in present and aj in present and ak in present and al in present:
-                # Check bounds
-                if ai <= max_atom_idx and aj <= max_atom_idx and ak <= max_atom_idx and al <= max_atom_idx:
-                    # Check for invalid dihedrals (any two atoms the same)
-                    if ai != aj and ai != ak and ai != al and aj != ak and aj != al and ak != al:
-                        filtered_terms.append(term)
-
-    return filtered_terms
-
-
 def build_lambda_atom_list(dfA, dfB, mapping, lam):
     """
     For each lambda, return the atom list (index, atom_name, origA_idx, origB_idx, atom_type) to be present.
@@ -802,6 +762,38 @@ Usage:
 """)
 
 
+def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam):
+    """
+    Create hybrid topology for a specific lambda value with proper filtering.
+    """
+    # Get atom list for this lambda
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+    present_indices = [idx for idx, _, _, _, _ in atom_list]
+
+    # Create hybrid atoms
+    hybrid_atoms = build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam)
+
+    # Filter topology sections to only include present atoms and remove invalid terms
+    bonds = filter_topology_sections(bondsA, present_indices)
+    angles = filter_topology_sections(anglesA, present_indices)
+    dihedrals = filter_topology_sections(dihedA, present_indices)
+
+    # Create dummy parameters for missing terms
+    dummy_bond_params = {'r': '0.0', 'k': '0.0'}
+    dummy_angle_params = {'r': '0.0', 'k': '0.0'}
+    dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
+
+    # Convert to hybrid terms using filtered sections
+    hybrid_bonds = build_hybrid_terms(bonds, bondsB, mapping, ['ai', 'aj'], HybridBond, dummy_bond_params,
+                                      dummy_bond_params)
+    hybrid_angles = build_hybrid_terms(angles, anglesB, mapping, ['ai', 'aj', 'ak'], HybridAngle, dummy_angle_params,
+                                       dummy_angle_params)
+    hybrid_dihedrals = build_hybrid_terms(dihedrals, dihedB, mapping, ['ai', 'aj', 'ak', 'al'], HybridDihedral,
+                                          dummy_dihedral_params, dummy_dihedral_params)
+
+    return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print_help()
@@ -837,9 +829,6 @@ if __name__ == "__main__":
         dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
-            atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
-            present_indices = [idx for idx, _, _, _, _ in atom_list]
-            hybrid_atoms = build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam)
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
             import os
@@ -848,23 +837,10 @@ if __name__ == "__main__":
                 os.makedirs(lam_dir)
             outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
 
-            # Create dummy parameters for missing terms
-            dummy_bond_params = {'r': '0.0', 'k': '0.0'}
-            dummy_angle_params = {'r': '0.0', 'k': '0.0'}
-            dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
-
-            # Filter original topology sections to only include present atoms
-            bonds = filter_topology_sections(bondsA, present_indices)
-            angles = filter_topology_sections(anglesA, present_indices)
-            dihedrals = filter_topology_sections(dihedA, present_indices)
-
-            # Convert to hybrid terms using filtered sections
-            hybrid_bonds = build_hybrid_terms(bonds, bondsB, mapping, ['ai', 'aj'], HybridBond, dummy_bond_params,
-                                              dummy_bond_params)
-            hybrid_angles = build_hybrid_terms(angles, anglesB, mapping, ['ai', 'aj', 'ak'], HybridAngle,
-                                               dummy_angle_params, dummy_angle_params)
-            hybrid_dihedrals = build_hybrid_terms(dihedrals, dihedB, mapping, ['ai', 'aj', 'ak', 'al'], HybridDihedral,
-                                                  dummy_dihedral_params, dummy_dihedral_params)
+            # Create hybrid topology for this lambda
+            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = create_hybrid_topology_for_lambda(
+                dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+            )
 
             write_hybrid_topology(
                 outfilename,
