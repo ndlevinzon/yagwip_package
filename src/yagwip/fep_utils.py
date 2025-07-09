@@ -414,8 +414,11 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
     hybrid_terms = []
     for _, row in merged.iterrows():
         mapped = row['_merge'] == 'both'
-        valsA = [row.get(f'{c}A', dummyA[c]) for c in dummyA.keys()]
-        valsB = [row.get(f'{c}B', dummyB[c]) for c in dummyB.keys()]
+        # Get all parameter columns for A and B
+        par_cols_A = [col for col in row.index if col.endswith('A') and col.startswith('par')]
+        par_cols_B = [col for col in row.index if col.endswith('B') and col.startswith('par')]
+        valsA = [row.get(col, dummyA.get(col.replace('A', ''), '')) for col in par_cols_A]
+        valsB = [row.get(col, dummyB.get(col.replace('B', ''), '')) for col in par_cols_B]
         indices = [int(row[c]) for c in keycols]
         functA = row.get('functA')
         functB = row.get('functB')
@@ -425,13 +428,13 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
         funct = int(funct)
         if HybridClass == HybridBond:
             ai, aj = indices
-            hybrid_terms.append(HybridBond(ai, aj, funct, valsA[0], valsB[0], mapped))
+            hybrid_terms.append(HybridBond(ai, aj, funct, valsA, valsB, mapped))
         elif HybridClass == HybridAngle:
             ai, aj, ak = indices
-            hybrid_terms.append(HybridAngle(ai, aj, ak, funct, valsA[0], valsB[0], mapped))
+            hybrid_terms.append(HybridAngle(ai, aj, ak, funct, valsA, valsB, mapped))
         elif HybridClass == HybridDihedral:
             ai, aj, ak, al = indices
-            hybrid_terms.append(HybridDihedral(ai, aj, ak, al, funct, valsA[0], valsB[0], mapped))
+            hybrid_terms.append(HybridDihedral(ai, aj, ak, al, funct, valsA, valsB, mapped))
     return hybrid_terms
 
 
@@ -456,14 +459,23 @@ def write_hybrid_topology(
         f.write('\n')
         if hybrid_bonds is not None:
             f.write('[ bonds ]\n')
-            f.write(';  ai    aj funct    par_A  par_B\n')
+            f.write(';  ai    aj funct    par_A1  par_A2  par_B1  par_B2\n')
             for bond in hybrid_bonds:
                 ai = getattr(bond, 'ai', bond['ai'])
                 aj = getattr(bond, 'aj', bond['aj'])
                 funct = getattr(bond, 'funct', bond['funct'])
-                parA = getattr(bond, 'parA', bond.get('parA', ''))
-                parB = getattr(bond, 'parB', bond.get('parB', ''))
-                f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
+                parA = getattr(bond, 'parA', bond.get('parA', []))
+                parB = getattr(bond, 'parB', bond.get('parB', []))
+                # Handle both single values and lists
+                if isinstance(parA, list):
+                    parA_str = ' '.join(str(p) for p in parA)
+                else:
+                    parA_str = str(parA)
+                if isinstance(parB, list):
+                    parB_str = ' '.join(str(p) for p in parB)
+                else:
+                    parB_str = str(parB)
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         if hybrid_pairs is not None:
             f.write('[ pairs ]\n')
@@ -476,29 +488,47 @@ def write_hybrid_topology(
             f.write('\n')
         if hybrid_angles is not None:
             f.write('[ angles ]\n')
-            f.write(';  ai    aj    ak funct    par_A   par_B\n')
+            f.write(';  ai    aj    ak funct    par_A1   par_A2   par_B1   par_B2\n')
             for angle in hybrid_angles:
                 ai = getattr(angle, 'ai', angle['ai'])
                 aj = getattr(angle, 'aj', angle['aj'])
                 ak = getattr(angle, 'ak', angle['ak'])
                 funct = getattr(angle, 'funct', angle['funct'])
-                parA = getattr(angle, 'parA', angle.get('parA', ''))
-                parB = getattr(angle, 'parB', angle.get('parB', ''))
-                f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
+                parA = getattr(angle, 'parA', angle.get('parA', []))
+                parB = getattr(angle, 'parB', angle.get('parB', []))
+                # Handle both single values and lists
+                if isinstance(parA, list):
+                    parA_str = ' '.join(str(p) for p in parA)
+                else:
+                    parA_str = str(parA)
+                if isinstance(parB, list):
+                    parB_str = ' '.join(str(p) for p in parB)
+                else:
+                    parB_str = str(parB)
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         if hybrid_dihedrals is not None:
             f.write('[ dihedrals ]\n')
-            f.write(';  ai    aj    ak    al funct    par_A   par_B\n')
+            f.write(';  ai    aj    ak    al funct    par_A1   par_A2   par_A3   par_B1   par_B2   par_B3\n')
             for dih in hybrid_dihedrals:
                 ai = getattr(dih, 'ai', dih['ai'])
                 aj = getattr(dih, 'aj', dih['aj'])
                 ak = getattr(dih, 'ak', dih['ak'])
                 al = getattr(dih, 'al', dih['al'])
                 funct = getattr(dih, 'funct', dih['funct'])
-                parA = getattr(dih, 'parA', dih.get('parA', ''))
-                parB = getattr(dih, 'parB', dih.get('parB', ''))
+                parA = getattr(dih, 'parA', dih.get('parA', []))
+                parB = getattr(dih, 'parB', dih.get('parB', []))
+                # Handle both single values and lists
+                if isinstance(parA, list):
+                    parA_str = ' '.join(str(p) for p in parA)
+                else:
+                    parA_str = str(parA)
+                if isinstance(parB, list):
+                    parB_str = ' '.join(str(p) for p in parB)
+                else:
+                    parB_str = str(parB)
                 f.write(
-                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
+                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         f.write('[ system ]\n')
         f.write('; Name\n')
@@ -728,12 +758,12 @@ if __name__ == "__main__":
         dfA = parse_itp_atoms_full(itpA)
         dfB = parse_itp_atoms_full(itpB)
         mapping = load_atom_map(mapfile)
-        bondsA = parse_itp_section(itpA, 'bonds', 4, ['ai', 'aj', 'funct', 'parA'])
-        bondsB = parse_itp_section(itpB, 'bonds', 4, ['ai', 'aj', 'funct', 'parB'])
-        anglesA = parse_itp_section(itpA, 'angles', 5, ['ai', 'aj', 'ak', 'funct', 'parA'])
-        anglesB = parse_itp_section(itpB, 'angles', 5, ['ai', 'aj', 'ak', 'funct', 'parB'])
-        dihedA = parse_itp_section(itpA, 'dihedrals', 6, ['ai', 'aj', 'ak', 'al', 'funct', 'parA'])
-        dihedB = parse_itp_section(itpB, 'dihedrals', 6, ['ai', 'aj', 'ak', 'al', 'funct', 'parB'])
+        bondsA = parse_itp_section(itpA, 'bonds', 5, ['ai', 'aj', 'funct', 'parA1', 'parA2'])
+        bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'parB1', 'parB2'])
+        anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'parA1', 'parA2'])
+        anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'parB1', 'parB2'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'parA1', 'parA2', 'parA3'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'parB1', 'parB2', 'parB3'])
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
             atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
@@ -750,12 +780,26 @@ if __name__ == "__main__":
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
             outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+
+            # Create dummy parameters for missing terms
+            dummy_bond_params = {'par1': '0.0', 'par2': '0.0'}
+            dummy_angle_params = {'par1': '0.0', 'par2': '0.0'}
+            dummy_dihedral_params = {'par1': '0.0', 'par2': '0.0', 'par3': '0.0'}
+
+            # Convert to hybrid terms
+            hybrid_bonds = build_hybrid_terms(bonds, bondsB, mapping, ['ai', 'aj'], HybridBond, dummy_bond_params,
+                                              dummy_bond_params)
+            hybrid_angles = build_hybrid_terms(angles, anglesB, mapping, ['ai', 'aj', 'ak'], HybridAngle,
+                                               dummy_angle_params, dummy_angle_params)
+            hybrid_dihedrals = build_hybrid_terms(dihedrals, dihedB, mapping, ['ai', 'aj', 'ak', 'al'], HybridDihedral,
+                                                  dummy_dihedral_params, dummy_dihedral_params)
+
             write_hybrid_topology(
                 outfilename,
                 hybrid_atoms,
-                hybrid_bonds=bonds.to_dict('records') if not bonds.empty else None,
-                hybrid_angles=angles.to_dict('records') if not angles.empty else None,
-                hybrid_dihedrals=dihedrals.to_dict('records') if not dihedrals.empty else None,
+                hybrid_bonds=hybrid_bonds,
+                hybrid_angles=hybrid_angles,
+                hybrid_dihedrals=hybrid_dihedrals,
                 system_name="LigandA to LigandB Hybrid",
                 molecule_name="HybridMol",
                 nmols=1,
