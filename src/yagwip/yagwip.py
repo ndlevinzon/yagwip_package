@@ -473,22 +473,22 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not self._require_pdb():
             return
 
+        # First, run pdb2gmx on protein only
+        protein_pdb = "protein"
+        output_gro = f"{protein_pdb}.gro"
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
+        )
+        if not os.path.isfile(output_gro):
+            self._log_error(f"Expected {output_gro} was not created.")
+            return
+
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
 
         if lambda_dirs:
             # Case 3: Lambda subdirectories with hybrid files
             self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing hybrid FEP setup...")
-
-            # First, run pdb2gmx on protein only
-            protein_pdb = "protein"
-            output_gro = f"{protein_pdb}.gro"
-            self.builder.run_pdb2gmx(
-                protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
-            )
-            if not os.path.isfile(output_gro):
-                self._log_error(f"Expected {output_gro} was not created.")
-                return
 
             # Process each lambda subdirectory
             for lam_dir in sorted(lambda_dirs):
