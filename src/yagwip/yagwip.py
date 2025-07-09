@@ -470,9 +470,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         3) Lambda subdirectories: processes each lambda window with hybrid files
         Usage: "pdb2gmx"
         """
-        if not self._require_pdb():
-            return
-
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
@@ -555,9 +552,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-        if not self._require_pdb():
-            return
-
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
 
