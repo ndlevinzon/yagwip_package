@@ -512,7 +512,7 @@ def write_hybrid_topology(
             f.write('\n')
         if hybrid_dihedrals is not None:
             f.write('[ dihedrals ]\n')
-            f.write(';  ai    aj    ak    al funct    par_A1   par_A2   par_A3   par_B1   par_B2   par_B3\n')
+            f.write(';  ai    aj    ak    al funct    par_A1   par_A2   par_B1   par_B2\n')
             for dih in hybrid_dihedrals:
                 ai = getattr(dih, 'ai', None)
                 aj = getattr(dih, 'aj', None)
@@ -521,25 +521,23 @@ def write_hybrid_topology(
                 funct = getattr(dih, 'funct', None)
                 parA = getattr(dih, 'parA', [])
                 parB = getattr(dih, 'parB', [])
-                # Handle both single values and lists, ensure exactly 3 parameters for dihedrals
+                # Use function type 2 for all dihedrals (2 parameters: amplitude, phase)
                 if isinstance(parA, list):
-                    # Take only the first 3 parameters for dihedrals
-                    parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:3]
-                    while len(parA_clean) < 3:
+                    parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:2]
+                    while len(parA_clean) < 2:
                         parA_clean.append('0.00')
                     parA_str = ' '.join(str(p) for p in parA_clean)
                 else:
-                    parA_str = '0.00 0.00 0.00'
+                    parA_str = '0.00 0.00'
                 if isinstance(parB, list):
-                    # Take only the first 3 parameters for dihedrals
-                    parB_clean = [p for p in parB if not pd.isna(p) and p != ''][:3]
-                    while len(parB_clean) < 3:
+                    parB_clean = [p for p in parB if not pd.isna(p) and p != ''][:2]
+                    while len(parB_clean) < 2:
                         parB_clean.append('0.00')
                     parB_str = ' '.join(str(p) for p in parB_clean)
                 else:
-                    parB_str = '0.00 0.00 0.00'
+                    parB_str = '0.00 0.00'
                 f.write(
-                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {parA_str} {parB_str}\n')
+                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d}     2 {parA_str} {parB_str}\n')
             f.write('\n')
         f.write('[ system ]\n')
         f.write('; Name\n')
