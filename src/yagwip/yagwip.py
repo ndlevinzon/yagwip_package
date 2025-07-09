@@ -470,6 +470,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         3) Lambda subdirectories: processes each lambda window with hybrid files
         Usage: "pdb2gmx"
         """
+        # if not self._require_pdb():
+        #     return
+
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
@@ -552,6 +555,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
+        # if not self._require_pdb():
+        #     return
+
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
 
@@ -599,16 +605,61 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_genions(self, arg):
         """
-        Run genions with optional custom command override. This command should be run after solvate.
+        Run genions with optional custom command override. Handles three cases:
+        1) Protein-only: adds ions to protein.solv.gro
+        2) Protein + single ligand: adds ions to complex.solv.gro
+        3) Lambda subdirectories: adds ions to hybrid_complex_XX.solv.gro in each lambda directory
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
-        solvated_gro = "complex" if self.ligand_pdb_path else "protein"
-        if not self._require_pdb():
-            return
-        self.builder.run_genions(
-            solvated_gro, custom_command=self.custom_cmds.get("genions")
-        )
+        # if not self._require_pdb():
+        #     return
+
+        # Check if lambda subdirectories exist (case 3)
+        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+
+        if lambda_dirs:
+            # Case 3: Lambda subdirectories with hybrid files
+            self._log_info(
+                f"Found {len(lambda_dirs)} lambda subdirectories. Processing ion addition for each lambda...")
+
+            for lam_dir in sorted(lambda_dirs):
+                lam_value = lam_dir.replace('lambda_', '')
+                self._log_info(f"Adding ions to {lam_dir} (lambda = {lam_value})")
+
+                # Check for solvated hybrid complex file in lambda directory
+                solvated_complex = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.solv.gro")
+
+                if not os.path.exists(solvated_complex):
+                    self._log_warning(f"Solvated hybrid complex not found: {solvated_complex}")
+                    continue
+
+                # Change to lambda directory and run genions
+                original_dir = os.getcwd()
+                os.chdir(lam_dir)
+
+                try:
+                    # Run genions on the solvated hybrid complex
+                    self.builder.run_genions(
+                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("genions")
+                    )
+                    self._log_success(f"Added ions to {solvated_complex}")
+                except Exception as e:
+                    self._log_error(f"Failed to add ions to {lam_dir}: {e}")
+                finally:
+                    # Return to original directory
+                    os.chdir(original_dir)
+
+            self._log_success(f"Processed ion addition for {len(lambda_dirs)} lambda windows")
+
+        else:
+            # Cases 1 & 2: Protein-only or protein + single ligand
+            solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
+            if not self._require_pdb():
+                return
+            self.builder.run_genions(
+                solvated_pdb, custom_command=self.custom_cmds.get("genions")
+            )
 
     def do_em(self, arg):
         """Run energy minimization."""
