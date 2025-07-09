@@ -24,16 +24,14 @@ import cmd
 import sys
 import shutil
 import random
+import subprocess
 import argparse
 import importlib.metadata
 from pathlib import Path
 from importlib.resources import files
 
 # === Third-Party Imports ===
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
+import pandas as pd
 
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
@@ -432,6 +430,38 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     prot_out.write(line)
         self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
         return protein_file, ligand_file
+
+    def do_fep_prep(self, arg):
+        """
+        Run the complete FEP preparation workflow using fep_utils.py CLI.
+        This will:
+        1) Run MCS to generate atom_map.txt
+        2) Generate hybrid topologies for all lambda windows
+        3) Generate hybrid coordinates for all lambda windows
+        """
+        ligandA_mol2 = "ligandA.mol2"
+        ligandB_mol2 = "ligandB.mol2"
+        ligandA_itp = "ligandA.itp"
+        ligandB_itp = "ligandB.itp"
+        atom_map = "atom_map.txt"
+        fep_utils_path = os.path.join(os.path.dirname(__file__), "fep_utils.py")
+        python_exe = sys.executable
+
+        cmds = [
+            [python_exe, fep_utils_path, "mcs", ligandA_mol2, ligandB_mol2, atom_map],
+            [python_exe, fep_utils_path, "hybrid_topology", ligandA_itp, ligandB_itp, atom_map],
+            [python_exe, fep_utils_path, "hybrid_coords", ligandA_mol2, ligandB_mol2, atom_map],
+        ]
+        for cmd in cmds:
+            self._log_info(f"Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                self._log_error(result.stderr)
+                break
+            else:
+                self._log_info(result.stdout)
+        self._log_success("FEP preparation complete.")
+
 
     def do_pdb2gmx(self, arg):
         """
