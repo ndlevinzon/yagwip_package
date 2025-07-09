@@ -521,25 +521,25 @@ def write_hybrid_topology(
                 funct = getattr(dih, 'funct', None)
                 parA = getattr(dih, 'parA', [])
                 parB = getattr(dih, 'parB', [])
-
-                # Use function type 2 for all dihedrals (2 parameters: amplitude, phase)
+                # Handle both single values and lists, ensure exactly 3 parameters for dihedrals
                 if isinstance(parA, list):
-                    parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:2]
-                    while len(parA_clean) < 2:
+                    # Take only the first 3 parameters for dihedrals
+                    parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:3]
+                    while len(parA_clean) < 3:
                         parA_clean.append('0.00')
                     parA_str = ' '.join(str(p) for p in parA_clean)
                 else:
-                    parA_str = '0.00 0.00'
+                    parA_str = '0.00 0.00 0.00'
                 if isinstance(parB, list):
-                    parB_clean = [p for p in parB if not pd.isna(p) and p != ''][:2]
-                    while len(parB_clean) < 2:
+                    # Take only the first 3 parameters for dihedrals
+                    parB_clean = [p for p in parB if not pd.isna(p) and p != ''][:3]
+                    while len(parB_clean) < 3:
                         parB_clean.append('0.00')
                     parB_str = ' '.join(str(p) for p in parB_clean)
                 else:
-                    parB_str = '0.00 0.00'
-
+                    parB_str = '0.00 0.00 0.00'
                 f.write(
-                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {2:5d} {parA_str} {parB_str}\n')
+                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         f.write('[ system ]\n')
         f.write('; Name\n')
@@ -794,7 +794,7 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
     # Create dummy parameters for missing terms
     dummy_bond_params = {'r': '0.0', 'k': '0.0'}
     dummy_angle_params = {'r': '0.0', 'k': '0.0'}
-    dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
+    dummy_dihedral_params = {'r': '0.0', 'k': '0.0'}
 
     # Convert to hybrid terms using filtered sections for both A and B
     hybrid_bonds = build_hybrid_terms(bondsA_filtered, bondsB_filtered, mapping, ['ai', 'aj'], HybridBond,
@@ -839,61 +839,60 @@ if __name__ == "__main__":
             sys.exit(1)
         itpA, itpB, mapfile = sys.argv[2:5]
         dfA = parse_itp_atoms_full(itpA)
-    dfB = parse_itp_atoms_full(itpB)
-    mapping = load_atom_map(mapfile)
-    bondsA = parse_itp_section(itpA, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
-    bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
-    anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
-    anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
-    # Parse dihedrals with flexible column count to handle different function types
-    dihedA = parse_itp_section(itpA, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
-    dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
-    lambdas = np.arange(0, 1.05, 0.05)
-    for lam in lambdas:
-        lam_str = f"{lam:.2f}"
-        lam_dir = f"lambda_{lam_str}"
-        import os
+        dfB = parse_itp_atoms_full(itpB)
+        mapping = load_atom_map(mapfile)
+        bondsA = parse_itp_section(itpA, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
+        bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
+        anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
+        anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 7, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 7, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k'])
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            import os
 
-        if not os.path.exists(lam_dir):
-            os.makedirs(lam_dir)
-        outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
 
-        # Create hybrid topology for this lambda
-        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = create_hybrid_topology_for_lambda(
-            dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
-        )
+            # Create hybrid topology for this lambda
+            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = create_hybrid_topology_for_lambda(
+                dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+            )
 
-        write_hybrid_topology(
-            outfilename,
-            hybrid_atoms,
-            hybrid_bonds=hybrid_bonds,
-            hybrid_angles=hybrid_angles,
-            hybrid_dihedrals=hybrid_dihedrals,
-            system_name="LigandA to LigandB Hybrid",
-            molecule_name="HybridMol",
-            nmols=1,
-        )
-        print(f"Wrote {outfilename}")
-elif cmd == "hybrid_coords":
-    if len(sys.argv) != 5:
-        print("Usage: python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt")
+            write_hybrid_topology(
+                outfilename,
+                hybrid_atoms,
+                hybrid_bonds=hybrid_bonds,
+                hybrid_angles=hybrid_angles,
+                hybrid_dihedrals=hybrid_dihedrals,
+                system_name="LigandA to LigandB Hybrid",
+                molecule_name="HybridMol",
+                nmols=1,
+            )
+            print(f"Wrote {outfilename}")
+    elif cmd == "hybrid_coords":
+        if len(sys.argv) != 5:
+            print("Usage: python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt")
+            sys.exit(1)
+        ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            import os
+
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+            if not os.path.exists(hybrid_itp):
+                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
+                continue
+            hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam)
+            print(f"Wrote {out_pdb}")
+    else:
+        print_help()
         sys.exit(1)
-    ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
-    lambdas = np.arange(0, 1.05, 0.05)
-    for lam in lambdas:
-        lam_str = f"{lam:.2f}"
-        lam_dir = f"lambda_{lam_str}"
-        import os
-
-        if not os.path.exists(lam_dir):
-            os.makedirs(lam_dir)
-        hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-        out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
-        if not os.path.exists(hybrid_itp):
-            print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
-            continue
-        hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam)
-        print(f"Wrote {out_pdb}")
-else:
-    print_help()
-    sys.exit(1)
