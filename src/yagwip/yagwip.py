@@ -548,17 +548,60 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_solvate(self, arg):
         """
-        Run solvate with optional custom command override. This command should be run after pdb2gmx.
+        Run solvate with optional custom command override. Handles three cases:
+        1) Protein-only: solvates protein.gro
+        2) Protein + single ligand: solvates complex.gro
+        3) Lambda subdirectories: solvates hybrid_complex_XX.gro in each lambda directory
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-
-        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
-        self.builder.run_solvate(
-            complex_pdb, custom_command=self.custom_cmds.get("solvate")
-        )
+
+        # Check if lambda subdirectories exist (case 3)
+        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+
+        if lambda_dirs:
+            # Case 3: Lambda subdirectories with hybrid files
+            self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing solvation for each lambda...")
+
+            for lam_dir in sorted(lambda_dirs):
+                lam_value = lam_dir.replace('lambda_', '')
+                self._log_info(f"Solvating {lam_dir} (lambda = {lam_value})")
+
+                # Check for hybrid complex file in lambda directory
+                hybrid_complex = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.gro")
+
+                if not os.path.exists(hybrid_complex):
+                    self._log_warning(f"Hybrid complex not found: {hybrid_complex}")
+                    continue
+
+                # Change to lambda directory and run solvate
+                original_dir = os.getcwd()
+                os.chdir(lam_dir)
+
+                try:
+                    # Run solvate on the hybrid complex
+                    self.builder.run_solvate(
+                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("solvate")
+                    )
+                    self._log_success(f"Solvated {hybrid_complex}")
+                except Exception as e:
+                    self._log_error(f"Failed to solvate {lam_dir}: {e}")
+                finally:
+                    # Return to original directory
+                    os.chdir(original_dir)
+
+            self._log_success(f"Processed solvation for {len(lambda_dirs)} lambda windows")
+
+        else:
+            # Cases 1 & 2: Protein-only or protein + single ligand
+            complex_pdb = "complex" if self.ligand_pdb_path else "protein"
+            if not self._require_pdb():
+                return
+            self.builder.run_solvate(
+                complex_pdb, custom_command=self.custom_cmds.get("solvate")
+            )
 
     def do_genions(self, arg):
         """
@@ -566,11 +609,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
-        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
+        solvated_gro = "complex" if self.ligand_pdb_path else "protein"
         if not self._require_pdb():
             return
         self.builder.run_genions(
-            solvated_pdb, custom_command=self.custom_cmds.get("genions")
+            solvated_gro, custom_command=self.custom_cmds.get("genions")
         )
 
     def do_em(self, arg):
