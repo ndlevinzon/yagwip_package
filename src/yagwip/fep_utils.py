@@ -415,8 +415,8 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
     for _, row in merged.iterrows():
         mapped = row['_merge'] == 'both'
         # Get all parameter columns for A and B
-        par_cols_A = [col for col in row.index if col.endswith('A') and col.startswith('par')]
-        par_cols_B = [col for col in row.index if col.endswith('B') and col.startswith('par')]
+        par_cols_A = [col for col in row.index if col.endswith('A') and 'par' in col]
+        par_cols_B = [col for col in row.index if col.endswith('B') and 'par' in col]
         valsA = [row.get(col, dummyA.get(col.replace('A', ''), '')) for col in par_cols_A]
         valsB = [row.get(col, dummyB.get(col.replace('B', ''), '')) for col in par_cols_B]
         indices = [int(row[c]) for c in keycols]
