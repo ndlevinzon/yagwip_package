@@ -304,17 +304,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 if not os.path.exists(amber_ff_dest):
                     os.makedirs(amber_ff_dest)
                     self._log_info(f"Created directory: {amber_ff_dest}")
-                try:
-                    for item in Path(amber_ff_source).iterdir():
-                        if item.is_file():
-                            content = item.read_text(encoding="utf-8")
-                            dest_file = os.path.join(amber_ff_dest, item.name)
-                            with open(dest_file, "w", encoding="utf-8") as f:
-                                f.write(content)
-                            self._log_debug(f"Copied {item.name}")
-                    self._log_success("Copied all amber14sb.ff files.")
-                except Exception as e:
-                    self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                    try:
+                        for item in Path(amber_ff_source).iterdir():
+                            if item.is_file():
+                                content = item.read_text(encoding="utf-8")
+                                dest_file = os.path.join(amber_ff_dest, item.name)
+                                with open(dest_file, "w", encoding="utf-8") as f:
+                                    f.write(content)
+                                self._log_debug(f"Copied {item.name}")
+                        self._log_success("Copied all amber14sb.ff files.")
+                    except Exception as e:
+                        self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                else:
+                    self._log_info(f"amber14sb.ff already exists, not overwriting.")
                 ligand_pdb = ligand_file
                 mol2_file = f"{ligand_name}.mol2"
                 # Convert PDB to MOL2 with correct naming
@@ -434,21 +436,22 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     files("yagwip.templates").joinpath("amber14sb.ff/")
                 )
                 amber_ff_dest = os.path.abspath("amber14sb.ff")
-
                 if not os.path.exists(amber_ff_dest):
                     os.makedirs(amber_ff_dest)
                     self._log_info(f"Created directory: {amber_ff_dest}")
-                try:
-                    for item in Path(amber_ff_source).iterdir():
-                        if item.is_file():
-                            content = item.read_text(encoding="utf-8")
-                            dest_file = os.path.join(amber_ff_dest, item.name)
-                            with open(dest_file, "w", encoding="utf-8") as f:
-                                f.write(content)
-                            self._log_debug(f"Copied {item.name}")
-                    self._log_success("Copied all amber14sb.ff files.")
-                except Exception as e:
-                    self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                    try:
+                        for item in Path(amber_ff_source).iterdir():
+                            if item.is_file():
+                                content = item.read_text(encoding="utf-8")
+                                dest_file = os.path.join(amber_ff_dest, item.name)
+                                with open(dest_file, "w", encoding="utf-8") as f:
+                                    f.write(content)
+                                self._log_debug(f"Copied {item.name}")
+                        self._log_success("Copied all amber14sb.ff files.")
+                    except Exception as e:
+                        self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                else:
+                    self._log_info(f"amber14sb.ff already exists, not overwriting.")
 
                 ligand_pdb = "ligand.pdb"
                 mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
