@@ -461,11 +461,11 @@ def write_hybrid_topology(
             f.write('[ bonds ]\n')
             f.write(';  ai    aj funct    par_A1  par_A2  par_B1  par_B2\n')
             for bond in hybrid_bonds:
-                ai = getattr(bond, 'ai', bond['ai'])
-                aj = getattr(bond, 'aj', bond['aj'])
-                funct = getattr(bond, 'funct', bond['funct'])
-                parA = getattr(bond, 'parA', bond.get('parA', []))
-                parB = getattr(bond, 'parB', bond.get('parB', []))
+                ai = getattr(bond, 'ai', None)
+                aj = getattr(bond, 'aj', None)
+                funct = getattr(bond, 'funct', None)
+                parA = getattr(bond, 'parA', [])
+                parB = getattr(bond, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
                     parA_str = ' '.join(str(p) for p in parA)
@@ -490,12 +490,12 @@ def write_hybrid_topology(
             f.write('[ angles ]\n')
             f.write(';  ai    aj    ak funct    par_A1   par_A2   par_B1   par_B2\n')
             for angle in hybrid_angles:
-                ai = getattr(angle, 'ai', angle['ai'])
-                aj = getattr(angle, 'aj', angle['aj'])
-                ak = getattr(angle, 'ak', angle['ak'])
-                funct = getattr(angle, 'funct', angle['funct'])
-                parA = getattr(angle, 'parA', angle.get('parA', []))
-                parB = getattr(angle, 'parB', angle.get('parB', []))
+                ai = getattr(angle, 'ai', None)
+                aj = getattr(angle, 'aj', None)
+                ak = getattr(angle, 'ak', None)
+                funct = getattr(angle, 'funct', None)
+                parA = getattr(angle, 'parA', [])
+                parB = getattr(angle, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
                     parA_str = ' '.join(str(p) for p in parA)
@@ -511,13 +511,13 @@ def write_hybrid_topology(
             f.write('[ dihedrals ]\n')
             f.write(';  ai    aj    ak    al funct    par_A1   par_A2   par_A3   par_B1   par_B2   par_B3\n')
             for dih in hybrid_dihedrals:
-                ai = getattr(dih, 'ai', dih['ai'])
-                aj = getattr(dih, 'aj', dih['aj'])
-                ak = getattr(dih, 'ak', dih['ak'])
-                al = getattr(dih, 'al', dih['al'])
-                funct = getattr(dih, 'funct', dih['funct'])
-                parA = getattr(dih, 'parA', dih.get('parA', []))
-                parB = getattr(dih, 'parB', dih.get('parB', []))
+                ai = getattr(dih, 'ai', None)
+                aj = getattr(dih, 'aj', None)
+                ak = getattr(dih, 'ak', None)
+                al = getattr(dih, 'al', None)
+                funct = getattr(dih, 'funct', None)
+                parA = getattr(dih, 'parA', [])
+                parB = getattr(dih, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
                     parA_str = ' '.join(str(p) for p in parA)
