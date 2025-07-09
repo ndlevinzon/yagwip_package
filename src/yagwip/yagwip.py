@@ -348,10 +348,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_error(f"Failed to copy amber14sb.ff files: {e}")
         else:
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
+
         mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file)
         if not mol2_file or not os.path.isfile(mol2_file):
             self._log_error(f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline...")
             return
+
         with open(mol2_file, encoding="utf-8") as f:
             lines = f.readlines()
         atom_start = atom_end = None
@@ -394,9 +396,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             multiplicity=multiplicity,
         )
         self.ligand_pipeline.run_orca(orca_geom_input)
-        self.ligand_pipeline.apply_orca_charges_to_mol2(
-            mol2_file, f"orca/{ligand_name}.property.txt"
-        )
+
+        # Check if ORCA property file exists before applying charges
+        property_file = f"orca/{ligand_name}.property.txt"
+        if not os.path.exists(property_file):
+            self._log_error(f"ORCA property file not found: {property_file}. ORCA calculation may have failed.")
+            return
+
+        self.ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, property_file)
         self.ligand_pipeline.run_acpype(mol2_file)
         self.ligand_pipeline.copy_acpype_output_files(mol2_file)
 
