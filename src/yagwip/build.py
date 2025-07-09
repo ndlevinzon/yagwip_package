@@ -160,7 +160,7 @@ class LigandPipeline(YagwipBase):
         super().__init__(debug=debug, logger=logger)
 
     @auto_monitor
-    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
+    def convert_pdb_to_mol2(self, pdb_file, mol2_file):
         """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
