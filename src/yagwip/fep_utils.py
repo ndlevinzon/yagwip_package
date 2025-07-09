@@ -4,6 +4,7 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 
+
 # =====================
 # Utility Functions
 # =====================
@@ -30,6 +31,7 @@ def parse_mol2_coords(filename):
             names[idx] = name
     return coords, names
 
+
 def load_atom_map(filename):
     mapping = {}
     with open(filename) as f:
@@ -40,10 +42,12 @@ def load_atom_map(filename):
             mapping[a] = b
     return mapping
 
+
 def write_atom_map(mapping, filename):
     with open(filename, 'w') as f:
         for a, b in mapping.items():
             f.write(f"{a} {b}\n")
+
 
 # =====================
 # MCS Code
@@ -55,11 +59,13 @@ class Atom:
         self.neighbors = set()
         self.degree = 0
 
+
 class Bond:
     def __init__(self, a1, a2, order):
         self.a1 = a1
         self.a2 = a2
         self.order = order
+
 
 class MolGraph:
     def __init__(self):
@@ -139,6 +145,7 @@ class MolGraph:
             sg.atoms[idx].degree = len(sg.adj[idx])
         return sg
 
+
 def are_isomorphic(g1, g2):
     if len(g1.atoms) != len(g2.atoms):
         return False, None
@@ -148,6 +155,7 @@ def are_isomorphic(g1, g2):
                             if atom1.element == atom2.element and atom1.degree == atom2.degree]
         if not candidates[idx1]:
             return False, None
+
     def backtrack(mapping, used2):
         if len(mapping) == len(g1.atoms):
             return True, dict(mapping)
@@ -177,7 +185,9 @@ def are_isomorphic(g1, g2):
             del mapping[idx1]
             used2.remove(idx2)
         return False, None
+
     return backtrack({}, set())
+
 
 def enumerate_connected_subgraphs(graph, size):
     results = set()
@@ -195,6 +205,7 @@ def enumerate_connected_subgraphs(graph, size):
                         stack.append((new_nodes, nbr))
     return [set(s) for s in results]
 
+
 def find_mcs(g1, g2):
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
@@ -209,9 +220,9 @@ def find_mcs(g1, g2):
                 elem_count1[a.element] += 1
             subgraphs2 = [s for s in enumerate_connected_subgraphs(g2, size)
                           if all(
-                              sum(g2.atoms[i].element == e for i in s) == c
-                              for e, c in elem_count1.items()
-                          )]
+                    sum(g2.atoms[i].element == e for i in s) == c
+                    for e, c in elem_count1.items()
+                )]
             for atom_indices2 in subgraphs2:
                 sg2 = g2.subgraph(atom_indices2)
                 iso, mapping = are_isomorphic(sg1, sg2)
@@ -219,11 +230,13 @@ def find_mcs(g1, g2):
                     return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
 
+
 # =====================
 # Hybrid Topology Code
 # =====================
 class HybridAtom:
-    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped, origA_idx=None, origB_idx=None):
+    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped, origA_idx=None,
+                 origB_idx=None):
         self.index = index
         self.atom_name = atom_name
         self.typeA = typeA
@@ -236,6 +249,7 @@ class HybridAtom:
         self.origA_idx = origA_idx  # index in LigandA mol2
         self.origB_idx = origB_idx  # index in LigandB mol2
 
+
 class HybridBond:
     def __init__(self, ai, aj, funct, parA, parB, mapped):
         self.ai = ai
@@ -244,6 +258,7 @@ class HybridBond:
         self.parA = parA
         self.parB = parB
         self.mapped = mapped
+
 
 class HybridAngle:
     def __init__(self, ai, aj, ak, funct, parA, parB, mapped):
@@ -255,6 +270,7 @@ class HybridAngle:
         self.parB = parB
         self.mapped = mapped
 
+
 class HybridDihedral:
     def __init__(self, ai, aj, ak, al, funct, parA, parB, mapped):
         self.ai = ai
@@ -265,6 +281,7 @@ class HybridDihedral:
         self.parA = parA
         self.parB = parB
         self.mapped = mapped
+
 
 def parse_itp_section(filename, section, ncols, colnames):
     with open(filename) as f:
@@ -286,6 +303,7 @@ def parse_itp_section(filename, section, ncols, colnames):
             row = {colnames[i]: parts[i] for i in range(ncols)}
             data.append(row)
     return pd.DataFrame(data)
+
 
 def parse_itp_atoms_full(filename):
     with open(filename) as f:
@@ -315,6 +333,7 @@ def parse_itp_atoms_full(filename):
                 'mass': float(parts[7]) if len(parts) > 7 else 0.0
             })
     return pd.DataFrame(atoms)
+
 
 def build_hybrid_atoms(dfA, dfB, mapping):
     hybrid_atoms = []
@@ -373,10 +392,12 @@ def build_hybrid_atoms(dfA, dfB, mapping):
             ))
     return hybrid_atoms
 
+
 def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
     termsA = dfA.copy()
     termsB = dfB.copy()
     inv_map = {v: k for k, v in mapping.items()}
+
     def map_indices(row, inv=False):
         for col in keycols:
             idx = int(row[col])
@@ -387,8 +408,9 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
                 if idx in mapping:
                     row[col] = mapping[idx]
         return row
+
     termsB = termsB.apply(lambda row: map_indices(row, inv=True), axis=1)
-    merged = pd.merge(termsA, termsB, on=keycols, how='outer', suffixes=('A','B'), indicator=True)
+    merged = pd.merge(termsA, termsB, on=keycols, how='outer', suffixes=('A', 'B'), indicator=True)
     hybrid_terms = []
     for _, row in merged.iterrows():
         mapped = row['_merge'] == 'both'
@@ -412,10 +434,67 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
             hybrid_terms.append(HybridDihedral(ai, aj, ak, al, funct, valsA[0], valsB[0], mapped))
     return hybrid_terms
 
+
+def sort_itp_atoms_by_number(filename):
+    """
+    Sort the atoms in an ITP file by their atom number (first column).
+    This ensures atoms are numbered sequentially from 1 onwards.
+    """
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    # Find the [atoms] section
+    atoms_start = None
+    atoms_end = None
+    for i, line in enumerate(lines):
+        if line.strip() == '[atoms]':
+            atoms_start = i
+        elif atoms_start is not None and line.strip().startswith('['):
+            atoms_end = i
+            break
+
+    if atoms_start is None:
+        print(f"Warning: No [atoms] section found in {filename}")
+        return
+
+    if atoms_end is None:
+        atoms_end = len(lines)
+
+    # Extract header lines (including the [atoms] line and comment line)
+    header_lines = lines[:atoms_start + 2]  # [atoms] line + comment line
+
+    # Extract atom lines
+    atom_lines = []
+    for line in lines[atoms_start + 2:atoms_end]:
+        if line.strip() and not line.strip().startswith(';'):
+            atom_lines.append(line)
+
+    # Sort atom lines by atom number (first column)
+    def get_atom_number(line):
+        try:
+            return int(line.split()[0])
+        except (ValueError, IndexError):
+            return 0  # Put invalid lines at the beginning
+
+    atom_lines.sort(key=get_atom_number)
+
+    # Extract footer lines (everything after atoms section)
+    footer_lines = lines[atoms_end:]
+
+    # Reconstruct the file with sorted atoms
+    sorted_lines = header_lines + atom_lines + footer_lines
+
+    # Write back to file
+    with open(filename, 'w') as f:
+        f.writelines(sorted_lines)
+
+    print(f"Sorted atoms in {filename} by atom number")
+
+
 def write_hybrid_topology(
-    filename,
-    hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-    system_name="Hybrid System", molecule_name="HybridMol", nmols=1
+        filename,
+        hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
+        system_name="Hybrid System", molecule_name="HybridMol", nmols=1,
 ):
     with open(filename, 'w') as f:
         f.write(f'; Include force field parameters\n')
@@ -471,7 +550,8 @@ def write_hybrid_topology(
                 funct = getattr(dih, 'funct', dih['funct'])
                 parA = getattr(dih, 'parA', dih.get('parA', ''))
                 parB = getattr(dih, 'parB', dih.get('parB', ''))
-                f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
+                f.write(
+                    f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
             f.write('\n')
         f.write('[ system ]\n')
         f.write('; Name\n')
@@ -479,6 +559,10 @@ def write_hybrid_topology(
         f.write('[ molecules ]\n')
         f.write('; Compound        #mols\n')
         f.write(f'{molecule_name:<18}{nmols}\n\n')
+
+    # Sort the atoms by atom number after writing
+    sort_itp_atoms_by_number(filename)
+
 
 def filter_topology_sections(df, present_indices):
     """
@@ -492,6 +576,7 @@ def filter_topology_sections(df, present_indices):
                 mask &= df[col].astype(int).isin(present)
         return df[mask].copy()
     return df.copy()
+
 
 def build_lambda_atom_list(dfA, dfB, mapping, lam):
     """
@@ -523,6 +608,7 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
     else:
         return mapped_atoms + uniqueA_atoms + uniqueB_atoms
 
+
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     """
     For each lambda, build a new hybrid atom list with correct interpolation and original indices.
@@ -534,8 +620,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
         if atom_type == 'mapped':
             rowA = dfA[dfA['index'] == origA_idx].iloc[0]
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
-            charge = (1-lam)*rowA['charge'] + lam*rowB['charge']
-            mass = (1-lam)*rowA['mass'] + lam*rowB['mass']
+            charge = (1 - lam) * rowA['charge'] + lam * rowB['charge']
+            mass = (1 - lam) * rowA['mass'] + lam * rowB['mass']
             hybrid_atoms.append(HybridAtom(
                 index=idx,
                 atom_name=atom_name,
@@ -551,8 +637,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             ))
         elif atom_type == 'uniqueA':
             rowA = dfA[dfA['index'] == origA_idx].iloc[0]
-            charge = (1-lam)*rowA['charge']
-            mass = (1-lam)*rowA['mass']
+            charge = (1 - lam) * rowA['charge']
+            mass = (1 - lam) * rowA['mass']
             hybrid_atoms.append(HybridAtom(
                 index=idx,
                 atom_name=atom_name,
@@ -568,8 +654,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             ))
         elif atom_type == 'uniqueB':
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
-            charge = lam*rowB['charge']
-            mass = lam*rowB['mass']
+            charge = lam * rowB['charge']
+            mass = lam * rowB['mass']
             hybrid_atoms.append(HybridAtom(
                 index=idx,
                 atom_name=atom_name,
@@ -584,6 +670,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 origB_idx=origB_idx
             ))
     return hybrid_atoms
+
 
 def get_canonical_hybrid_atom_list(dfA, dfB, mapping):
     """
@@ -613,6 +700,7 @@ def get_canonical_hybrid_atom_list(dfA, dfB, mapping):
             uniqueB_atoms.append((idxB, rowB['atom_name'], None, idxB, 'uniqueB'))
     return mapped_atoms + uniqueA_atoms + uniqueB_atoms
 
+
 def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam):
     """
     For each lambda, output hybrid coordinates as:
@@ -637,7 +725,7 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         if atom_type == 'mapped':
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
-            coord = tuple((1-lam)*a + lam*b for a, b in zip(coordA, coordB))
+            coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
         elif atom_type == 'uniqueA':
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coord = coordA
@@ -646,11 +734,13 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
             coord = coordB
         else:
             coord = (0.0, 0.0, 0.0)
-        pdb_lines.append(f"HETATM{i+1:5d}  {atom_name:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
+        pdb_lines.append(
+            f"HETATM{i + 1:5d}  {atom_name:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
     with open(out_pdb, 'w') as f:
         for line in pdb_lines:
             f.write(line)
         f.write("END\n")
+
 
 # =====================
 # CLI
@@ -665,6 +755,7 @@ Usage:
   python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
       Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
 """)
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -693,12 +784,12 @@ if __name__ == "__main__":
         dfA = parse_itp_atoms_full(itpA)
         dfB = parse_itp_atoms_full(itpB)
         mapping = load_atom_map(mapfile)
-        bondsA = parse_itp_section(itpA, 'bonds', 4, ['ai','aj','funct','parA'])
-        bondsB = parse_itp_section(itpB, 'bonds', 4, ['ai','aj','funct','parB'])
-        anglesA = parse_itp_section(itpA, 'angles', 5, ['ai','aj','ak','funct','parA'])
-        anglesB = parse_itp_section(itpB, 'angles', 5, ['ai','aj','ak','funct','parB'])
-        dihedA = parse_itp_section(itpA, 'dihedrals', 6, ['ai','aj','ak','al','funct','parA'])
-        dihedB = parse_itp_section(itpB, 'dihedrals', 6, ['ai','aj','ak','al','funct','parB'])
+        bondsA = parse_itp_section(itpA, 'bonds', 4, ['ai', 'aj', 'funct', 'parA'])
+        bondsB = parse_itp_section(itpB, 'bonds', 4, ['ai', 'aj', 'funct', 'parB'])
+        anglesA = parse_itp_section(itpA, 'angles', 5, ['ai', 'aj', 'ak', 'funct', 'parA'])
+        anglesB = parse_itp_section(itpB, 'angles', 5, ['ai', 'aj', 'ak', 'funct', 'parB'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 6, ['ai', 'aj', 'ak', 'al', 'funct', 'parA'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 6, ['ai', 'aj', 'ak', 'al', 'funct', 'parB'])
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
             atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
@@ -711,6 +802,7 @@ if __name__ == "__main__":
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
             import os
+
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
             outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
@@ -735,6 +827,7 @@ if __name__ == "__main__":
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
             import os
+
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
             hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
