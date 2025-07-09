@@ -348,10 +348,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_error(f"Failed to copy amber14sb.ff files: {e}")
         else:
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
-        mol2_file = f"{ligand_name}.mol2"
-        mol2_file_result = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file)
-        if mol2_file_result is None:
-            self._log_error("MOL2 generation failed. Aborting ligand pipeline...")
+        mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file)
+        if not mol2_file or not os.path.isfile(mol2_file):
+            self._log_error(f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline...")
             return
         with open(mol2_file, encoding="utf-8") as f:
             lines = f.readlines()
