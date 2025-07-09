@@ -774,22 +774,27 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
     hybrid_atoms = build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam)
 
     # Filter topology sections to only include present atoms and remove invalid terms
-    bonds = filter_topology_sections(bondsA, present_indices)
-    angles = filter_topology_sections(anglesA, present_indices)
-    dihedrals = filter_topology_sections(dihedA, present_indices)
+    bondsA_filtered = filter_topology_sections(bondsA, present_indices)
+    anglesA_filtered = filter_topology_sections(anglesA, present_indices)
+    dihedA_filtered = filter_topology_sections(dihedA, present_indices)
+
+    # Also filter B sections to ensure no out-of-bounds references
+    bondsB_filtered = filter_topology_sections(bondsB, present_indices)
+    anglesB_filtered = filter_topology_sections(anglesB, present_indices)
+    dihedB_filtered = filter_topology_sections(dihedB, present_indices)
 
     # Create dummy parameters for missing terms
     dummy_bond_params = {'r': '0.0', 'k': '0.0'}
     dummy_angle_params = {'r': '0.0', 'k': '0.0'}
     dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
 
-    # Convert to hybrid terms using filtered sections
-    hybrid_bonds = build_hybrid_terms(bonds, bondsB, mapping, ['ai', 'aj'], HybridBond, dummy_bond_params,
-                                      dummy_bond_params)
-    hybrid_angles = build_hybrid_terms(angles, anglesB, mapping, ['ai', 'aj', 'ak'], HybridAngle, dummy_angle_params,
-                                       dummy_angle_params)
-    hybrid_dihedrals = build_hybrid_terms(dihedrals, dihedB, mapping, ['ai', 'aj', 'ak', 'al'], HybridDihedral,
-                                          dummy_dihedral_params, dummy_dihedral_params)
+    # Convert to hybrid terms using filtered sections for both A and B
+    hybrid_bonds = build_hybrid_terms(bondsA_filtered, bondsB_filtered, mapping, ['ai', 'aj'], HybridBond,
+                                      dummy_bond_params, dummy_bond_params)
+    hybrid_angles = build_hybrid_terms(anglesA_filtered, anglesB_filtered, mapping, ['ai', 'aj', 'ak'], HybridAngle,
+                                       dummy_angle_params, dummy_angle_params)
+    hybrid_dihedrals = build_hybrid_terms(dihedA_filtered, dihedB_filtered, mapping, ['ai', 'aj', 'ak', 'al'],
+                                          HybridDihedral, dummy_dihedral_params, dummy_dihedral_params)
 
     # Filter out any remaining invalid terms from hybrid terms
     hybrid_bonds = [bond for bond in hybrid_bonds if bond.ai != bond.aj]
