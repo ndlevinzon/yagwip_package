@@ -4,7 +4,7 @@ from importlib.resources import files
 
 # === Local Imports ===
 from .base import YagwipBase
-from .utils import tremd_temperature_ladder, count_residues_in_gro
+from .tremd_utils import tremd_temperature_ladder, count_residues_in_gro
 
 
 class Sim(YagwipBase):
