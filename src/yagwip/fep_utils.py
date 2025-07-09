@@ -415,8 +415,8 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
     for _, row in merged.iterrows():
         mapped = row['_merge'] == 'both'
         # Get all parameter columns for A and B
-        par_cols_A = [col for col in row.index if col.endswith('A') and 'par' in col]
-        par_cols_B = [col for col in row.index if col.endswith('B') and 'par' in col]
+        par_cols_A = [col for col in row.index if col.endswith('A') and col in ['rA', 'kA']]
+        par_cols_B = [col for col in row.index if col.endswith('B') and col in ['rB', 'kB']]
         valsA = [row.get(col, dummyA.get(col.replace('A', ''), '')) for col in par_cols_A]
         valsB = [row.get(col, dummyB.get(col.replace('B', ''), '')) for col in par_cols_B]
         indices = [int(row[c]) for c in keycols]
@@ -758,12 +758,12 @@ if __name__ == "__main__":
         dfA = parse_itp_atoms_full(itpA)
         dfB = parse_itp_atoms_full(itpB)
         mapping = load_atom_map(mapfile)
-        bondsA = parse_itp_section(itpA, 'bonds', 5, ['ai', 'aj', 'funct', 'parA1', 'parA2'])
-        bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'parB1', 'parB2'])
-        anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'parA1', 'parA2'])
-        anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'parB1', 'parB2'])
-        dihedA = parse_itp_section(itpA, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'parA1', 'parA2', 'parA3'])
-        dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'parB1', 'parB2', 'parB3'])
+        bondsA = parse_itp_section(itpA, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
+        bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
+        anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
+        anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
             atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
@@ -782,9 +782,9 @@ if __name__ == "__main__":
             outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
 
             # Create dummy parameters for missing terms
-            dummy_bond_params = {'par1': '0.0', 'par2': '0.0'}
-            dummy_angle_params = {'par1': '0.0', 'par2': '0.0'}
-            dummy_dihedral_params = {'par1': '0.0', 'par2': '0.0', 'par3': '0.0'}
+            dummy_bond_params = {'r': '0.0', 'k': '0.0'}
+            dummy_angle_params = {'r': '0.0', 'k': '0.0'}
+            dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
 
             # Convert to hybrid terms
             hybrid_bonds = build_hybrid_terms(bonds, bondsB, mapping, ['ai', 'aj'], HybridBond, dummy_bond_params,
