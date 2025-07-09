@@ -711,7 +711,7 @@ class LigandPipeline(YagwipBase):
         acpype_dir = f"{base_name}.acpype"
 
         # Define source and destination files
-        source_files = {"ligand_GMX.gro": "ligand.gro", "ligand_GMX.itp": "ligand.itp"}
+        source_files = {f"{base_name}_GMX.gro": f"{base_name}.gro", f"{base_name}_GMX.itp": f"{base_name}.itp"}
 
         if not os.path.exists(acpype_dir):
             self._log_warning(
@@ -727,7 +727,7 @@ class LigandPipeline(YagwipBase):
             if os.path.exists(source_path):
                 try:
                     shutil.copy2(source_path, dest_path)
-                    self._log_info(f"[#] Copied {source_file} -> {dest_file}")
+                    self._log_info(f"Copied {source_file} -> {dest_file}")
                     copied_files.append(dest_file)
                 except Exception as e:
                     self._log_error(f"[ERROR] Failed to copy {source_file}: {e}")
