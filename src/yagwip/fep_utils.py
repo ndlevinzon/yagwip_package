@@ -716,7 +716,7 @@ if __name__ == "__main__":
                 hybrid_bonds=bonds.to_dict('records') if not bonds.empty else None,
                 hybrid_angles=angles.to_dict('records') if not angles.empty else None,
                 hybrid_dihedrals=dihedrals.to_dict('records') if not dihedrals.empty else None,
-                system_name="LigandA to LigandB Hybrid",
+                system_name="Ligand to LigandA Hybrid",
                 molecule_name="HybridMol",
                 nmols=1,
                 forcefield="amber14sb.ff/forcefield.itp"

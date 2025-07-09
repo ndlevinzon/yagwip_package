@@ -1,5 +1,5 @@
 """
-slurm_writer.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
+slurm_utils.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
 """
 # === Standard Library Imports ===
 import os
