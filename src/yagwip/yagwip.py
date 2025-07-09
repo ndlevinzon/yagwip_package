@@ -372,6 +372,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 )
                 self.ligand_pipeline.run_acpype(mol2_file)
                 self.ligand_pipeline.copy_acpype_output_files(mol2_file)
+                if not os.path.isfile(itp_file):
+                    self._log_error(f"{itp_file} not found after ACPYPE. Skipping ligand post-processing.")
+                    return
                 self._log_info(f"Checking {itp_file}...")
                 self.editor.append_ligand_atomtypes_to_forcefield(itp_file, ligand_name)
                 self.editor.ligand_itp = itp_file
@@ -507,6 +510,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 )
                 self.ligand_pipeline.run_acpype(mol2_file)  # convert to gromacs
                 self.ligand_pipeline.copy_acpype_output_files(mol2_file)
+                if not os.path.isfile("ligand.itp"):
+                    self._log_error("ligand.itp not found after ACPYPE. Skipping ligand post-processing.")
+                    return
                 self._log_info("Checking ligand.itp...")
                 self.editor.append_ligand_atomtypes_to_forcefield()
                 self.editor.ligand_itp = "ligand.itp"
