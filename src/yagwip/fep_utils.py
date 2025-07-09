@@ -1,10 +1,53 @@
 import sys
 import itertools
 from collections import defaultdict
-import sys
 import pandas as pd
+import numpy as np
 
+# =====================
+# Utility Functions
+# =====================
+def parse_mol2_coords(filename):
+    coords = {}
+    names = {}
+    with open(filename) as f:
+        lines = f.readlines()
+    in_atoms = False
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms = True
+            continue
+        if in_atoms:
+            if line.startswith("@<TRIPOS>"):
+                break
+            parts = line.split()
+            if len(parts) < 6:
+                continue
+            idx = int(parts[0])
+            name = parts[1]
+            x, y, z = map(float, parts[2:5])
+            coords[idx] = (x, y, z)
+            names[idx] = name
+    return coords, names
 
+def load_atom_map(filename):
+    mapping = {}
+    with open(filename) as f:
+        for line in f:
+            if line.strip() == '':
+                continue
+            a, b = map(int, line.split())
+            mapping[a] = b
+    return mapping
+
+def write_atom_map(mapping, filename):
+    with open(filename, 'w') as f:
+        for a, b in mapping.items():
+            f.write(f"{a} {b}\n")
+
+# =====================
+# MCS Code
+# =====================
 class Atom:
     def __init__(self, idx, element):
         self.idx = idx
@@ -97,17 +140,14 @@ class MolGraph:
         return sg
 
 def are_isomorphic(g1, g2):
-    # Fast checks
     if len(g1.atoms) != len(g2.atoms):
         return False, None
-    # Build candidate lists for each atom in g1
     candidates = {}
     for idx1, atom1 in g1.atoms.items():
         candidates[idx1] = [idx2 for idx2, atom2 in g2.atoms.items()
                             if atom1.element == atom2.element and atom1.degree == atom2.degree]
         if not candidates[idx1]:
             return False, None
-    # Try all permutations with pruning
     def backtrack(mapping, used2):
         if len(mapping) == len(g1.atoms):
             return True, dict(mapping)
@@ -115,7 +155,6 @@ def are_isomorphic(g1, g2):
         for idx2 in candidates[idx1]:
             if idx2 in used2:
                 continue
-            # Check neighbor consistency
             ok = True
             for nbr1 in g1.atoms[idx1].neighbors:
                 if nbr1 in mapping:
@@ -141,8 +180,6 @@ def are_isomorphic(g1, g2):
     return backtrack({}, set())
 
 def enumerate_connected_subgraphs(graph, size):
-    # Enumerate all connected subgraphs of a given size
-    # Use BFS to grow subgraphs
     results = set()
     for start in graph.atoms:
         stack = [(frozenset([start]), start)]
@@ -159,7 +196,6 @@ def enumerate_connected_subgraphs(graph, size):
     return [set(s) for s in results]
 
 def find_mcs(g1, g2):
-    # Always use the smaller graph for subgraph enumeration
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
     for size in range(len(g1.atoms), 0, -1):
@@ -168,11 +204,9 @@ def find_mcs(g1, g2):
             continue
         for atom_indices1 in subgraphs1:
             sg1 = g1.subgraph(atom_indices1)
-            # For speed, filter by element counts
             elem_count1 = defaultdict(int)
             for a in sg1.atoms.values():
                 elem_count1[a.element] += 1
-            # Find candidate subgraphs in g2 with same element counts
             subgraphs2 = [s for s in enumerate_connected_subgraphs(g2, size)
                           if all(
                               sum(g2.atoms[i].element == e for i in s) == c
@@ -185,106 +219,11 @@ def find_mcs(g1, g2):
                     return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
 
-# --- Utility functions ---
-def parse_mol2_coords(filename):
-    coords = {}
-    names = {}
-    with open(filename) as f:
-        lines = f.readlines()
-    in_atoms = False
-    for line in lines:
-        if line.startswith("@<TRIPOS>ATOM"):
-            in_atoms = True
-            continue
-        if in_atoms:
-            if line.startswith("@<TRIPOS>"):
-                break
-            parts = line.split()
-            if len(parts) < 6:
-                continue
-            idx = int(parts[0])
-            name = parts[1]
-            x, y, z = map(float, parts[2:5])
-            coords[idx] = (x, y, z)
-            names[idx] = name
-    return coords, names
-
-def load_atom_map(filename):
-    mapping = {}
-    with open(filename) as f:
-        for line in f:
-            if line.strip() == '':
-                continue
-            a, b = map(int, line.split())
-            mapping[a] = b
-    return mapping
-
-def parse_itp_atoms(filename):
-    # Returns a DataFrame with columns: index, atom_name, typeA, typeB, mapped
-    atoms = []
-    with open(filename) as f:
-        lines = f.readlines()
-    in_atoms = False
-    for line in lines:
-        if line.strip().startswith('[ atoms ]'):
-            in_atoms = True
-            continue
-        if in_atoms:
-            if line.strip().startswith('['):
-                break
-            if line.strip() == '' or line.strip().startswith(';'):
-                continue
-            parts = line.split()
-            # index type resnr residue atom_name cgnr charge mass typeB chargeB massB
-            if len(parts) < 11:
-                continue
-            idx = int(parts[0])
-            atom_name = parts[4]
-            typeA = parts[1]
-            typeB = parts[8]
-            mapped = (typeA != 'DUM' and typeB != 'DUM')
-            atoms.append({'index': idx, 'atom_name': atom_name, 'typeA': typeA, 'typeB': typeB, 'mapped': mapped})
-    return pd.DataFrame(atoms)
-
-# --- Main hybridization logic ---
-def hybridize_coords_from_itp(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb):
-    coordsA, namesA = parse_mol2_coords(ligA_mol2)
-    coordsB, namesB = parse_mol2_coords(ligB_mol2)
-    hybrid_atoms = parse_itp_atoms(hybrid_itp)
-    mapping = load_atom_map(atom_map_txt)
-
-    pdb_lines = []
-    for i, row in hybrid_atoms.iterrows():
-        idx = int(row['index'])
-        atom_name = row['atom_name']
-        mapped = row['mapped']
-        if mapped:
-            coord = coordsA.get(idx, (0.0, 0.0, 0.0))
-        else:
-            if row['typeA'] != 'DUM':
-                coord = coordsA.get(idx, (0.0, 0.0, 0.0))
-            elif row['typeB'] != 'DUM':
-                # Find B index corresponding to this atom
-                b_index = None
-                for k, v in mapping.items():
-                    if v == idx:
-                        b_index = v
-                        break
-                if b_index is None:
-                    b_index = idx
-                coord = coordsB.get(b_index, (0.0, 0.0, 0.0))
-            else:
-                coord = (0.0, 0.0, 0.0)
-        pdb_lines.append(f"ATOM  {i+1:5d} {atom_name:<4s} LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
-    with open(out_pdb, 'w') as f:
-        for line in pdb_lines:
-            f.write(line)
-        f.write("END\n")
-
-
-
+# =====================
+# Hybrid Topology Code
+# =====================
 class HybridAtom:
-    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped):
+    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped, origA_idx=None, origB_idx=None):
         self.index = index
         self.atom_name = atom_name
         self.typeA = typeA
@@ -294,6 +233,8 @@ class HybridAtom:
         self.massA = massA
         self.massB = massB
         self.mapped = mapped
+        self.origA_idx = origA_idx  # index in LigandA mol2
+        self.origB_idx = origB_idx  # index in LigandB mol2
 
 class HybridBond:
     def __init__(self, ai, aj, funct, parA, parB, mapped):
@@ -326,7 +267,6 @@ class HybridDihedral:
         self.mapped = mapped
 
 def parse_itp_section(filename, section, ncols, colnames):
-    # Generic parser for [ bonds ], [ angles ], [ dihedrals ]
     with open(filename) as f:
         lines = f.readlines()
     data = []
@@ -347,8 +287,7 @@ def parse_itp_section(filename, section, ncols, colnames):
             data.append(row)
     return pd.DataFrame(data)
 
-def parse_itp_atoms(filename):
-    # Parse [ atoms ] section from .itp file into a DataFrame
+def parse_itp_atoms_full(filename):
     with open(filename) as f:
         lines = f.readlines()
     atoms = []
@@ -376,16 +315,6 @@ def parse_itp_atoms(filename):
                 'mass': float(parts[7]) if len(parts) > 7 else 0.0
             })
     return pd.DataFrame(atoms)
-
-def load_atom_map(filename):
-    mapping = {}
-    with open(filename) as f:
-        for line in f:
-            if line.strip() == '':
-                continue
-            a, b = map(int, line.split())
-            mapping[a] = b
-    return mapping
 
 def build_hybrid_atoms(dfA, dfB, mapping):
     hybrid_atoms = []
@@ -445,12 +374,8 @@ def build_hybrid_atoms(dfA, dfB, mapping):
     return hybrid_atoms
 
 def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
-    # Merge/interpolate bonds, angles, dihedrals
-    # keycols: columns to match (e.g., ['ai','aj'] for bonds)
-    # dummyA/B: dummy values for unique terms
     termsA = dfA.copy()
     termsB = dfB.copy()
-    # Convert indices in B to A's mapping for matching
     inv_map = {v: k for k, v in mapping.items()}
     def map_indices(row, inv=False):
         for col in keycols:
@@ -463,7 +388,6 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
                     row[col] = mapping[idx]
         return row
     termsB = termsB.apply(lambda row: map_indices(row, inv=True), axis=1)
-    # Merge on keycols
     merged = pd.merge(termsA, termsB, on=keycols, how='outer', suffixes=('A','B'), indicator=True)
     hybrid_terms = []
     for _, row in merged.iterrows():
@@ -471,69 +395,22 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
         valsA = [row.get(f'{c}A', dummyA[c]) for c in dummyA.keys()]
         valsB = [row.get(f'{c}B', dummyB[c]) for c in dummyB.keys()]
         indices = [int(row[c]) for c in keycols]
-        # Robust funct handling for all hybrid term classes
         functA = row.get('functA')
         functB = row.get('functB')
         funct = functA if pd.notnull(functA) else functB
         if pd.isnull(funct):
             funct = 1
         funct = int(funct)
-        # Unpack all required parameters for each class
         if HybridClass == HybridBond:
-            hybrid_terms.append(HybridBond(*indices, funct, *valsA, *valsB, mapped))
+            ai, aj = indices
+            hybrid_terms.append(HybridBond(ai, aj, funct, valsA[0], valsB[0], mapped))
         elif HybridClass == HybridAngle:
-            hybrid_terms.append(HybridAngle(*indices, funct, *valsA, *valsB, mapped))
+            ai, aj, ak = indices
+            hybrid_terms.append(HybridAngle(ai, aj, ak, funct, valsA[0], valsB[0], mapped))
         elif HybridClass == HybridDihedral:
-            hybrid_terms.append(HybridDihedral(*indices, funct, *valsA, *valsB, mapped))
+            ai, aj, ak, al = indices
+            hybrid_terms.append(HybridDihedral(ai, aj, ak, al, funct, valsA[0], valsB[0], mapped))
     return hybrid_terms
-
-def print_hybrid_topology(
-    hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-    system_name="Hybrid System", molecule_name="HybridMol", nmols=1, forcefield="gromos43a1.ff/forcefield.itp"
-):
-    print(f'; Include force field parameters')
-    print(f'#include "{forcefield}"\n')
-    print('[ moleculetype ]')
-    print('; Name            nrexcl')
-    print(f'{molecule_name:<18}3\n')
-    print('[ atoms ]')
-    print('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB')
-    for atom in hybrid_atoms:
-        print(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"RES":6s} {atom.atom_name:4s} {1:4d} '
-              f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}')
-    print()
-    if hybrid_bonds is not None:
-        print('[ bonds ]')
-        print(';  ai    aj funct    par_A  par_B')
-        for bond in hybrid_bonds:
-            print(f'{bond.ai:5d} {bond.aj:5d} {bond.funct:5d} {bond.parA:7s} {bond.parB:7s}')
-        print()
-    if hybrid_pairs is not None:
-        print('[ pairs ]')
-        print(';  ai    aj funct')
-        for pair in hybrid_pairs:
-            print(f'{pair.ai:5d} {pair.aj:5d} {pair.funct:5d}')
-        print()
-    if hybrid_angles is not None:
-        print('[ angles ]')
-        print(';  ai    aj    ak funct    par_A   par_B')
-        for angle in hybrid_angles:
-            print(f'{angle.ai:5d} {angle.aj:5d} {angle.ak:5d} {angle.funct:5d} {angle.parA:7s} {angle.parB:7s}')
-        print()
-    if hybrid_dihedrals is not None:
-        print('[ dihedrals ]')
-        print(';  ai    aj    ak    al funct    par_A   par_B')
-        for dih in hybrid_dihedrals:
-            print(f'{dih.ai:5d} {dih.aj:5d} {dih.ak:5d} {dih.al:5d} {dih.funct:5d} {dih.parA:7s} {dih.parB:7s}')
-        print()
-    print('[ system ]')
-    print('; Name')
-    print(system_name)
-    print()
-    print('[ molecules ]')
-    print('; Compound        #mols')
-    print(f'{molecule_name:<18}{nmols}')
-    print()
 
 def write_hybrid_topology(
     filename,
@@ -556,25 +433,46 @@ def write_hybrid_topology(
             f.write('[ bonds ]\n')
             f.write(';  ai    aj funct    par_A  par_B\n')
             for bond in hybrid_bonds:
-                f.write(f'{bond.ai:5d} {bond.aj:5d} {bond.funct:5d} {bond.parA:7s} {bond.parB:7s}\n')
+                ai = getattr(bond, 'ai', bond['ai'])
+                aj = getattr(bond, 'aj', bond['aj'])
+                funct = getattr(bond, 'funct', bond['funct'])
+                parA = getattr(bond, 'parA', bond.get('parA', ''))
+                parB = getattr(bond, 'parB', bond.get('parB', ''))
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
             f.write('\n')
         if hybrid_pairs is not None:
             f.write('[ pairs ]\n')
             f.write(';  ai    aj funct\n')
             for pair in hybrid_pairs:
-                f.write(f'{pair.ai:5d} {pair.aj:5d} {pair.funct:5d}\n')
+                ai = getattr(pair, 'ai', pair['ai'])
+                aj = getattr(pair, 'aj', pair['aj'])
+                funct = getattr(pair, 'funct', pair['funct'])
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d}\n')
             f.write('\n')
         if hybrid_angles is not None:
             f.write('[ angles ]\n')
             f.write(';  ai    aj    ak funct    par_A   par_B\n')
             for angle in hybrid_angles:
-                f.write(f'{angle.ai:5d} {angle.aj:5d} {angle.ak:5d} {angle.funct:5d} {angle.parA:7s} {angle.parB:7s}\n')
+                ai = getattr(angle, 'ai', angle['ai'])
+                aj = getattr(angle, 'aj', angle['aj'])
+                ak = getattr(angle, 'ak', angle['ak'])
+                funct = getattr(angle, 'funct', angle['funct'])
+                parA = getattr(angle, 'parA', angle.get('parA', ''))
+                parB = getattr(angle, 'parB', angle.get('parB', ''))
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
             f.write('\n')
         if hybrid_dihedrals is not None:
             f.write('[ dihedrals ]\n')
             f.write(';  ai    aj    ak    al funct    par_A   par_B\n')
             for dih in hybrid_dihedrals:
-                f.write(f'{dih.ai:5d} {dih.aj:5d} {dih.ak:5d} {dih.al:5d} {dih.funct:5d} {dih.parA:7s} {dih.parB:7s}\n')
+                ai = getattr(dih, 'ai', dih['ai'])
+                aj = getattr(dih, 'aj', dih['aj'])
+                ak = getattr(dih, 'ak', dih['ak'])
+                al = getattr(dih, 'al', dih['al'])
+                funct = getattr(dih, 'funct', dih['funct'])
+                parA = getattr(dih, 'parA', dih.get('parA', ''))
+                parB = getattr(dih, 'parB', dih.get('parB', ''))
+                f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {str(parA):7s} {str(parB):7s}\n')
             f.write('\n')
         f.write('[ system ]\n')
         f.write('; Name\n')
@@ -583,53 +481,269 @@ def write_hybrid_topology(
         f.write('; Compound        #mols\n')
         f.write(f'{molecule_name:<18}{nmols}\n\n')
 
-def main():
-    if len(sys.argv) != 4:
-        print("Usage: python hybrid_topology.py ligandA.itp ligandB.itp atom_map.txt")
-        sys.exit(1)
-    itpA, itpB, mapfile = sys.argv[1:4]
-    dfA = parse_itp_atoms(itpA)
-    dfB = parse_itp_atoms(itpB)
-    mapping = load_atom_map(mapfile)
-    hybrid_atoms = build_hybrid_atoms(dfA, dfB, mapping)
-    # Parse and merge bonds, angles, dihedrals
-    bondsA = parse_itp_section(itpA, 'bonds', 4, ['ai','aj','funct','parA'])
-    bondsB = parse_itp_section(itpB, 'bonds', 4, ['ai','aj','funct','parB'])
-    hybrid_bonds = build_hybrid_terms(bondsA, bondsB, mapping, ['ai','aj'], HybridBond, {'parA':'gb_0'}, {'parB':'gb_0'})
-    anglesA = parse_itp_section(itpA, 'angles', 5, ['ai','aj','ak','funct','parA'])
-    anglesB = parse_itp_section(itpB, 'angles', 5, ['ai','aj','ak','funct','parB'])
-    hybrid_angles = build_hybrid_terms(anglesA, anglesB, mapping, ['ai','aj','ak'], HybridAngle, {'parA':'ga_0'}, {'parB':'ga_0'})
-    dihedA = parse_itp_section(itpA, 'dihedrals', 6, ['ai','aj','ak','al','funct','parA'])
-    dihedB = parse_itp_section(itpB, 'dihedrals', 6, ['ai','aj','ak','al','funct','parB'])
-    hybrid_dihedrals = build_hybrid_terms(dihedA, dihedB, mapping, ['ai','aj','ak','al'], HybridDihedral, {'parA':'gd_0'}, {'parB':'gd_0'})
-    # For each lambda, print the hybrid topology
-    lambdas = np.arange(0, 1.05, 0.05)
-    for lam in lambdas:
-        # Interpolate atom charges/masses
-        for atom in hybrid_atoms:
-            atom.chargeA = (1-lam)*atom.chargeA + lam*atom.chargeB
-            atom.massA = (1-lam)*atom.massA + lam*atom.massB
-        print(f"\n; ===== Lambda = {lam:.2f} =====\n")
-        print_hybrid_topology(
-            hybrid_atoms,
-            hybrid_bonds=hybrid_bonds,
-            hybrid_angles=hybrid_angles,
-            hybrid_dihedrals=hybrid_dihedrals,
-            system_name="LigandA to LigandB Hybrid",
-            molecule_name="PropPent",
-            nmols=200,
-            forcefield="gromos43a1.ff/forcefield.itp"
-        )
+def filter_topology_sections(df, present_indices):
+    """
+    Filter a topology DataFrame (e.g., bonds, angles) to only include terms where all atom indices are present.
+    """
+    present = set(present_indices)
+    if 'ai' in df.columns:
+        mask = df['ai'].astype(int).isin(present)
+        for col in ['aj', 'ak', 'al']:
+            if col in df.columns:
+                mask &= df[col].astype(int).isin(present)
+        return df[mask].copy()
+    return df.copy()
 
-    outfilename = f"hybrid_lambda_{lam:.2f}.itp"
-    write_hybrid_topology(
-        outfilename,
-        hybrid_atoms,
-        hybrid_bonds=hybrid_bonds,
-        hybrid_angles=hybrid_angles,
-        hybrid_dihedrals=hybrid_dihedrals,
-        system_name="LigandA to LigandB Hybrid",
-        molecule_name="PropPent",
-        nmols=200,
-        forcefield="gromos43a1.ff/forcefield.itp"
-    )
+def build_lambda_atom_list(dfA, dfB, mapping, lam):
+    """
+    For each lambda, return the atom list (index, atom_name, origA_idx, origB_idx, atom_type) to be present.
+    At lambda=0: mapped + uniqueA (A order)
+    At lambda=1: mapped + uniqueB (B order)
+    0 < lambda < 1: mapped (A order) + uniqueA (A order) + uniqueB (B order)
+    """
+    mapped_atoms = []
+    uniqueA_atoms = []
+    uniqueB_atoms = []
+    usedB = set()
+    for _, rowA in dfA.iterrows():
+        idxA = int(rowA['index'])
+        if idxA in mapping:
+            idxB = mapping[idxA]
+            mapped_atoms.append((idxA, rowA['atom_name'], idxA, idxB, 'mapped'))
+            usedB.add(idxB)
+        else:
+            uniqueA_atoms.append((idxA, rowA['atom_name'], idxA, None, 'uniqueA'))
+    for _, rowB in dfB.iterrows():
+        idxB = int(rowB['index'])
+        if idxB not in usedB:
+            uniqueB_atoms.append((idxB, rowB['atom_name'], None, idxB, 'uniqueB'))
+    if lam == 0:
+        return mapped_atoms + uniqueA_atoms
+    elif lam == 1:
+        return mapped_atoms + uniqueB_atoms
+    else:
+        return mapped_atoms + uniqueA_atoms + uniqueB_atoms
+
+def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
+    """
+    For each lambda, build a new hybrid atom list with correct interpolation and original indices.
+    Only include atoms present at this lambda.
+    """
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+    hybrid_atoms = []
+    for idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
+        if atom_type == 'mapped':
+            rowA = dfA[dfA['index'] == origA_idx].iloc[0]
+            rowB = dfB[dfB['index'] == origB_idx].iloc[0]
+            charge = (1-lam)*rowA['charge'] + lam*rowB['charge']
+            mass = (1-lam)*rowA['mass'] + lam*rowB['mass']
+            hybrid_atoms.append(HybridAtom(
+                index=idx,
+                atom_name=atom_name,
+                typeA=rowA['type'],
+                typeB=rowB['type'],
+                chargeA=charge,
+                chargeB=charge,
+                massA=mass,
+                massB=mass,
+                mapped=True,
+                origA_idx=origA_idx,
+                origB_idx=origB_idx
+            ))
+        elif atom_type == 'uniqueA':
+            rowA = dfA[dfA['index'] == origA_idx].iloc[0]
+            charge = (1-lam)*rowA['charge']
+            mass = (1-lam)*rowA['mass']
+            hybrid_atoms.append(HybridAtom(
+                index=idx,
+                atom_name=atom_name,
+                typeA=rowA['type'],
+                typeB='DUM',
+                chargeA=charge,
+                chargeB=charge,
+                massA=mass,
+                massB=mass,
+                mapped=False,
+                origA_idx=origA_idx,
+                origB_idx=None
+            ))
+        elif atom_type == 'uniqueB':
+            rowB = dfB[dfB['index'] == origB_idx].iloc[0]
+            charge = lam*rowB['charge']
+            mass = lam*rowB['mass']
+            hybrid_atoms.append(HybridAtom(
+                index=idx,
+                atom_name=atom_name,
+                typeA='DUM',
+                typeB=rowB['type'],
+                chargeA=charge,
+                chargeB=charge,
+                massA=mass,
+                massB=mass,
+                mapped=False,
+                origA_idx=None,
+                origB_idx=origB_idx
+            ))
+    return hybrid_atoms
+
+def get_canonical_hybrid_atom_list(dfA, dfB, mapping):
+    """
+    Returns a canonical hybrid atom list:
+    - mapped_atoms: list of (hybrid_index, atom_name, origA_idx, origB_idx, 'mapped')
+    - uniqueA_atoms: list of (hybrid_index, atom_name, origA_idx, None, 'uniqueA')
+    - uniqueB_atoms: list of (hybrid_index, atom_name, None, origB_idx, 'uniqueB')
+    Order: mapped (A order), uniqueA (A order), uniqueB (B order)
+    """
+    mapped_atoms = []
+    uniqueA_atoms = []
+    uniqueB_atoms = []
+    usedB = set()
+    # Mapped and uniqueA atoms (A's order)
+    for _, rowA in dfA.iterrows():
+        idxA = int(rowA['index'])
+        if idxA in mapping:
+            idxB = mapping[idxA]
+            mapped_atoms.append((idxA, rowA['atom_name'], idxA, idxB, 'mapped'))
+            usedB.add(idxB)
+        else:
+            uniqueA_atoms.append((idxA, rowA['atom_name'], idxA, None, 'uniqueA'))
+    # UniqueB atoms (B's order)
+    for _, rowB in dfB.iterrows():
+        idxB = int(rowB['index'])
+        if idxB not in usedB:
+            uniqueB_atoms.append((idxB, rowB['atom_name'], None, idxB, 'uniqueB'))
+    return mapped_atoms + uniqueA_atoms + uniqueB_atoms
+
+def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam):
+    """
+    For each lambda, output hybrid coordinates as:
+    - mapped: interpolate between A and B
+    - uniqueA: use A's coordinates
+    - uniqueB: use B's coordinates
+    At lambda=0, output is exactly ligandA; at lambda=1, exactly ligandB.
+    Only atoms present at this lambda are included.
+    """
+    coordsA, namesA = parse_mol2_coords(ligA_mol2)
+    coordsB, namesB = parse_mol2_coords(ligB_mol2)
+    dfA = parse_itp_atoms_full(ligA_mol2.replace('.mol2', '.itp')) if ligA_mol2.replace('.mol2', '.itp') else None
+    dfB = parse_itp_atoms_full(ligB_mol2.replace('.mol2', '.itp')) if ligB_mol2.replace('.mol2', '.itp') else None
+    if dfA is None:
+        dfA = pd.DataFrame([{'index': idx, 'atom_name': namesA[idx]} for idx in sorted(coordsA.keys())])
+    if dfB is None:
+        dfB = pd.DataFrame([{'index': idx, 'atom_name': namesB[idx]} for idx in sorted(coordsB.keys())])
+    mapping = load_atom_map(atom_map_txt)
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+    pdb_lines = []
+    for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list):
+        if atom_type == 'mapped':
+            coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
+            coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
+            coord = tuple((1-lam)*a + lam*b for a, b in zip(coordA, coordB))
+        elif atom_type == 'uniqueA':
+            coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
+            coord = coordA
+        elif atom_type == 'uniqueB':
+            coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
+            coord = coordB
+        else:
+            coord = (0.0, 0.0, 0.0)
+        pdb_lines.append(f"ATOM  {i+1:5d} {atom_name:<4s} LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
+    with open(out_pdb, 'w') as f:
+        for line in pdb_lines:
+            f.write(line)
+        f.write("END\n")
+
+# =====================
+# CLI
+# =====================
+def print_help():
+    print("""
+Usage:
+  python fep_utils.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
+      Find the maximum common substructure and write atom_map.txt
+  python fep_utils.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
+      Generate hybrid .itp files for all lambda windows
+  python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
+      Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
+""")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print_help()
+        sys.exit(1)
+    cmd = sys.argv[1]
+    if cmd == "mcs":
+        if len(sys.argv) != 5:
+            print("Usage: python fep_utils.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt")
+            sys.exit(1)
+        mol1, mol2, outmap = sys.argv[2:5]
+        g1 = MolGraph.from_mol2(mol1)
+        g2 = MolGraph.from_mol2(mol2)
+        size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
+        if mapping is None:
+            print("No MCS found.")
+            sys.exit(1)
+        print(f"MCS size: {size}")
+        print(f"Mapping (mol1 -> mol2): {mapping}")
+        write_atom_map(mapping, outmap)
+    elif cmd == "hybrid_topology":
+        if len(sys.argv) != 5:
+            print("Usage: python fep_utils.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt")
+            sys.exit(1)
+        itpA, itpB, mapfile = sys.argv[2:5]
+        dfA = parse_itp_atoms_full(itpA)
+        dfB = parse_itp_atoms_full(itpB)
+        mapping = load_atom_map(mapfile)
+        bondsA = parse_itp_section(itpA, 'bonds', 4, ['ai','aj','funct','parA'])
+        bondsB = parse_itp_section(itpB, 'bonds', 4, ['ai','aj','funct','parB'])
+        anglesA = parse_itp_section(itpA, 'angles', 5, ['ai','aj','ak','funct','parA'])
+        anglesB = parse_itp_section(itpB, 'angles', 5, ['ai','aj','ak','funct','parB'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 6, ['ai','aj','ak','al','funct','parA'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 6, ['ai','aj','ak','al','funct','parB'])
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+            present_indices = [idx for idx, _, _, _, _ in atom_list]
+            hybrid_atoms = build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam)
+            # Filter topology sections to only include present atoms
+            bonds = filter_topology_sections(bondsA, present_indices)
+            angles = filter_topology_sections(anglesA, present_indices)
+            dihedrals = filter_topology_sections(dihedA, present_indices)
+            outfilename = f"hybrid_lambda_{lam:.2f}.itp"
+            write_hybrid_topology(
+                outfilename,
+                hybrid_atoms,
+                hybrid_bonds=bonds.to_dict('records') if not bonds.empty else None,
+                hybrid_angles=angles.to_dict('records') if not angles.empty else None,
+                hybrid_dihedrals=dihedrals.to_dict('records') if not dihedrals.empty else None,
+                system_name="LigandA to LigandB Hybrid",
+                molecule_name="HybridMol",
+                nmols=1,
+                forcefield="amber14sb.ff/forcefield.itp"
+            )
+            print(f"Wrote {outfilename}")
+    elif cmd == "hybrid_coords":
+        if len(sys.argv) != 5:
+            print("Usage: python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt")
+            sys.exit(1)
+        ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            import os
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            hybrid_itp = f"hybrid_lambda_{lam_str}.itp"
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+            import shutil
+            if os.path.exists(hybrid_itp):
+                shutil.copy(hybrid_itp, os.path.join(lam_dir, hybrid_itp))
+            else:
+                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
+                continue
+            hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam)
+            print(f"Wrote {out_pdb} and copied {hybrid_itp} to {lam_dir}/")
+    else:
+        print_help()
+        sys.exit(1)
