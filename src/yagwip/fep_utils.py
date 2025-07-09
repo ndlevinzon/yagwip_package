@@ -437,8 +437,8 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
 
 def sort_itp_atoms_by_number(filename):
     """
-    Sort the atoms in an ITP file by their atom number (first column).
-    This ensures atoms are numbered sequentially from 1 onwards.
+    Sort the atoms in an ITP file by their line number (first column).
+    This ensures atoms are ordered sequentially by their line numbers.
     """
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -469,7 +469,7 @@ def sort_itp_atoms_by_number(filename):
         if line.strip() and not line.strip().startswith(';'):
             atom_lines.append(line)
 
-    # Sort atom lines by atom number (first column)
+    # Sort atom lines by line number (first column) without renumbering
     def get_atom_number(line):
         try:
             return int(line.split()[0])
@@ -481,20 +481,20 @@ def sort_itp_atoms_by_number(filename):
     # Extract footer lines (everything after atoms section)
     footer_lines = lines[atoms_end:]
 
-    # Reconstruct the file with sorted atoms
+    # Reconstruct the file with sorted atoms (keeping original numbers)
     sorted_lines = header_lines + atom_lines + footer_lines
 
     # Write back to file
     with open(filename, 'w') as f:
         f.writelines(sorted_lines)
 
-    print(f"Sorted atoms in {filename} by atom number")
+    print(f"Sorted atoms in {filename} by line number")
 
 
 def write_hybrid_topology(
         filename,
         hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-        system_name="Hybrid System", molecule_name="HybridMol", nmols=1,
+        system_name="Hybrid System", molecule_name="HybridMol", nmols=1
 ):
     with open(filename, 'w') as f:
         f.write(f'; Include force field parameters\n')
