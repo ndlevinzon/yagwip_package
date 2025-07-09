@@ -791,6 +791,13 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
     hybrid_dihedrals = build_hybrid_terms(dihedrals, dihedB, mapping, ['ai', 'aj', 'ak', 'al'], HybridDihedral,
                                           dummy_dihedral_params, dummy_dihedral_params)
 
+    # Filter out any remaining invalid terms from hybrid terms
+    hybrid_bonds = [bond for bond in hybrid_bonds if bond.ai != bond.aj]
+    hybrid_angles = [angle for angle in hybrid_angles if
+                     angle.ai != angle.aj and angle.aj != angle.ak and angle.ai != angle.ak]
+    hybrid_dihedrals = [dih for dih in hybrid_dihedrals if
+                        dih.ai != dih.aj and dih.ai != dih.ak and dih.ai != dih.al and dih.aj != dih.ak and dih.aj != dih.al and dih.ak != dih.al]
+
     return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
 
 
