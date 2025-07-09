@@ -257,28 +257,31 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not os.path.isfile(full_path):
             self._log_error(f"'{pdb_file}' not found.")
             return
-        # Store the full path and basename for later use in the build pipeline
-        self.current_pdb_path = full_path
-        self.basename = os.path.splitext(os.path.basename(full_path))[0]
-        self._log_success(f"PDB file loaded: {full_path}")
-        # Read all lines from the PDB file
+        # --- FEP-style ligand naming ---
+        hetatm_lines = []
+        atom_lines = []
         with open(full_path, "r") as f:
             lines = f.readlines()
-        hetatm_lines = [line for line in lines if line.startswith("HETATM")]
-        atom_lines = [line for line in lines if line.startswith("ATOM")]
-        # If only HETATM lines are present, treat as ligand-only system
+            hetatm_lines = [line for line in lines if line.startswith("HETATM")]
+            atom_lines = [line for line in lines if line.startswith("ATOM")]
         if hetatm_lines and not atom_lines:
-            # --- FEP-style ligand naming ---
             ligand_name = chr(ord('A') + self.ligand_counter)
             ligand_name = f"ligand{ligand_name}"
             self.current_ligand_name = ligand_name
             self.ligand_counter += 1
             ligand_file = f"{ligand_name}.pdb"
             self.ligand_pdb_path = os.path.abspath(ligand_file)
-            with open(ligand_file, "w", encoding="utf-8") as lig_out:
-                for line in hetatm_lines:
-                    lig_out.write(line[:17] + "LIG" + line[20:])
-            self._log_info(f"Ligand-only PDB detected. Assigned name: {ligand_name}. Wrote ligand to {ligand_file}")
+            # Always rename the input PDB to ligandX.pdb
+            shutil.copy(full_path, ligand_file)
+            self._log_info(f"Renamed input PDB to {ligand_file} (assigned name: {ligand_name})")
+            # Overwrite ligand_file with LIG residue name
+            with open(ligand_file, "r", encoding="utf-8") as f_in, open(ligand_file + ".tmp", "w", encoding="utf-8") as f_out:
+                for line in f_in:
+                    if line.startswith("HETATM"):
+                        f_out.write(line[:17] + "LIG" + line[20:])
+                    else:
+                        f_out.write(line)
+            shutil.move(ligand_file + ".tmp", ligand_file)
             if not any(
                 line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
                 for line in hetatm_lines
@@ -289,9 +292,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             itp_file = f"{ligand_name}.itp"
             if os.path.isfile(itp_file):
                 self._log_info(f"Checking {itp_file}...")
-                self.editor.append_ligand_atomtypes_to_forcefield(itp_file=itp_file)
-                self.editor.modify_improper_dihedrals_in_ligand_itp(itp_file=itp_file)
-                self.editor.rename_residue_in_itp_atoms_section(itp_file=itp_file)
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
                 self._log_info(
                     f"{itp_file} not found. Running ligand builder pipeline for {ligand_name}..."
@@ -316,7 +319,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     self._log_error(f"Failed to copy amber14sb.ff files: {e}")
                 ligand_pdb = ligand_file
                 mol2_file = f"{ligand_name}.mol2"
-                # Convert PDB to MOL2 with correct naming
                 mol2_file_result = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb, outname=mol2_file)
                 if mol2_file_result is None:
                     self._log_error(
@@ -372,9 +374,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self.ligand_pipeline.run_acpype(mol2_file)
                 self.ligand_pipeline.copy_acpype_output_files(mol2_file)
                 self._log_info(f"Checking {itp_file}...")
-                self.editor.append_ligand_atomtypes_to_forcefield(itp_file=itp_file)
-                self.editor.modify_improper_dihedrals_in_ligand_itp(itp_file=itp_file)
-                self.editor.rename_residue_in_itp_atoms_section(itp_file=itp_file)
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
                 return
             else:
                 self._log_info(
