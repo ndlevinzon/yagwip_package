@@ -513,10 +513,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     output_gro, hybrid_pdb, complex_gro
                 )
 
-                # Include the hybrid ITP in topology
-                self.editor.include_ligand_itp_in_topol("topol.top", "HybridMol")
+                # Copy topol.top to lambda directory
+                lambda_topol = os.path.join(lam_dir, "topol.top")
+                shutil.copy("topol.top", lambda_topol)
 
-                self._log_success(f"Created {complex_gro} for lambda {lam_value}")
+                # Include the hybrid ITP in the lambda-specific topology
+                self.editor.include_ligand_itp_in_topol(lambda_topol, "HybridMol")
+
+                self._log_success(f"Created {complex_gro} and updated {lambda_topol} for lambda {lam_value}")
 
             self._log_success(f"Processed {len(lambda_dirs)} lambda windows")
 
