@@ -262,8 +262,116 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Read all lines from the PDB file
         with open(full_path, "r") as f:
             lines = f.readlines()
-        # Extract all lines representing heteroatoms (typically ligands or cofactors)
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
+        atom_lines = [line for line in lines if line.startswith("ATOM")]
+        # If only HETATM lines are present, treat as ligand-only system
+        if hetatm_lines and not atom_lines:
+            ligand_file = "ligand.pdb"
+            self.ligand_pdb_path = os.path.abspath(ligand_file)
+            with open(ligand_file, "w", encoding="utf-8") as lig_out:
+                for line in hetatm_lines:
+                    lig_out.write(line[:17] + "LIG" + line[20:])
+            self._log_info(f"Ligand-only PDB detected. Wrote ligand to {ligand_file}")
+            if not any(
+                line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
+                for line in hetatm_lines
+            ):
+                self._log_warning(
+                    "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
+                )
+            if os.path.isfile("ligand.itp"):
+                self._log_info("Checking ligand.itp...")
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
+            elif use_ligand_builder:
+                self._log_info(
+                    "ligand.itp not found. Running ligand builder pipeline..."
+                )
+                amber_ff_source = str(
+                    files("yagwip.templates").joinpath("amber14sb.ff/")
+                )
+                amber_ff_dest = os.path.abspath("amber14sb.ff")
+                if not os.path.exists(amber_ff_dest):
+                    os.makedirs(amber_ff_dest)
+                    self._log_info(f"Created directory: {amber_ff_dest}")
+                try:
+                    for item in Path(amber_ff_source).iterdir():
+                        if item.is_file():
+                            content = item.read_text(encoding="utf-8")
+                            dest_file = os.path.join(amber_ff_dest, item.name)
+                            with open(dest_file, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            self._log_debug(f"Copied {item.name}")
+                    self._log_success("Copied all amber14sb.ff files.")
+                except Exception as e:
+                    self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                ligand_pdb = "ligand.pdb"
+                mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_pdb)
+                if mol2_file is None:
+                    self._log_error(
+                        "MOL2 generation failed. Aborting ligand pipeline..."
+                    )
+                    return
+                with open(mol2_file, encoding="utf-8") as f:
+                    lines = f.readlines()
+                atom_start = atom_end = None
+                for i, line in enumerate(lines):
+                    if line.strip() == "@<TRIPOS>ATOM":
+                        atom_start = i + 1
+                    elif (
+                        line.strip().startswith("@<TRIPOS>BOND")
+                        and atom_start is not None
+                    ):
+                        atom_end = i
+                        break
+                if atom_start is None:
+                    self._log_error("Could not find ATOM section in MOL2 file.")
+                    return
+                if atom_end is None:
+                    atom_end = len(lines)
+                atom_lines = lines[atom_start:atom_end]
+                df_atoms = pd.read_csv(
+                    io.StringIO("".join(atom_lines)),
+                    sep=r"\s+",
+                    header=None,
+                    names=[
+                        "atom_id",
+                        "atom_name",
+                        "x",
+                        "y",
+                        "z",
+                        "atom_type",
+                        "subst_id",
+                        "subst_name",
+                        "charge",
+                        "status_bit",
+                    ],
+                )
+                orca_geom_input = mol2_file.replace(".mol2", ".inp")
+                self.ligand_pipeline.mol2_dataframe_to_orca_charge_input(
+                    df_atoms,
+                    orca_geom_input,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                )
+                self.ligand_pipeline.run_orca(orca_geom_input)
+                self.ligand_pipeline.apply_orca_charges_to_mol2(
+                    mol2_file, "orca/ligand.property.txt"
+                )
+                self.ligand_pipeline.run_acpype(mol2_file)
+                self.ligand_pipeline.copy_acpype_output_files(mol2_file)
+                self._log_info("Checking ligand.itp...")
+                self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
+                return
+            else:
+                self._log_info(
+                    "ligand.itp not found and --ligand_builder not specified."
+                )
+                return
+        # If no HETATM lines are found, treat entire file as protein
         # Always rewrite the protein portion with HIS substitutions
         protein_file = "protein.pdb"
         if hetatm_lines:
