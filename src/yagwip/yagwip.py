@@ -510,8 +510,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
                 # Create hybrid complex for this lambda
                 complex_gro = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.gro")
-                self.editor.append_ligand_coordinates_to_gro(
-                    output_gro, hybrid_pdb, complex_gro
+                self.editor.append_hybrid_ligand_coordinates_to_gro(
+                    output_gro, hybrid_pdb, hybrid_itp, complex_gro
                 )
 
                 # Copy topol.top to lambda directory

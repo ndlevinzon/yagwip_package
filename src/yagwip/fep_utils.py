@@ -712,6 +712,55 @@ def get_canonical_hybrid_atom_list(dfA, dfB, mapping):
     return mapped_atoms + uniqueA_atoms + uniqueB_atoms
 
 
+def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
+    """
+    Verify that hybrid topology and coordinate files are synchronized.
+    Returns True if synchronized, False otherwise.
+    """
+    # Read topology atoms
+    topo_atoms = []
+    with open(hybrid_itp, 'r') as f:
+        lines = f.readlines()
+
+    in_atoms_section = False
+    for line in lines:
+        if line.strip() == "[ atoms ]":
+            in_atoms_section = True
+            continue
+        elif in_atoms_section and line.strip().startswith("["):
+            break
+        elif in_atoms_section and line.strip() and not line.strip().startswith(";"):
+            parts = line.split()
+            if len(parts) >= 4:
+                atom_index = int(parts[0])
+                atom_name = parts[4]
+                topo_atoms.append((atom_index, atom_name))
+
+    # Read PDB atoms
+    pdb_atoms = []
+    with open(hybrid_pdb, 'r') as f:
+        for line in f:
+            if line.startswith(("ATOM", "HETATM")):
+                atom_name = line[13:16].strip()
+                pdb_atoms.append(atom_name)
+
+    # Check if atom counts match
+    if len(topo_atoms) != len(pdb_atoms):
+        print(f"[ERROR] Lambda {lam}: Topology has {len(topo_atoms)} atoms, PDB has {len(pdb_atoms)} atoms")
+        return False
+
+    # Check if atom names match in order
+    for i, (topo_idx, topo_name) in enumerate(topo_atoms):
+        if i < len(pdb_atoms):
+            pdb_name = pdb_atoms[i]
+            if topo_name.strip() != pdb_name.strip():
+                print(f"[ERROR] Lambda {lam}: Atom {i + 1} mismatch - Topology: {topo_name}, PDB: {pdb_name}")
+                return False
+
+    print(f"[INFO] Lambda {lam}: Topology and PDB are synchronized ({len(topo_atoms)} atoms)")
+    return True
+
+
 def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam):
     """
     For each lambda, output hybrid coordinates as:
@@ -891,6 +940,9 @@ if __name__ == "__main__":
                 continue
             hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam)
             print(f"Wrote {out_pdb}")
+
+            # Verify synchronization
+            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
     else:
         print_help()
         sys.exit(1)

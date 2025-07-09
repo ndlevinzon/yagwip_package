@@ -201,6 +201,92 @@ class Editor(LoggingMixin):
 
         self._log(f"Wrote combined coordinates to {combined_gro}")
 
+    def append_hybrid_ligand_coordinates_to_gro(
+            self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
+    ):
+        """
+        Append hybrid ligand coordinates to protein GRO file, ensuring atom indices match the topology.
+        This function reads the hybrid ITP file to get the correct atom indices and order.
+        """
+        # Read hybrid ITP to get atom indices and order
+        hybrid_atoms = []
+        with open(hybrid_itp, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        in_atoms_section = False
+        for line in lines:
+            if line.strip() == "[ atoms ]":
+                in_atoms_section = True
+                continue
+            elif in_atoms_section and line.strip().startswith("["):
+                break
+            elif in_atoms_section and line.strip() and not line.strip().startswith(";"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    atom_index = int(parts[0])
+                    atom_name = parts[4]
+                    hybrid_atoms.append((atom_index, atom_name))
+
+        # Read ligand PDB coordinates
+        coords = {}
+        with open(ligand_pdb, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(("ATOM", "HETATM")):
+                    res_id = int(line[23:26].strip())
+                    atom_name = line[13:16].strip()
+                    res_name = line[17:20].strip()
+                    atom_index = int(line[6:11].strip())
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    coords[atom_index] = (res_id, res_name, atom_name, x, y, z)
+
+        # Create ordered coordinates based on hybrid ITP atom order
+        ordered_coords = []
+        for topo_index, topo_name in hybrid_atoms:
+            # Find matching coordinate by atom name (since PDB indices are sequential)
+            for pdb_index, (res_id, res_name, atom_name, x, y, z) in coords.items():
+                if atom_name.strip() == topo_name.strip():
+                    ordered_coords.append((res_id, res_name, atom_name, topo_index, x, y, z))
+                    break
+
+        # Read protein GRO file
+        with open(protein_gro, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        header, atom_lines, box = lines[:2], lines[2:-1], lines[-1]
+        total_atoms = len(atom_lines) + len(ordered_coords)
+
+        # Write combined GRO file
+        with open(combined_gro, "w", encoding="utf-8") as fout:
+            fout.write(header[0])
+            fout.write(f"{total_atoms}\n")
+            fout.writelines(atom_lines)
+            for res_id, res_name, atom_name, atom_index, x, y, z in ordered_coords:
+                fout.write(
+                    f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x / 10:8.3f}{y / 10:8.3f}{z / 10:8.3f}\n"
+                )
+            fout.write(box)
+
+        self._log(f"Wrote combined coordinates to {combined_gro} with topology-matched indices")
+        self._log(f"Protein atoms: {len(atom_lines)}, Ligand atoms: {len(ordered_coords)}, Total: {total_atoms}")
+
+        # Debug: Check if all hybrid atoms were matched
+        if len(ordered_coords) != len(hybrid_atoms):
+            self._log(
+                f"[WARNING] Atom count mismatch: {len(ordered_coords)} coordinates vs {len(hybrid_atoms)} topology atoms")
+            missing_atoms = []
+            for topo_index, topo_name in hybrid_atoms:
+                found = False
+                for _, _, atom_name, _, _, _ in ordered_coords:
+                    if atom_name.strip() == topo_name.strip():
+                        found = True
+                        break
+                if not found:
+                    missing_atoms.append(f"{topo_index}:{topo_name}")
+            if missing_atoms:
+                self._log(f"[WARNING] Missing atoms in PDB: {missing_atoms}")
+
     def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
         with open(topol_top, "r", encoding="utf-8") as f:
             lines = f.readlines()
