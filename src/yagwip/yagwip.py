@@ -289,9 +289,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             itp_file = f"{ligand_name}.itp"
             if os.path.isfile(itp_file):
                 self._log_info(f"Checking {itp_file}...")
-                self.editor.append_ligand_atomtypes_to_forcefield(itp_file=itp_file)
-                self.editor.modify_improper_dihedrals_in_ligand_itp(itp_file=itp_file)
-                self.editor.rename_residue_in_itp_atoms_section(itp_file=itp_file)
+                self.editor.append_ligand_atomtypes_to_forcefield(itp_file, ligand_name)
+                self.editor.ligand_itp = itp_file
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
                 self._log_info(
                     f"{itp_file} not found. Running ligand builder pipeline for {ligand_name}..."
@@ -372,9 +373,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self.ligand_pipeline.run_acpype(mol2_file)
                 self.ligand_pipeline.copy_acpype_output_files(mol2_file)
                 self._log_info(f"Checking {itp_file}...")
-                self.editor.append_ligand_atomtypes_to_forcefield(itp_file=itp_file)
-                self.editor.modify_improper_dihedrals_in_ligand_itp(itp_file=itp_file)
-                self.editor.rename_residue_in_itp_atoms_section(itp_file=itp_file)
+                self.editor.append_ligand_atomtypes_to_forcefield(itp_file, ligand_name)
+                self.editor.ligand_itp = itp_file
+                self.editor.modify_improper_dihedrals_in_ligand_itp()
+                self.editor.rename_residue_in_itp_atoms_section()
                 return
             else:
                 self._log_info(
@@ -416,6 +418,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             if os.path.isfile("ligand.itp"):
                 self._log_info("Checking ligand.itp...")
                 self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.ligand_itp = "ligand.itp"
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
             elif use_ligand_builder:
@@ -506,6 +509,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self.ligand_pipeline.copy_acpype_output_files(mol2_file)
                 self._log_info("Checking ligand.itp...")
                 self.editor.append_ligand_atomtypes_to_forcefield()
+                self.editor.ligand_itp = "ligand.itp"
                 self.editor.modify_improper_dihedrals_in_ligand_itp()
                 self.editor.rename_residue_in_itp_atoms_section()
                 return

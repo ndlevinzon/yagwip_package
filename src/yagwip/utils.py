@@ -423,18 +423,26 @@ class Editor(LoggingMixin):
         self.ffnonbonded_itp = ffnonbonded_itp
         self.logger = None
 
-    def append_ligand_atomtypes_to_forcefield(self):
-        if not os.path.isfile(self.ligand_itp):
-            self._log(f"[!] {self.ligand_itp} not found.")
+    def append_ligand_atomtypes_to_forcefield(self, itp_file=None, ligand_name=None):
+        """
+        Append the [ atomtypes ] section from a ligand .itp file to the forcefield ffnonbonded.itp,
+        with a comment indicating the ligand name above the block. If itp_file or ligand_name is not provided,
+        use self.ligand_itp and infer ligand_name from the file name.
+        """
+        if itp_file is None:
+            itp_file = self.ligand_itp
+        if ligand_name is None:
+            ligand_name = os.path.splitext(os.path.basename(itp_file))[0]
+
+        if not os.path.isfile(itp_file):
+            self._log(f"[!] {itp_file} not found.")
             return
 
-        with open(self.ligand_itp, "r", encoding="utf-8") as f:
+        with open(itp_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
         atomtypes_block = []
-        new_ligand_lines = []
         inside_atomtypes = False
-
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("[ atomtypes ]"):
@@ -444,33 +452,27 @@ class Editor(LoggingMixin):
                 inside_atomtypes = False
             if inside_atomtypes:
                 atomtypes_block.append(line)
-            else:
-                new_ligand_lines.append(line)
-
-        with open(self.ligand_itp, "w", encoding="utf-8") as fout:
-            fout.writelines(new_ligand_lines)
-        self._log("Removed [ atomtypes ] section from ligand.itp")
 
         if not atomtypes_block:
-            self._log("No atomtypes section found in ligand.itp. Skipping...")
+            self._log(f"No atomtypes section found in {itp_file}. Skipping...")
             return
 
         if not os.path.isfile(self.ffnonbonded_itp):
             self._log(f"[ERROR] {self.ffnonbonded_itp} not found.")
             return
 
+        # Check if this ligand's atomtypes have already been appended
         with open(self.ffnonbonded_itp, "r", encoding="utf-8") as f:
-            if ";ligand" in f.read():
-                self._log(
-                    "Ligand section already exists in ffnonbonded.itp. Skipping..."
-                )
+            ff_content = f.read()
+            if f";ligand {ligand_name}" in ff_content:
+                self._log(f"Ligand {ligand_name} atomtypes already exist in ffnonbonded.itp. Skipping...")
                 return
 
         with open(self.ffnonbonded_itp, "a", encoding="utf-8") as f:
-            f.write("\n;ligand\n")
+            f.write(f"\n;ligand {ligand_name}\n")
             f.writelines(atomtypes_block)
 
-        self._log(f"Appended ligand atomtypes to {self.ffnonbonded_itp}")
+        self._log(f"Appended {ligand_name} atomtypes to {self.ffnonbonded_itp}")
 
     def modify_improper_dihedrals_in_ligand_itp(self):
         if not os.path.isfile(self.ligand_itp):
