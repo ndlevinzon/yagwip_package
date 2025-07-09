@@ -554,9 +554,20 @@ def filter_topology_sections(df, present_indices):
             if col in df.columns:
                 mask &= df[col].astype(int).isin(present)
 
-        # For bonds, filter out self-bonds (ai == aj)
+        # Ensure all atom indices are within the bounds of present atoms
+        max_atom_idx = max(present) if present else 0
+
+        # For bonds, filter out self-bonds (ai == aj) and bonds to atoms outside bounds
         if 'aj' in df.columns and 'ai' in df.columns:
             mask &= (df['ai'].astype(int) != df['aj'].astype(int))
+            mask &= (df['ai'].astype(int) <= max_atom_idx)
+            mask &= (df['aj'].astype(int) <= max_atom_idx)
+
+        # For angles and dihedrals, ensure all atom indices are within bounds
+        if 'ak' in df.columns:
+            mask &= (df['ak'].astype(int) <= max_atom_idx)
+        if 'al' in df.columns:
+            mask &= (df['al'].astype(int) <= max_atom_idx)
 
         filtered_df = df[mask].copy()
 
