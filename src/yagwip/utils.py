@@ -468,6 +468,7 @@ class Editor(LoggingMixin):
                 self._log(f"Ligand {ligand_name} atomtypes already exist in ffnonbonded.itp. Skipping...")
                 return
 
+        # Append the new ligand's atomtypes block to the forcefield file
         with open(self.ffnonbonded_itp, "a", encoding="utf-8") as f:
             f.write(f"\n;ligand {ligand_name}\n")
             f.writelines(atomtypes_block)
