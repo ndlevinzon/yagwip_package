@@ -521,15 +521,23 @@ def write_hybrid_topology(
                 funct = getattr(dih, 'funct', None)
                 parA = getattr(dih, 'parA', [])
                 parB = getattr(dih, 'parB', [])
-                # Handle both single values and lists
+                # Handle both single values and lists, ensure exactly 3 parameters for dihedrals
                 if isinstance(parA, list):
-                    parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
+                    # Take only the first 3 parameters for dihedrals
+                    parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:3]
+                    while len(parA_clean) < 3:
+                        parA_clean.append('0.00')
+                    parA_str = ' '.join(str(p) for p in parA_clean)
                 else:
-                    parA_str = '0.00' if pd.isna(parA) or parA == '' else str(parA)
+                    parA_str = '0.00 0.00 0.00'
                 if isinstance(parB, list):
-                    parB_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parB)
+                    # Take only the first 3 parameters for dihedrals
+                    parB_clean = [p for p in parB if not pd.isna(p) and p != ''][:3]
+                    while len(parB_clean) < 3:
+                        parB_clean.append('0.00')
+                    parB_str = ' '.join(str(p) for p in parB_clean)
                 else:
-                    parB_str = '0.00' if pd.isna(parB) or parB == '' else str(parB)
+                    parB_str = '0.00 0.00 0.00'
                 f.write(
                     f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
