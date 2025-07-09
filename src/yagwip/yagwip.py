@@ -25,13 +25,15 @@ import sys
 import shutil
 import random
 import argparse
-import subprocess
-from pathlib import Path
 import importlib.metadata
+from pathlib import Path
 from importlib.resources import files
 
 # === Third-Party Imports ===
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 # === Local Imports ===
 from .build import Builder, Modeller, LigandPipeline
@@ -290,17 +292,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
     def _handle_protein_ligand(self, lines, hetatm_lines, args):
-        protein_file, ligand_file = self._extract_ligand_and_protein(lines)
+        ligand_name = self._assign_ligand_name()
+        protein_file, ligand_file = self._extract_ligand_and_protein(lines, ligand_name)
         self.ligand_pdb_path = os.path.abspath(ligand_file)
         self._warn_if_no_hydrogens(hetatm_lines)
-        if os.path.isfile("ligand.itp"):
-            self._process_ligand_itp("ligand.itp", "LIG")
+        itp_file = f"{ligand_name}.itp"
+        if os.path.isfile(itp_file):
+            self._process_ligand_itp(itp_file, ligand_name)
         elif args.ligand_builder:
-            self._run_ligand_builder(ligand_file, "LIG", args.c, args.m)
-            if os.path.isfile("ligand.itp"):
-                self._process_ligand_itp("ligand.itp", "LIG")
+            self._run_ligand_builder(ligand_file, ligand_name, args.c, args.m)
+            if os.path.isfile(itp_file):
+                self._process_ligand_itp(itp_file, ligand_name)
         else:
-            self._log_info("ligand.itp not found and --ligand_builder not specified.")
+            self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
     def _handle_protein_only(self, lines):
         self.ligand_pdb_path = None
@@ -413,9 +417,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.editor.modify_improper_dihedrals_in_ligand_itp()
         self.editor.rename_residue_in_itp_atoms_section()
 
-    def _extract_ligand_and_protein(self, lines):
+    def _extract_ligand_and_protein(self, lines, ligand_name):
         protein_file = "protein.pdb"
-        ligand_file = "ligand.pdb"
+        ligand_file = f"{ligand_name}.pdb"
         with open(protein_file, "w", encoding="utf-8") as prot_out, open(
             ligand_file, "w", encoding="utf-8"
         ) as lig_out:
@@ -428,37 +432,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     prot_out.write(line)
         self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
         return protein_file, ligand_file
-
-    def do_fep_prep(self, arg):
-        """
-        Run the complete FEP preparation workflow using fep_utils.py CLI.
-        This will:
-        1) Run MCS to generate atom_map.txt
-        2) Generate hybrid topologies for all lambda windows
-        3) Generate hybrid coordinates for all lambda windows
-        """
-        ligandA_mol2 = "ligand.mol2"
-        ligandB_mol2 = "ligandA.mol2"
-        ligandA_itp = "ligand.itp"
-        ligandB_itp = "ligandA.itp"
-        atom_map = "atom_map.txt"
-        fep_utils_path = os.path.join(os.path.dirname(__file__), "fep_utils.py")
-        python_exe = sys.executable
-
-        cmds = [
-            [python_exe, fep_utils_path, "mcs", ligandA_mol2, ligandB_mol2, atom_map],
-            [python_exe, fep_utils_path, "hybrid_topology", ligandA_itp, ligandB_itp, atom_map],
-            [python_exe, fep_utils_path, "hybrid_coords", ligandA_mol2, ligandB_mol2, atom_map],
-        ]
-        for cmd in cmds:
-            self._log_info(f"Running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                self._log_error(result.stderr)
-                break
-            else:
-                self._log_info(result.stdout)
-        self._log_success("FEP preparation complete.")
 
     def do_pdb2gmx(self, arg):
         """
