@@ -2,9 +2,10 @@ import os
 import re
 from .base import LoggingMixin
 
+
 class Editor(LoggingMixin):
     def __init__(
-        self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
+            self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
     ):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
@@ -167,7 +168,7 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-        self, protein_gro, ligand_pdb, combined_gro="complex.gro"
+            self, protein_gro, ligand_pdb, combined_gro="complex.gro"
     ):
         coords = []
         with open(ligand_pdb, "r", encoding="utf-8") as f:
@@ -214,9 +215,9 @@ class Editor(LoggingMixin):
             stripped = line.strip()
 
             if (
-                not inserted_include
-                and "#include" in stripped
-                and "forcefield.itp" in stripped
+                    not inserted_include
+                    and "#include" in stripped
+                    and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
                 new_lines.append(f'#include "./{self.ligand_itp}"\n')
@@ -251,6 +252,48 @@ class Editor(LoggingMixin):
             f.writelines(new_lines)
 
         self._log(f"Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
+
+    def fix_lambda_topology_paths(self, topol_file, lambda_value):
+        """
+        Fix paths in topology files for lambda subdirectories.
+        - Replace #include "./amber14sb.ff/" with #include "../amber14sb.ff/"
+        - Replace #include "./ligand" with #include "./hybrid_lambda_X.itp"
+
+        Parameters:
+            topol_file (str): Path to the topology file to fix
+            lambda_value (str): Lambda value (e.g., "0.00", "0.05", etc.)
+        """
+        if not os.path.isfile(topol_file):
+            self._log(f"[ERROR] {topol_file} not found.")
+            return
+
+        with open(topol_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        modified_lines = []
+        modified = False
+
+        for line in lines:
+            # Fix amber14sb.ff path
+            if '#include "./amber14sb.ff/' in line:
+                line = line.replace('./amber14sb.ff/', '../amber14sb.ff/')
+                modified = True
+                self._log(f"Fixed amber14sb.ff path in {topol_file}")
+
+            # Fix ligand include to use hybrid ITP
+            if '#include "./ligand' in line:
+                line = f'#include "./hybrid_lambda_{lambda_value}.itp"\n'
+                modified = True
+                self._log(f"Updated ligand include to hybrid_lambda_{lambda_value}.itp in {topol_file}")
+
+            modified_lines.append(line)
+
+        if modified:
+            with open(topol_file, "w", encoding="utf-8") as f:
+                f.writelines(modified_lines)
+            self._log(f"Updated paths in {topol_file} for lambda {lambda_value}")
+        else:
+            self._log(f"No path corrections needed in {topol_file}")
 
     def insert_itp_into_top_files(self, itp_path_list, root_dir="."):
         """

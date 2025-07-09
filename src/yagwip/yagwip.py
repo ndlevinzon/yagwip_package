@@ -521,6 +521,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 # Include the hybrid ITP in the lambda-specific topology
                 self.editor.include_ligand_itp_in_topol(lambda_topol, "HybridMol")
 
+                # Fix paths in the lambda-specific topology file
+                self.editor.fix_lambda_topology_paths(lambda_topol, lam_value)
+
                 self._log_success(f"Created {complex_gro} and updated {lambda_topol} for lambda {lam_value}")
 
             self._log_success(f"Processed {len(lambda_dirs)} lambda windows")
