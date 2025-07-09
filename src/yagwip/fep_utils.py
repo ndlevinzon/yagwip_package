@@ -541,6 +541,7 @@ def write_hybrid_topology(
 def filter_topology_sections(df, present_indices):
     """
     Filter a topology DataFrame (e.g., bonds, angles) to only include terms where all atom indices are present.
+    Also renumber atom indices to be sequential starting from 1.
     """
     present = set(present_indices)
     if 'ai' in df.columns:
@@ -548,7 +549,17 @@ def filter_topology_sections(df, present_indices):
         for col in ['aj', 'ak', 'al']:
             if col in df.columns:
                 mask &= df[col].astype(int).isin(present)
-        return df[mask].copy()
+        filtered_df = df[mask].copy()
+
+        # Create a mapping from old indices to new sequential indices
+        index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(sorted(present), 1)}
+
+        # Renumber all atom indices
+        for col in ['ai', 'aj', 'ak', 'al']:
+            if col in filtered_df.columns:
+                filtered_df[col] = filtered_df[col].astype(int).map(index_mapping)
+
+        return filtered_df
     return df.copy()
 
 
@@ -586,18 +597,18 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     """
     For each lambda, build a new hybrid atom list with correct interpolation and original indices.
-    Only include atoms present at this lambda.
+    Only include atoms present at this lambda. Renumber atoms sequentially starting from 1.
     """
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
     hybrid_atoms = []
-    for idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
+    for new_idx, (old_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list, 1):
         if atom_type == 'mapped':
             rowA = dfA[dfA['index'] == origA_idx].iloc[0]
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
             charge = (1 - lam) * rowA['charge'] + lam * rowB['charge']
             mass = (1 - lam) * rowA['mass'] + lam * rowB['mass']
             hybrid_atoms.append(HybridAtom(
-                index=idx,
+                index=new_idx,
                 atom_name=atom_name,
                 typeA=rowA['type'],
                 typeB=rowB['type'],
@@ -614,7 +625,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             charge = (1 - lam) * rowA['charge']
             mass = (1 - lam) * rowA['mass']
             hybrid_atoms.append(HybridAtom(
-                index=idx,
+                index=new_idx,
                 atom_name=atom_name,
                 typeA=rowA['type'],
                 typeB='DUM',
@@ -631,7 +642,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             charge = lam * rowB['charge']
             mass = lam * rowB['mass']
             hybrid_atoms.append(HybridAtom(
-                index=idx,
+                index=new_idx,
                 atom_name=atom_name,
                 typeA='DUM',
                 typeB=rowB['type'],
