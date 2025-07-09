@@ -415,11 +415,10 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
 def write_hybrid_topology(
     filename,
     hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-    system_name="Hybrid System", molecule_name="HybridMol", nmols=1, forcefield="gromos43a1.ff/forcefield.itp"
+    system_name="Hybrid System", molecule_name="HybridMol", nmols=1
 ):
     with open(filename, 'w') as f:
         f.write(f'; Include force field parameters\n')
-        f.write(f'#include "{forcefield}"\n\n')
         f.write('[ moleculetype ]\n')
         f.write('; Name            nrexcl\n')
         f.write(f'{molecule_name:<18}3\n\n')
@@ -721,10 +720,9 @@ if __name__ == "__main__":
                 hybrid_bonds=bonds.to_dict('records') if not bonds.empty else None,
                 hybrid_angles=angles.to_dict('records') if not angles.empty else None,
                 hybrid_dihedrals=dihedrals.to_dict('records') if not dihedrals.empty else None,
-                system_name="Ligand to LigandA Hybrid",
+                system_name="LigandA to LigandB Hybrid",
                 molecule_name="HybridMol",
                 nmols=1,
-                forcefield="amber14sb.ff/forcefield.itp"
             )
             print(f"Wrote {outfilename}")
     elif cmd == "hybrid_coords":
