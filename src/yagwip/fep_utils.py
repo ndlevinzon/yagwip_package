@@ -417,8 +417,11 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
         # Get all parameter columns for A and B
         par_cols_A = [col for col in row.index if col.endswith('A') and col in ['rA', 'kA']]
         par_cols_B = [col for col in row.index if col.endswith('B') and col in ['rB', 'kB']]
-        valsA = [row.get(col, dummyA.get(col.replace('A', ''), '')) for col in par_cols_A]
-        valsB = [row.get(col, dummyB.get(col.replace('B', ''), '')) for col in par_cols_B]
+        valsA = [row.get(col, dummyA.get(col.replace('A', ''), '0.00')) for col in par_cols_A]
+        valsB = [row.get(col, dummyB.get(col.replace('B', ''), '0.00')) for col in par_cols_B]
+        # Replace NaN values with "0.00"
+        valsA = ['0.00' if pd.isna(val) or val == '' else str(val) for val in valsA]
+        valsB = ['0.00' if pd.isna(val) or val == '' else str(val) for val in valsB]
         indices = [int(row[c]) for c in keycols]
         functA = row.get('functA')
         functB = row.get('functB')
@@ -468,13 +471,13 @@ def write_hybrid_topology(
                 parB = getattr(bond, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
-                    parA_str = ' '.join(str(p) for p in parA)
+                    parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
                 else:
-                    parA_str = str(parA)
+                    parA_str = '0.00' if pd.isna(parA) or parA == '' else str(parA)
                 if isinstance(parB, list):
-                    parB_str = ' '.join(str(p) for p in parB)
+                    parB_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parB)
                 else:
-                    parB_str = str(parB)
+                    parB_str = '0.00' if pd.isna(parB) or parB == '' else str(parB)
                 f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         if hybrid_pairs is not None:
@@ -498,13 +501,13 @@ def write_hybrid_topology(
                 parB = getattr(angle, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
-                    parA_str = ' '.join(str(p) for p in parA)
+                    parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
                 else:
-                    parA_str = str(parA)
+                    parA_str = '0.00' if pd.isna(parA) or parA == '' else str(parA)
                 if isinstance(parB, list):
-                    parB_str = ' '.join(str(p) for p in parB)
+                    parB_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parB)
                 else:
-                    parB_str = str(parB)
+                    parB_str = '0.00' if pd.isna(parB) or parB == '' else str(parB)
                 f.write(f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
         if hybrid_dihedrals is not None:
@@ -520,13 +523,13 @@ def write_hybrid_topology(
                 parB = getattr(dih, 'parB', [])
                 # Handle both single values and lists
                 if isinstance(parA, list):
-                    parA_str = ' '.join(str(p) for p in parA)
+                    parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
                 else:
-                    parA_str = str(parA)
+                    parA_str = '0.00' if pd.isna(parA) or parA == '' else str(parA)
                 if isinstance(parB, list):
-                    parB_str = ' '.join(str(p) for p in parB)
+                    parB_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parB)
                 else:
-                    parB_str = str(parB)
+                    parB_str = '0.00' if pd.isna(parB) or parB == '' else str(parB)
                 f.write(
                     f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d} {int(funct):5d} {parA_str} {parB_str}\n')
             f.write('\n')
