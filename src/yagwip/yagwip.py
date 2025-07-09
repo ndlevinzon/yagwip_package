@@ -462,30 +462,85 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_info(result.stdout)
         self._log_success("FEP preparation complete.")
 
-
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx. If ligand is present, treat protein and ligand separately.
+        Run pdb2gmx. Handles three cases:
+        1) Protein-only: processes protein.pdb
+        2) Protein + single ligand: combines protein.gro with ligand.pdb
+        3) Lambda subdirectories: processes each lambda window with hybrid files
         Usage: "pdb2gmx"
         """
         if not self._require_pdb():
             return
-        protein_pdb = "protein"
-        output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
-        )
-        if not os.path.isfile(output_gro):
-            self._log(f"[ERROR] Expected {output_gro} was not created.")
-            return
-        # Combine ligand coordinates
-        if self.ligand_pdb_path and os.path.getsize("ligand.pdb") > 0:
-            self.editor.append_ligand_coordinates_to_gro(
-                output_gro, "ligand.pdb", "complex.gro"
+
+        # Check if lambda subdirectories exist (case 3)
+        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+
+        if lambda_dirs:
+            # Case 3: Lambda subdirectories with hybrid files
+            self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing hybrid FEP setup...")
+
+            # First, run pdb2gmx on protein only
+            protein_pdb = "protein"
+            output_gro = f"{protein_pdb}.gro"
+            self.builder.run_pdb2gmx(
+                protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
             )
-            self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
+            if not os.path.isfile(output_gro):
+                self._log_error(f"Expected {output_gro} was not created.")
+                return
+
+            # Process each lambda subdirectory
+            for lam_dir in sorted(lambda_dirs):
+                lam_value = lam_dir.replace('lambda_', '')
+                self._log_info(f"Processing {lam_dir} (lambda = {lam_value})")
+
+                # Check for required files in lambda directory
+                hybrid_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.pdb")
+                hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.itp")
+
+                if not os.path.exists(hybrid_pdb):
+                    self._log_warning(f"Hybrid PDB not found: {hybrid_pdb}")
+                    continue
+
+                if not os.path.exists(hybrid_itp):
+                    self._log_warning(f"Hybrid ITP not found: {hybrid_itp}")
+                    continue
+
+                # Create hybrid complex for this lambda
+                complex_gro = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.gro")
+                self.editor.append_ligand_coordinates_to_gro(
+                    output_gro, hybrid_pdb, complex_gro
+                )
+
+                # Include the hybrid ITP in topology
+                self.editor.include_ligand_itp_in_topol("topol.top", "HybridMol")
+
+                self._log_success(f"Created {complex_gro} for lambda {lam_value}")
+
+            self._log_success(f"Processed {len(lambda_dirs)} lambda windows")
+
         else:
-            shutil.copy(str(output_gro), "complex.gro")  # only protein
+            # Cases 1 & 2: Protein-only or protein + single ligand
+            protein_pdb = "protein"
+            output_gro = f"{protein_pdb}.gro"
+            self.builder.run_pdb2gmx(
+                protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
+            )
+            if not os.path.isfile(output_gro):
+                self._log_error(f"Expected {output_gro} was not created.")
+                return
+
+            # Check if we have a single ligand (case 2)
+            if self.ligand_pdb_path and os.path.exists("ligand.pdb") and os.path.getsize("ligand.pdb") > 0:
+                # Case 2: Protein + single ligand
+                self.editor.append_ligand_coordinates_to_gro(
+                    output_gro, "ligand.pdb", "complex.gro"
+                )
+                self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
+            else:
+                # Case 1: Protein-only
+                shutil.copy(str(output_gro), "complex.gro")
 
     def do_solvate(self, arg):
         """

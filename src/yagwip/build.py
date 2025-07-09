@@ -689,15 +689,15 @@ class LigandPipeline(YagwipBase):
                 cmd, shell=True, capture_output=True, text=True, check=False
             )
             if result.returncode != 0:
-                self._log_error(f"[ERROR] acpype failed: {result.stderr}")
+                self._log_error(f"[ERROR] ACPYPE failed: {result.stderr}")
                 return False
-            self._log_info(f"[#] acpype completed for {mol2_file}")
+            self._log_info(f"ACPYPE completed for {mol2_file}")
 
             # Post-process ACPYPE output files
             self.copy_acpype_output_files(mol2_file)
             return True
         except Exception as e:
-            self._log_error(f"[ERROR] Failed to run acpype: {e}")
+            self._log_error(f"[ERROR] Failed to run ACPYPE: {e}")
             return False
 
     def copy_acpype_output_files(self, mol2_file):
