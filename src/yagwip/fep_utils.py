@@ -786,7 +786,7 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
     # Create dummy parameters for missing terms
     dummy_bond_params = {'r': '0.0', 'k': '0.0'}
     dummy_angle_params = {'r': '0.0', 'k': '0.0'}
-    dummy_dihedral_params = {'r': '0.0', 'k': '0.0', 'phase': '0.0'}
+    dummy_dihedral_params = {'r': '0.0', 'k': '0.0'}
 
     # Convert to hybrid terms using filtered sections for both A and B
     hybrid_bonds = build_hybrid_terms(bondsA_filtered, bondsB_filtered, mapping, ['ai', 'aj'], HybridBond,
@@ -837,8 +837,8 @@ if __name__ == "__main__":
         bondsB = parse_itp_section(itpB, 'bonds', 5, ['ai', 'aj', 'funct', 'r', 'k'])
         anglesA = parse_itp_section(itpA, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
         anglesB = parse_itp_section(itpB, 'angles', 6, ['ai', 'aj', 'ak', 'funct', 'r', 'k'])
-        dihedA = parse_itp_section(itpA, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
-        dihedB = parse_itp_section(itpB, 'dihedrals', 8, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k', 'phase'])
+        dihedA = parse_itp_section(itpA, 'dihedrals', 7, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k'])
+        dihedB = parse_itp_section(itpB, 'dihedrals', 7, ['ai', 'aj', 'ak', 'al', 'funct', 'r', 'k'])
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
             lam_str = f"{lam:.2f}"
