@@ -435,67 +435,14 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
     return hybrid_terms
 
 
-def sort_itp_atoms_by_number(filename):
-    """
-    Sort the atoms in an ITP file by their line number (first column).
-    This ensures atoms are ordered sequentially by their line numbers.
-    """
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-
-    # Find the [atoms] section
-    atoms_start = None
-    atoms_end = None
-    for i, line in enumerate(lines):
-        if line.strip() == '[atoms]':
-            atoms_start = i
-        elif atoms_start is not None and line.strip().startswith('['):
-            atoms_end = i
-            break
-
-    if atoms_start is None:
-        print(f"Warning: No [atoms] section found in {filename}")
-        return
-
-    if atoms_end is None:
-        atoms_end = len(lines)
-
-    # Extract header lines (including the [atoms] line and comment line)
-    header_lines = lines[:atoms_start + 2]  # [atoms] line + comment line
-
-    # Extract atom lines
-    atom_lines = []
-    for line in lines[atoms_start + 2:atoms_end]:
-        if line.strip() and not line.strip().startswith(';'):
-            atom_lines.append(line)
-
-    # Sort atom lines by line number (first column) without renumbering
-    def get_atom_number(line):
-        try:
-            return int(line.split()[0])
-        except (ValueError, IndexError):
-            return 0  # Put invalid lines at the beginning
-
-    atom_lines.sort(key=get_atom_number)
-
-    # Extract footer lines (everything after atoms section)
-    footer_lines = lines[atoms_end:]
-
-    # Reconstruct the file with sorted atoms (keeping original numbers)
-    sorted_lines = header_lines + atom_lines + footer_lines
-
-    # Write back to file
-    with open(filename, 'w') as f:
-        f.writelines(sorted_lines)
-
-    print(f"Sorted atoms in {filename} by line number")
-
-
 def write_hybrid_topology(
         filename,
         hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
         system_name="Hybrid System", molecule_name="HybridMol", nmols=1
 ):
+    # Sort hybrid atoms by their index to ensure correct order
+    sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
+
     with open(filename, 'w') as f:
         f.write(f'; Include force field parameters\n')
         f.write('[ moleculetype ]\n')
@@ -503,7 +450,7 @@ def write_hybrid_topology(
         f.write(f'{molecule_name:<18}3\n\n')
         f.write('[ atoms ]\n')
         f.write('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB\n')
-        for atom in hybrid_atoms:
+        for atom in sorted_atoms:
             f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"RES":6s} {atom.atom_name:4s} {1:4d} '
                     f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}\n')
         f.write('\n')
@@ -559,9 +506,6 @@ def write_hybrid_topology(
         f.write('[ molecules ]\n')
         f.write('; Compound        #mols\n')
         f.write(f'{molecule_name:<18}{nmols}\n\n')
-
-    # Sort the atoms by atom number after writing
-    sort_itp_atoms_by_number(filename)
 
 
 def filter_topology_sections(df, present_indices):
