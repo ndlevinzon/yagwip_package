@@ -709,7 +709,12 @@ if __name__ == "__main__":
             bonds = filter_topology_sections(bondsA, present_indices)
             angles = filter_topology_sections(anglesA, present_indices)
             dihedrals = filter_topology_sections(dihedA, present_indices)
-            outfilename = f"hybrid_lambda_{lam:.2f}.itp"
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            import os
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
             write_hybrid_topology(
                 outfilename,
                 hybrid_atoms,
@@ -734,16 +739,13 @@ if __name__ == "__main__":
             import os
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
-            hybrid_itp = f"hybrid_lambda_{lam_str}.itp"
+            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
             out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
-            import shutil
-            if os.path.exists(hybrid_itp):
-                shutil.copy(hybrid_itp, os.path.join(lam_dir, hybrid_itp))
-            else:
+            if not os.path.exists(hybrid_itp):
                 print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
                 continue
             hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam)
-            print(f"Wrote {out_pdb} and copied {hybrid_itp} to {lam_dir}/")
+            print(f"Wrote {out_pdb}")
     else:
         print_help()
         sys.exit(1)
