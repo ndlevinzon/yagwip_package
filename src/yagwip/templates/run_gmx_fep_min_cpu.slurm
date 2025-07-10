@@ -22,52 +22,6 @@ for lambda_dir in lambda_*; do
         lambda_val=${lambda_dir#lambda_}
         lambda_tag=$(printf "hybrid_complex_%.2f" "$lambda_val")
         init="${lambda_tag}.solv.ions"
-
-        # Replace relative paths in topol.top
-        CUR_DIR="$(pwd)"
-        cp topol.top topol.top.bak
-
-        awk -v cwd="$CUR_DIR" '
-        {
-            if ($1 == "#include") {
-                path = $2
-                gsub(/"/, "", path)
-
-                if (path ~ /^\.\/.*/) {
-                    new_path = "\"" cwd "/" substr(path, 3) "\""
-                    print "#include " new_path
-                } else if (path ~ /^\.\.\//) {
-                    parent_dir = cwd
-                    sub(/\/$/, "", parent_dir)
-                    n = split(parent_dir, parts, "/")
-                    up_dir = parts[1]
-                    for (i = 2; i < n; i++) {
-                        up_dir = up_dir "/" parts[i]
-                    }
-                    rel_path = substr(path, 4)
-                    new_path = "\"" up_dir "/" rel_path "\""
-                    print "#include " new_path
-                } else if (path ~ /^\// && index(path, cwd) != 1) {
-                    file = substr(path, length(path) - index(reverse(path), "/") + 2)
-                    new_path = "\"" cwd "/" file "\""
-                    print "#include " new_path
-                } else {
-                    print $0
-                }
-            } else {
-                print $0
-            }
-        }
-
-        function reverse(s,    i, r) {
-            r = ""
-            for (i = length(s); i > 0; i--) {
-                r = r substr(s, i, 1)
-            }
-            return r
-        }
-        ' topol.top.bak > topol.top
-
         mini_prefix="em_fep"
         nvt_prefix="nvt_fep"
         npt_prefix="npt_fep"
