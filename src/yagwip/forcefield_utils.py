@@ -317,24 +317,24 @@ class Editor(LoggingMixin):
                 molecules_lines.append(line)
                 continue
 
-        #     if in_molecules_section:
-        #         if stripped == "" or stripped.startswith("["):
-        #             if not inserted_mol:
-        #                 molecules_lines.append(f"{ligand_name}    1\n")
-        #                 inserted_mol = True
-        #             new_lines.extend(molecules_lines)
-        #             molecules_lines = []
-        #             in_molecules_section = False
-        #             new_lines.append(line)
-        #         else:
-        #             if ligand_name not in stripped:
-        #                 molecules_lines.append(line)
-        #     else:
-        #         new_lines.append(line)
-        #
-        # if in_molecules_section and not inserted_mol:
-        #     molecules_lines.append(f"{ligand_name}    1\n")
-        #     new_lines.extend(molecules_lines)
+            if in_molecules_section:
+                if stripped == "" or stripped.startswith("["):
+                    if not inserted_mol:
+                        molecules_lines.append(f"{ligand_name}    1\n")
+                        inserted_mol = True
+                    new_lines.extend(molecules_lines)
+                    molecules_lines = []
+                    in_molecules_section = False
+                    new_lines.append(line)
+                else:
+                    if ligand_name not in stripped:
+                        molecules_lines.append(line)
+            else:
+                new_lines.append(line)
+
+        if in_molecules_section and not inserted_mol:
+            molecules_lines.append(f"{ligand_name}    1\n")
+            new_lines.extend(molecules_lines)
 
         with open(topol_top, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
