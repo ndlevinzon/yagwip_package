@@ -557,12 +557,6 @@ def write_hybrid_topology(
                 f.write(
                     f'{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d}     2 {parA_str} {parB_str}\n')
             f.write('\n')
-        f.write('[ system ]\n')
-        f.write('; Name\n')
-        f.write(f'{system_name}\n\n')
-        f.write('[ molecules ]\n')
-        f.write('; Compound        #mols\n')
-        f.write(f'{molecule_name:<18}{nmols}\n\n')
 
 
 def filter_topology_sections(df, present_indices):
