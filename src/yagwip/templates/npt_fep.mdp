@@ -52,17 +52,17 @@ pbc                     = xyz       ; 3-D PBC
 ; Velocity generation
 gen_vel                 = no        ; Velocity generation is off
 
-; ===== Free energy settings =====
-free-energy             = yes
+; ===== Free Energy Settings =====
+free-energy              = yes
 ; init_lambda_state        0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15   16   17   18   19   20
 fep_lambdas              = 0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00
-init-lambda-state       = __LAMBDA__     ; replace dynamically per lambda window
-delta-lambda            = 0              ; fixed lambda for equilibration
-couple-moltype          = LIG            ; name of the molecule you're transforming
-couple-lambda0          = vdw-q
-couple-lambda1          = none
-couple-intramol         = no
-sc-alpha                = 0.5
-sc-power                = 1
-sc-sigma                = 0.3
-nstdhdl                 = 100            ; output interval for dhdl.xvg (can reduce for equilibration)
+init-lambda-state        = __LAMBDA__       ; <--- Replace or script this value (e.g., 0, 1, 2...)
+delta-lambda             = 0
+couple-lambda0           = vdw-q
+couple-lambda1           = none
+sc-alpha                 = 0.5
+sc-coul                  = yes
+sc-power                 = 1
+sc-sigma                 = 0.3
+nstdhdl                  = 100
+
