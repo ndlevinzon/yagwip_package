@@ -477,6 +477,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
+        )
+        if not os.path.isfile(output_gro):
+            self._log_error(f"Expected {output_gro} was not created.")
+            return
 
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
