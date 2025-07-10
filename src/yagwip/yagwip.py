@@ -477,12 +477,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
-        )
-        if not os.path.isfile(output_gro):
-            self._log_error(f"Expected {output_gro} was not created.")
-            return
 
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
@@ -497,8 +491,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_info(f"Processing {lam_dir} (lambda = {lam_value})")
 
                 # Check for required files in lambda directory
-                hybrid_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.pdb")
-                hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.itp")
+                hybrid_pdb = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.pdb")
+                hybrid_itp = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.itp")
 
                 if not os.path.exists(hybrid_pdb):
                     self._log_warning(f"Hybrid PDB not found: {hybrid_pdb}")
