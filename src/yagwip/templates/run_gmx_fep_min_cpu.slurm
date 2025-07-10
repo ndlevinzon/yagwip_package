@@ -1,121 +1,123 @@
-#!/bin/bash
-#SBATCH --job-name=__BASE___gmx_min
-#SBATCH --output=slurm/remd_job_%j.out
-#SBATCH --error=slurm/remd_job_%j.err
-#SBATCH --nodes=1              # Number of Nodes
-#SBATCH --ntasks-per-node=1    # Replicas per Node
-#SBATCH --cpus-per-task=64     # CPUs Per Replicas
-#SBATCH --time=01:00:00        # Time limit (1 hour)
-#SBATCH --exclusive            # Exclusive node allocation
-#SBATCH --mem=0                # Use all available memory
+"""
+slurm_utils.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
+"""
+# === Standard Library Imports ===
+import os
+import re
+import shutil
+from importlib.resources import files
 
-# ------------------------
-# Load GROMACS module
-# ------------------------
-module purge
-module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
+# === Local Imports ===
+from .base import YagwipBase
 
-# ------------------------
-# VARIABLES
-# ------------------------
-init="__INIT__.solv.ions"
-mini_prefix="em"
-nvt_prefix="nvt"
-npt_prefix="npt"
 
-# ------------------------
-# ADJUST TOPOL FILE TO CURRENT WORKING DIRECTORY
-# ------------------------
-# Step 1: Capture the current working directory in a variable
-CUR_DIR="$(pwd)"
+class SlurmWriter(YagwipBase):
+    """
+    Handles generation and writing of SLURM job scripts for GROMACS and TREMD workflows.
+    """
 
-# Step 2: Make a backup copy of topol.top in case anything goes wrong
-cp topol.top topol.top.bak
+    def __init__(self, template_pkg="yagwip.templates", logger=None, debug=False):
+        super().__init__(debug=debug, logger=logger)
+        self.template_dir = files(template_pkg)
 
-# Step 3: Use awk to scan through the lines of the backup file and modify #include paths
-awk -v cwd="$CUR_DIR" '                                   # Pass the current directory to awk as variable "cwd"
-{
-    if ($1 == "#include") {                               # Process only lines that begin with "#include"
-        path = $2                                         # Extract the path portion (e.g., "./amber14sb.ff/forcefield.itp")
-        gsub(/"/, "", path)                               # Remove any quotation marks around the path
+    def write_slurm_scripts(self, sim_type, hardware, basename, ligand_pdb_path=None):
+        """
+        Generate and write SLURM scripts for the given simulation type and hardware.
+        Args:
+            sim_type (str): 'md', 'tremd', or 'fep'
+            hardware (str): 'cpu' or 'gpu'
+            basename (str): Project base name for substitution
+            ligand_pdb_path (str or None): If present, use complex.solv.ions, else protein.solv.ions
+        """
+        if sim_type == "fep":
+            # For FEP, process each lambda directory
+            lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+            mdp_templates = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
+            for lam_dir in sorted(lambda_dirs):
+                lam_value = lam_dir.replace('lambda_', '')
+                # Copy and patch .mdp files
+                for mdp_name in mdp_templates:
+                    src_path = self.template_dir / mdp_name
+                    if not src_path.is_file():
+                        self._log_warning(f"Template {mdp_name} not found in {self.template_dir}")
+                        continue
+                    with open(str(src_path), "r", encoding="utf-8") as f:
+                        content = f.read().replace("__LAMBDA__", lam_value)
+                    dest_path = os.path.join(lam_dir, mdp_name)
+                    with open(dest_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    self._log_success(f"Wrote {mdp_name} to {lam_dir} with lambda {lam_value}")
+                # If hardware is cpu, also copy SLURM scripts to each lambda directory
+                if hardware == "cpu":
+                    slurm_files = ["run_gmx_fep_min_cpu.slurm", "run_gmx_fep_cpu.slurm"]
+                    for slurm_name in slurm_files:
+                        src_slurm = self.template_dir / slurm_name
+                        if not src_slurm.is_file():
+                            self._log_warning(f"SLURM template {slurm_name} not found in {self.template_dir}")
+                            continue
+                        dest_slurm = os.path.join(lam_dir, slurm_name)
+                        with open(str(src_slurm), "r", encoding="utf-8") as f:
+                            content = f.read()
+                        # Patch minimization script with correct INIT string
+                        if slurm_name == "run_gmx_fep_min_cpu.slurm":
+                            content = content.replace('init="__INIT__.solv.ions"', f'init="hybrid_complex_{lam_value}.solv.ions"')
+                        with open(dest_slurm, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        self._log_success(f"Copied {slurm_name} to {lam_dir} for FEP CPU workflow (lambda {lam_value})")
+            return
 
-        # Case 1: Handle relative paths that start with "./"
-        if (path ~ /^\.\/.*/) {
-            new_path = "\"" cwd "/" substr(path, 3) "\""  # Remove "./" from the beginning and prepend the current directory
-            print "#include " new_path                    # Print the modified line
-        }
+        # Copy only relevant .mdp files
+        exclude = "production.mdp" if sim_type == "tremd" else "remd_template.mdp"
+        for f in self.template_dir.iterdir():
+            if f.name.endswith(".mdp") and f.name != exclude:
+                shutil.copy(str(f), os.getcwd())
+        self._log_info(f"Copied .mdp templates for {sim_type} (excluded: {exclude})")
 
-        # Case 2: Handle absolute paths that do NOT begin with the current directory
-        else if (path ~ /^\// && index(path, cwd) != 1) {
-            # Extract just the file path component (e.g., "amber14sb.ff/forcefield.itp")
-            file = substr(path, length(path) - index(reverse(path), "/") + 2)
+        # Copy minimization SLURM file for tremd
+        if sim_type == "tremd":
+            min_slurm = self.template_dir / "run_gmx_md_min_cpu.slurm"
+            if min_slurm.is_file():
+                try:
+                    with open(str(min_slurm), "r", encoding="utf-8") as f:
+                        min_content = f.read()
+                    # Replace BASE variable in SLURM script with basename
+                    min_content = re.sub(
+                        r"__BASE__", basename or "PLACEHOLDER", min_content
+                    )
+                    min_content = re.sub(
+                        r"__INIT__", "complex" or "PLACEHOLDER", min_content
+                    )
+                    out_min_slurm = "run_gmx_md_min_cpu.slurm"
+                    with open(out_min_slurm, "w", encoding="utf-8") as f:
+                        f.write(min_content)
+                    self._log_success(
+                        f"Customized SLURM script written: {out_min_slurm}"
+                    )
+                except (OSError, IOError) as e:
+                    self._log_error(f"Failed to configure SLURM script: {e}")
+            else:
+                self._log_warning(
+                    "run_gmx_md_min_cpu.slurm not found in template directory."
+                )
 
-            # Construct new absolute path using the current directory + file
-            new_path = "\"" cwd "/" file "\""
-            print "#include " new_path
-        }
+        # Main SLURM template
+        slurm_tpl_name = f"run_gmx_{sim_type}_{hardware}.slurm"
+        slurm_tpl_path = self.template_dir / slurm_tpl_name
+        if not slurm_tpl_path.is_file():
+            self._log_error(f"SLURM template not found: {slurm_tpl_name}")
+            return
 
-        # Case 3: Path is already absolute and within current directory; leave unchanged
-        else {
-            print $0
-        }
-    } else {
-        # For all other lines (not #include), print them unchanged
-        print $0
-    }
-}
-
-# Helper function: reverse(string)
-# Used to locate the last "/" in the path string
-function reverse(s,    i, r) {
-    r = ""
-    for (i = length(s); i > 0; i--) {
-        r = r substr(s, i, 1)
-    }
-    return r
-}
-' topol.top.bak > topol.top    # Output the modified content into topol.top, replacing the original
-
-# ------------------------
-# MINIMIZATION
-# ------------------------
-if [ ! -f "${mini_prefix}.gro" ]; then
-    echo "Starting energy minimization..."
-    srun gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${mini_prefix}
-else
-    echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
-fi
-
-# ------------------------
-# NVT
-# ------------------------
-if [ ! -f "${nvt_prefix}.gro" ]; then
-    echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${nvt_prefix}
-else
-    echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
-fi
-
-# ------------------------
-# NPT
-# ------------------------
-if [ ! -f "${npt_prefix}.gro" ]; then
-    echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${npt_prefix}
-else
-    echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
-fi
-
-echo "Minimization and Equilibration Done. Submitting TREMD..."
-sbatch run_gmx_tremd_cpu.slurm
-
-#--------------------------------------
-#__  _____   _______       __________
-#\ \/ /   | / ____/ |     / /  _/ __ \
-# \  / /| |/ / __ | | /| / // // /_/ /
-# / / ___ / /_/ / | |/ |/ // // ____/
-#/_/_/  |_\____/  |__/|__/___/_/
-#--------------------------------------
+        try:
+            with open(str(slurm_tpl_path), "r", encoding="utf-8") as f:
+                slurm_content = f.read()
+            # Replace BASE variable in SLURM script with basename
+            slurm_content = re.sub(
+                r"__BASE__", basename or "PLACEHOLDER", slurm_content
+            )
+            # Write modified SLURM script
+            out_slurm = f"{slurm_tpl_name}"
+            with open(out_slurm, "w", encoding="utf-8") as f:
+                f.write(slurm_content)
+            self._log_success(f"Customized SLURM script written: {out_slurm}")
+        except Exception as e:
+            self._log_error(f"Failed to configure SLURM script: {e}")

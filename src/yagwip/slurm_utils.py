@@ -24,11 +24,44 @@ class SlurmWriter(YagwipBase):
         """
         Generate and write SLURM scripts for the given simulation type and hardware.
         Args:
-            sim_type (str): 'md' or 'tremd'
+            sim_type (str): 'md', 'tremd', or 'fep'
             hardware (str): 'cpu' or 'gpu'
             basename (str): Project base name for substitution
             ligand_pdb_path (str or None): If present, use complex.solv.ions, else protein.solv.ions
         """
+        if sim_type == "fep":
+            # For FEP, process each lambda directory
+            lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+            mdp_templates = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
+            for lam_dir in sorted(lambda_dirs):
+                lam_value = lam_dir.replace('lambda_', '')
+                for mdp_name in mdp_templates:
+                    src_path = self.template_dir / mdp_name
+                    if not src_path.is_file():
+                        self._log_warning(f"Template {mdp_name} not found in {self.template_dir}")
+                        continue
+                    with open(str(src_path), "r", encoding="utf-8") as f:
+                        content = f.read().replace("__LAMBDA__", lam_value)
+                    dest_path = os.path.join(lam_dir, mdp_name)
+                    with open(dest_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    self._log_success(f"Wrote {mdp_name} to {lam_dir} with lambda {lam_value}")
+            # If hardware is cpu, also copy SLURM scripts to current directory
+            if hardware == "cpu":
+                slurm_files = ["run_gmx_fep_min_cpu.slurm", "run_gmx_fep_cpu.slurm"]
+                for slurm_name in slurm_files:
+                    src_slurm = self.template_dir / slurm_name
+                    if not src_slurm.is_file():
+                        self._log_warning(f"SLURM template {slurm_name} not found in {self.template_dir}")
+                        continue
+                    dest_slurm = os.path.join(os.getcwd(), slurm_name)
+                    with open(str(src_slurm), "r", encoding="utf-8") as f:
+                        content = f.read()
+                    with open(dest_slurm, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    self._log_success(f"Copied {slurm_name} to current directory for FEP CPU workflow")
+            return
+
         # Copy only relevant .mdp files
         exclude = "production.mdp" if sim_type == "tremd" else "remd_template.mdp"
         for f in self.template_dir.iterdir():
