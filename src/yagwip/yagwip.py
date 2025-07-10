@@ -721,8 +721,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_slurm(self, arg):
         """Generate SLURM scripts for MD, TREMD, or FEP simulations."""
-        if not self._require_pdb():
-            return
 
         args = arg.strip().split()
         if len(args) < 2:
