@@ -491,8 +491,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_info(f"Processing {lam_dir} (lambda = {lam_value})")
 
                 # Check for required files in lambda directory
-                hybrid_pdb = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.pdb")
-                hybrid_itp = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.itp")
+                hybrid_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.pdb")
+                hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.itp")
 
                 if not os.path.exists(hybrid_pdb):
                     self._log_warning(f"Hybrid PDB not found: {hybrid_pdb}")
