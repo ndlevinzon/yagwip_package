@@ -518,8 +518,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 lambda_topol = os.path.join(lam_dir, "topol.top")
                 shutil.copy("topol.top", lambda_topol)
 
-                # Include the hybrid ITP in the lambda-specific topology
-                self.editor.include_ligand_itp_in_topol(lambda_topol, "HybridMol")
+                # Include the hybrid ITP in the lambda-specific topology (pass correct path)
+                lambda_itp = f"hybrid_lambda_{lam_value}.itp"
+                self.editor.include_ligand_itp_in_topol(lambda_topol, "HybridMol", ligand_itp_path=lambda_itp)
 
                 # Fix paths in the lambda-specific topology file
                 self.editor.fix_lambda_topology_paths(lambda_topol, lam_value)

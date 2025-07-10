@@ -287,7 +287,9 @@ class Editor(LoggingMixin):
             if missing_atoms:
                 self._log(f"[WARNING] Missing atoms in PDB: {missing_atoms}")
 
-    def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG"):
+    def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG", ligand_itp_path=None):
+        if ligand_itp_path is None:
+            ligand_itp_path = self.ligand_itp
         with open(topol_top, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
@@ -306,7 +308,7 @@ class Editor(LoggingMixin):
                     and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
-                new_lines.append(f'#include "./{self.ligand_itp}"\n')
+                new_lines.append(f'#include "./{ligand_itp_path}"\n')
                 inserted_include = True
                 continue
 
@@ -337,7 +339,7 @@ class Editor(LoggingMixin):
         with open(topol_top, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
 
-        self._log(f"Included {self.ligand_itp} and {ligand_name} entry in {topol_top}")
+        self._log(f"Included {ligand_itp_path} and {ligand_name} entry in {topol_top}")
 
     def fix_lambda_topology_paths(self, topol_file, lambda_value):
         """
