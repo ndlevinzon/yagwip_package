@@ -457,7 +457,7 @@ def write_hybrid_topology(
         f.write('[ atoms ]\n')
         f.write('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB\n')
         for atom in sorted_atoms:
-            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"RES":6s} {atom.atom_name:4s} {1:4d} '
+            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"LIG":6s} {atom.atom_name:4s} {1:4d} '
                     f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}\n')
         f.write('\n')
         if hybrid_bonds is not None:
