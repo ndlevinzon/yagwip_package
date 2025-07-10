@@ -1,74 +1,51 @@
 #!/bin/bash
 #SBATCH --job-name=FEP_gmx_prod
-#SBATCH --output=slurm/fep_job_%j.out
-#SBATCH --error=slurm/fep_job_%j.err
-#SBATCH --nodes=8              # Nodes
-#SBATCH --ntasks-per-node=4    # Replicas per Node
-#SBATCH --cpus-per-task=16     # CPUs Per Replicas
-#SBATCH --time=01:00:00
+#SBATCH --output=slurm/fep_prod_%j.out
+#SBATCH --error=slurm/fep_prod_%j.err
+#SBATCH --nodes=1
+#SBATCH --ntasks=21              # 21 lambda windows
+#SBATCH --cpus-per-task=3        # 3 threads per window
+#SBATCH --time=04:00:00
 #SBATCH --exclusive
 #SBATCH --mem=0
 
-export OMP_NUM_THREADS=16
-
-# ------------------------
-# Load GROMACS module
-# ------------------------
 module purge
 module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 
 # ------------------------
-# VARIABLES
+# RUN PRODUCTION FOR EACH LAMBDA WINDOW
 # ------------------------
-npt_prefix="npt_fep"
-prod_prefix="production_fep"
-prod_step="step"
 
-# ------------------------
-# READ TEMPERATURES FROM TEMPERATURE LADDER FILE
-# ------------------------
-temperature_file="TREMD_temp_ranges.txt"
-mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
+i=0
+for lambda_dir in lambda_*; do
+    (
+        cd "$lambda_dir" || exit
 
-# ------------------------
-# PREPARE T-REMD DIRECTORIES
-# ------------------------
-echo "Preparing T-REMD directories..."
-for i in ${!temperatures[@]}; do
-    temp=${temperatures[$i]}
-    dir=$i
-    mkdir -p $dir
-    cp topol.top ${npt_prefix}.gro $dir/
+        # Extract lambda value and construct hybrid init name
+        lambda_val=${lambda_dir#lambda_}
+        lambda_tag=$(printf "hybrid_complex_%.2f" "$lambda_val")
+        init="${lambda_tag}.solv.ions"
+        prod_prefix="production_fep"
 
-    # Generate MDP for this temperature
-    sed "s/XXX/${temp}/g" remd_template.mdp > $dir/remd.mdp
+        # Only rerun grompp if .tpr doesn't exist
+        if [ ! -f ${prod_prefix}.tpr ]; then
+            echo "[${lambda_dir}] Preparing TPR..."
+            gmx_mpi grompp -f production_fep.mdp -c npt_fep.gro -r ${init}.gro -p topol.top -o ${prod_prefix}.tpr -maxwarn 20
+        fi
 
-    # grompp for each replica
-    pushd $dir
-    srun gmx_mpi grompp -f remd.mdp -c ${npt_prefix}.gro -p topol.top -o remd.tpr -maxwarn 20
-    popd
+        echo "[${lambda_dir}] Starting production run..."
+        gmx_mpi mdrun -deffnm ${prod_prefix} -ntomp $SLURM_CPUS_PER_TASK
 
+        echo "[${lambda_dir}] Done."
+
+    ) &  # Launch each in the background
+    ((i++))
+
+    # Throttle after 21 jobs (1 per lambda)
+    if (( i % 21 == 0 )); then
+        wait
+    fi
 done
 
-# ------------------------
-# RUN T-REMD WITH CHECKPOINTING
-# ------------------------
-echo "Launching T-REMD with ${#temperatures[@]} replicas..."
-srun gmx_mpi mdrun -multidir $(seq 0 $((${#temperatures[@]} - 1))) \
-  -replex 500 \
-  -deffnm remd \
-  -ntomp ${SLURM_CPUS_PER_TASK} \
-  -cpt 5 \
-  -cpi remd.cpt \
-  -maxh 0.92
-
-echo "Job ran for 55 minutes. Resubmitting self..."
-sbatch run_gmx_tremd_cpu.slurm
-
-#--------------------------------------
-#__  _____   _______       __________
-#\ \/ /   | / ____/ |     / /  _/ __ \
-# \  / /| |/ / __ | | /| / // // /_/ /
-# / / ___ / /_/ / | |/ |/ // // ____/
-#/_/_/  |_\____/  |__/|__/___/_/
-#--------------------------------------
+wait
+echo "FEP production completed for all lambda windows."
