@@ -720,14 +720,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             )
 
     def do_slurm(self, arg):
-        """Generate SLURM scripts for MD or TREMD simulations."""
+        """Generate SLURM scripts for MD, TREMD, or FEP simulations."""
         if not self._require_pdb():
             return
 
         args = arg.strip().split()
         if len(args) < 2:
             self._log_error("Usage: slurm <sim_type> <hardware> [basename]")
-            self._log_info("sim_type: 'md' or 'tremd'")
+            self._log_info("sim_type: 'md', 'tremd', or 'fep'")
             self._log_info("hardware: 'cpu' or 'gpu'")
             return
 
@@ -735,8 +735,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         hardware = args[1].lower()
         basename = args[2] if len(args) > 2 else self.basename
 
-        if sim_type not in ["md", "tremd"]:
-            self._log_error("sim_type must be 'md' or 'tremd'")
+        if sim_type not in ["md", "tremd", "fep"]:
+            self._log_error("sim_type must be 'md', 'tremd', or 'fep'")
             return
 
         if hardware not in ["cpu", "gpu"]:
