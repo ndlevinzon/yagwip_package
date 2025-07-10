@@ -346,6 +346,7 @@ class Editor(LoggingMixin):
         Fix paths in topology files for lambda subdirectories.
         - Replace #include "./amber14sb.ff/" with #include "../amber14sb.ff/"
         - Replace #include "./ligand" with #include "./hybrid_lambda_X.itp"
+        - Replace #include "./posre.itp" with #include "../posre.itp"
 
         Parameters:
             topol_file (str): Path to the topology file to fix
@@ -373,6 +374,12 @@ class Editor(LoggingMixin):
                 line = f'#include "./hybrid_lambda_{lambda_value}.itp"\n'
                 modified = True
                 self._log(f"Updated ligand include to hybrid_lambda_{lambda_value}.itp in {topol_file}")
+
+            # Fix amber14sb.ff path
+            if '#include "posre.itp' in line:
+                line = line.replace('posre.itp', '../posre.itp')
+                modified = True
+                self._log(f"Fixed amber14sb.ff path in {topol_file}")
 
             modified_lines.append(line)
 
