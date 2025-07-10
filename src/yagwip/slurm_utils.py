@@ -59,22 +59,20 @@ class SlurmWriter(YagwipBase):
                         f.write(content)
                     self._log_success(f"Wrote {mdp_name} to {lam_dir} with lambda index {lambda_index}")
                 # If hardware is cpu, also copy SLURM scripts to each lambda directory
-                if hardware == "cpu":
-                    slurm_files = ["run_gmx_fep_min_cpu.slurm", "run_gmx_fep_cpu.slurm"]
-                    for slurm_name in slurm_files:
-                        src_slurm = self.template_dir / slurm_name
-                        if not src_slurm.is_file():
-                            self._log_warning(f"SLURM template {slurm_name} not found in {self.template_dir}")
-                            continue
-                        dest_slurm = os.path.join(lam_dir, slurm_name)
-                        with open(str(src_slurm), "r", encoding="utf-8") as f:
-                            content = f.read().replace("__LAMBDA__", str(lambda_index))
-                        # Patch minimization script with correct INIT string
-                        if slurm_name == "run_gmx_fep_min_cpu.slurm":
-                            content = content.replace('init="__INIT__.solv.ions"', f'init="hybrid_complex_{lam_value}.solv.ions"')
-                        with open(dest_slurm, "w", encoding="utf-8") as f:
-                            f.write(content)
-                        self._log_success(f"Copied {slurm_name} to {lam_dir} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})")
+                    # If hardware is cpu, also copy SLURM scripts to current directory
+                    if hardware == "cpu":
+                        slurm_files = ["run_gmx_fep_min_cpu.slurm", "run_gmx_fep_cpu.slurm"]
+                        for slurm_name in slurm_files:
+                            src_slurm = self.template_dir / slurm_name
+                            if not src_slurm.is_file():
+                                self._log_warning(f"SLURM template {slurm_name} not found in {self.template_dir}")
+                                continue
+                            dest_slurm = os.path.join(os.getcwd(), slurm_name)
+                            with open(str(src_slurm), "r", encoding="utf-8") as f:
+                                content = f.read()
+                            with open(dest_slurm, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            self._log_success(f"Copied {slurm_name} to {dest_slurm} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})")
             return
 
         # Copy only relevant .mdp files
