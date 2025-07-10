@@ -23,8 +23,8 @@ lincs_order             = 4         ; also related to accuracy
 cutoff-scheme           = Verlet    ; Buffered neighbor searching
 ns_type                 = grid      ; search neighboring grid cells
 nstlist                 = 10        ; 20 fs, largely irrelevant with Verlet scheme
-rcoulomb                = 1.0       ; short-range electrostatic cutoff (in nm)
-rvdw                    = 1.0       ; short-range van der Waals cutoff (in nm)
+rcoulomb                = 2.0       ; short-range electrostatic cutoff (in nm)
+rvdw                    = 2.0       ; short-range van der Waals cutoff (in nm)
 DispCorr                = EnerPres  ; account for cut-off vdW scheme
 
 ; Electrostatics
