@@ -462,7 +462,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
 def write_hybrid_topology(
         filename,
         hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-        system_name="Hybrid System", molecule_name="HybridMol", nmols=1
+        system_name="Hybrid System", molecule_name="LIG", nmols=1
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
@@ -475,7 +475,7 @@ def write_hybrid_topology(
         f.write('[ atoms ]\n')
         f.write('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB\n')
         for atom in sorted_atoms:
-            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"RES":6s} {atom.atom_name:4s} {1:4d} '
+            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"LIG":6s} {atom.atom_name:4s} {1:4d} '
                     f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}\n')
         f.write('\n')
         if hybrid_bonds is not None:
@@ -934,7 +934,7 @@ if __name__ == "__main__":
                 hybrid_angles=hybrid_angles,
                 hybrid_dihedrals=hybrid_dihedrals,
                 system_name="LigandA to LigandB Hybrid",
-                molecule_name="HybridMol",
+                molecule_name="LIG",
                 nmols=1,
             )
             print(f"Wrote {outfilename}")
