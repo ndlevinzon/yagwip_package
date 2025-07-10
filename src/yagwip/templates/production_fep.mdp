@@ -1,0 +1,61 @@
+; Production MD for FEP
+integrator              = md
+dt                      = 0.002
+nsteps                  = 50000000           ; 100 ns
+nstxout-compressed      = 50000
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstcalcenergy           = 100
+nstenergy               = 1000
+nstlog                  = 1000
+
+; Neighbor searching and cutoffs
+cutoff-scheme           = Verlet
+nstlist                 = 20
+vdwtype                 = Cut-off
+vdw-modifier            = None
+DispCorr                = EnerPres
+rvdw                    = 0.9
+rlist                   = 0.9
+rcoulomb                = 0.9
+coulombtype             = PME
+
+; Temperature coupling
+tcoupl                  = v-rescale
+tc_grps                 = SOLU SOLV
+tau_t                   = 1.0 1.0
+ref_t                   = 300 300
+
+; Pressure coupling
+pcoupl                  = C-rescale
+pcoupltype              = isotropic
+tau_p                   = 5.0
+compressibility         = 4.5e-5
+ref_p                   = 1.0
+
+; Constraints
+constraints             = h-bonds
+constraint_algorithm    = LINCS
+continuation            = yes
+
+; Center-of-mass motion removal
+nstcomm                 = 100
+comm_mode               = linear
+comm_grps               = SOLU SOLV
+
+; ===== Free energy settings =====
+free-energy             = yes
+init-lambda-state       = __LAMBDA__     ; <-- replace in script (e.g. 0, 1, 2, ...)
+delta-lambda            = 0
+couple-moltype          = SOLU                    ; your alchemical molecule (LIG/SOLU/etc.)
+couple-lambda0          = vdw-q
+couple-lambda1          = none
+couple-intramol         = no
+sc-alpha                = 0.5
+sc-power                = 1
+sc-sigma                = 0.3
+nstdhdl                 = 100                     ; controls dhdl.xvg frequency
+
+; Lambda vectors (optional if using init-lambda-state only)
+; fep-lambdas           = 0.00 0.10 0.20 0.30 ... ; can be scripted in or left out
