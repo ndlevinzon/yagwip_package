@@ -444,7 +444,7 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
 def write_hybrid_topology(
         filename,
         hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-        system_name="Hybrid System", molecule_name="HybridMol", nmols=1
+        system_name="Hybrid System", molecule_name="LIG", nmols=1
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
@@ -916,7 +916,7 @@ if __name__ == "__main__":
                 hybrid_angles=hybrid_angles,
                 hybrid_dihedrals=hybrid_dihedrals,
                 system_name="LigandA to LigandB Hybrid",
-                molecule_name="HybridMol",
+                molecule_name="LIG",
                 nmols=1,
             )
             print(f"Wrote {outfilename}")
