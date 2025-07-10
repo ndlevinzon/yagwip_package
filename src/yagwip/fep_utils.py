@@ -3,7 +3,10 @@ import itertools
 from collections import defaultdict
 import pandas as pd
 import numpy as np
+import logging
+# --- pmx-style robust hybrid topology generation ---
 
+logger = logging.getLogger("hybrid_topology")
 
 # =====================
 # Utility Functions
@@ -234,9 +237,12 @@ def find_mcs(g1, g2):
 # =====================
 # Hybrid Topology Code
 # =====================
+
+logger = logging.getLogger("hybrid_topology")
+
+# --- Enhanced HybridAtom, HybridBond, HybridAngle, HybridDihedral ---
 class HybridAtom:
-    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped, origA_idx=None,
-                 origB_idx=None):
+    def __init__(self, index, atom_name, typeA, typeB, chargeA, chargeB, massA, massB, mapped, origA_idx=None, origB_idx=None):
         self.index = index
         self.atom_name = atom_name
         self.typeA = typeA
@@ -246,22 +252,22 @@ class HybridAtom:
         self.massA = massA
         self.massB = massB
         self.mapped = mapped
-        self.origA_idx = origA_idx  # index in LigandA mol2
-        self.origB_idx = origB_idx  # index in LigandB mol2
-
+        self.origA_idx = origA_idx
+        self.origB_idx = origB_idx
 
 class HybridBond:
-    def __init__(self, ai, aj, funct, parA, parB, mapped):
+    def __init__(self, ai, aj, funct, parA, parB, mapped, fakeA=False, fakeB=False):
         self.ai = ai
         self.aj = aj
         self.funct = funct
         self.parA = parA
         self.parB = parB
         self.mapped = mapped
-
+        self.fakeA = fakeA
+        self.fakeB = fakeB
 
 class HybridAngle:
-    def __init__(self, ai, aj, ak, funct, parA, parB, mapped):
+    def __init__(self, ai, aj, ak, funct, parA, parB, mapped, fakeA=False, fakeB=False):
         self.ai = ai
         self.aj = aj
         self.ak = ak
@@ -269,10 +275,11 @@ class HybridAngle:
         self.parA = parA
         self.parB = parB
         self.mapped = mapped
-
+        self.fakeA = fakeA
+        self.fakeB = fakeB
 
 class HybridDihedral:
-    def __init__(self, ai, aj, ak, al, funct, parA, parB, mapped):
+    def __init__(self, ai, aj, ak, al, funct, parA, parB, mapped, fakeA=False, fakeB=False):
         self.ai = ai
         self.aj = aj
         self.ak = ak
@@ -281,8 +288,67 @@ class HybridDihedral:
         self.parA = parA
         self.parB = parB
         self.mapped = mapped
+        self.fakeA = fakeA
+        self.fakeB = fakeB
 
+# --- Robust parameter lookup and fake term creation ---
+def robust_lookup(df, keycols, key, paramcols, dummy):
+    try:
+        row = df
+        for col, val in zip(keycols, key):
+            row = row[row[col] == val]
+        if row.shape[0] == 0:
+            return [dummy.get(col, 0.0) for col in paramcols], True
+        vals = [row.iloc[0][col] if col in row.columns else dummy.get(col, 0.0) for col in paramcols]
+        return vals, False
+    except Exception as e:
+        logger.warning(f"Parameter lookup failed for key {key}: {e}")
+        return [dummy.get(col, 0.0) for col in paramcols], True
 
+# --- pmx-style build_hybrid_terms ---
+def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB, paramcolsA, paramcolsB):
+    termsA = dfA.copy()
+    termsB = dfB.copy()
+    inv_map = {v: k for k, v in mapping.items()}
+    all_keys = set()
+    for _, row in termsA.iterrows():
+        all_keys.add(tuple(int(row[c]) for c in keycols))
+    for _, row in termsB.iterrows():
+        mapped_key = tuple(inv_map.get(int(row[c]), int(row[c])) for c in keycols)
+        all_keys.add(mapped_key)
+    hybrid_terms = []
+    for key in sorted(all_keys):
+        # A state
+        valsA, fakeA = robust_lookup(termsA, keycols, key, paramcolsA, dummyA)
+        # B state (map indices if needed)
+        mapped_key_B = tuple(mapping.get(k, k) for k in key)
+        valsB, fakeB = robust_lookup(termsB, keycols, mapped_key_B, paramcolsB, dummyB)
+        mapped = not (fakeA or fakeB)
+        if HybridClass == HybridBond:
+            ai, aj = key
+            hybrid_terms.append(HybridBond(ai, aj, 1, valsA, valsB, mapped, fakeA, fakeB))
+            if fakeA or fakeB:
+                logger.warning(f"Fake bond created for {ai}-{aj}: fakeA={fakeA}, fakeB={fakeB}")
+        elif HybridClass == HybridAngle:
+            ai, aj, ak = key
+            hybrid_terms.append(HybridAngle(ai, aj, ak, 1, valsA, valsB, mapped, fakeA, fakeB))
+            if fakeA or fakeB:
+                logger.warning(f"Fake angle created for {ai}-{aj}-{ak}: fakeA={fakeA}, fakeB={fakeB}")
+        elif HybridClass == HybridDihedral:
+            ai, aj, ak, al = key
+            hybrid_terms.append(HybridDihedral(ai, aj, ak, al, 2, valsA, valsB, mapped, fakeA, fakeB))
+            if fakeA or fakeB:
+                logger.warning(f"Fake dihedral created for {ai}-{aj}-{ak}-{al}: fakeA={fakeA}, fakeB={fakeB}")
+    return hybrid_terms
+
+# --- Charge/mass consistency check ---
+def print_total_charge(hybrid_atoms):
+    total_charge_A = sum(atom.chargeA for atom in hybrid_atoms)
+    total_charge_B = sum(atom.chargeB for atom in hybrid_atoms)
+    logger.info(f"Total charge state A: {total_charge_A:.4f}")
+    logger.info(f"Total charge state B: {total_charge_B:.4f}")
+
+# --- Modular section processing and logging ---
 def parse_itp_section(filename, section, ncols, colnames):
     with open(filename) as f:
         lines = f.readlines()
@@ -393,58 +459,10 @@ def build_hybrid_atoms(dfA, dfB, mapping):
     return hybrid_atoms
 
 
-def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB):
-    termsA = dfA.copy()
-    termsB = dfB.copy()
-    inv_map = {v: k for k, v in mapping.items()}
-
-    def map_indices(row, inv=False):
-        for col in keycols:
-            idx = int(row[col])
-            if inv:
-                if idx in inv_map:
-                    row[col] = inv_map[idx]
-            else:
-                if idx in mapping:
-                    row[col] = mapping[idx]
-        return row
-
-    termsB = termsB.apply(lambda row: map_indices(row, inv=True), axis=1)
-    merged = pd.merge(termsA, termsB, on=keycols, how='outer', suffixes=('A', 'B'), indicator=True)
-    hybrid_terms = []
-    for _, row in merged.iterrows():
-        mapped = row['_merge'] == 'both'
-        # Get all parameter columns for A and B
-        par_cols_A = [col for col in row.index if col.endswith('A') and col in ['rA', 'kA']]
-        par_cols_B = [col for col in row.index if col.endswith('B') and col in ['rB', 'kB']]
-        valsA = [row.get(col, dummyA.get(col.replace('A', ''), '0.00')) for col in par_cols_A]
-        valsB = [row.get(col, dummyB.get(col.replace('B', ''), '0.00')) for col in par_cols_B]
-        # Replace NaN values with "0.00"
-        valsA = ['0.00' if pd.isna(val) or val == '' else str(val) for val in valsA]
-        valsB = ['0.00' if pd.isna(val) or val == '' else str(val) for val in valsB]
-        indices = [int(row[c]) for c in keycols]
-        functA = row.get('functA')
-        functB = row.get('functB')
-        funct = functA if pd.notnull(functA) else functB
-        if pd.isnull(funct):
-            funct = 1
-        funct = int(funct)
-        if HybridClass == HybridBond:
-            ai, aj = indices
-            hybrid_terms.append(HybridBond(ai, aj, funct, valsA, valsB, mapped))
-        elif HybridClass == HybridAngle:
-            ai, aj, ak = indices
-            hybrid_terms.append(HybridAngle(ai, aj, ak, funct, valsA, valsB, mapped))
-        elif HybridClass == HybridDihedral:
-            ai, aj, ak, al = indices
-            hybrid_terms.append(HybridDihedral(ai, aj, ak, al, funct, valsA, valsB, mapped))
-    return hybrid_terms
-
-
 def write_hybrid_topology(
         filename,
         hybrid_atoms, hybrid_bonds=None, hybrid_pairs=None, hybrid_angles=None, hybrid_dihedrals=None,
-        system_name="Hybrid System", molecule_name="LIG", nmols=1
+        system_name="Hybrid System", molecule_name="HybridMol", nmols=1
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
@@ -457,7 +475,7 @@ def write_hybrid_topology(
         f.write('[ atoms ]\n')
         f.write('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB\n')
         for atom in sorted_atoms:
-            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"LIG":6s} {atom.atom_name:4s} {1:4d} '
+            f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"RES":6s} {atom.atom_name:4s} {1:4d} '
                     f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}\n')
         f.write('\n')
         if hybrid_bonds is not None:
@@ -845,11 +863,11 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
 
     # Convert to hybrid terms using filtered sections for both A and B
     hybrid_bonds = build_hybrid_terms(bondsA_filtered, bondsB_filtered, mapping, ['ai', 'aj'], HybridBond,
-                                      dummy_bond_params, dummy_bond_params)
+                                      dummy_bond_params, dummy_bond_params, ['r', 'k'], ['r', 'k'])
     hybrid_angles = build_hybrid_terms(anglesA_filtered, anglesB_filtered, mapping, ['ai', 'aj', 'ak'], HybridAngle,
-                                       dummy_angle_params, dummy_angle_params)
+                                       dummy_angle_params, dummy_angle_params, ['r', 'k'], ['r', 'k'])
     hybrid_dihedrals = build_hybrid_terms(dihedA_filtered, dihedB_filtered, mapping, ['ai', 'aj', 'ak', 'al'],
-                                          HybridDihedral, dummy_dihedral_params, dummy_dihedral_params)
+                                          HybridDihedral, dummy_dihedral_params, dummy_dihedral_params, ['r', 'k'], ['r', 'k'])
 
     # Filter out any remaining invalid terms from hybrid terms
     hybrid_bonds = [bond for bond in hybrid_bonds if bond.ai != bond.aj]
@@ -916,7 +934,7 @@ if __name__ == "__main__":
                 hybrid_angles=hybrid_angles,
                 hybrid_dihedrals=hybrid_dihedrals,
                 system_name="LigandA to LigandB Hybrid",
-                molecule_name="LIG",
+                molecule_name="HybridMol",
                 nmols=1,
             )
             print(f"Wrote {outfilename}")
