@@ -1,10 +1,11 @@
+# === Standard Library Imports ===
 import sys
-import itertools
 from collections import defaultdict
+import logging
+
+# === Third-Party Imports ===
 import pandas as pd
 import numpy as np
-import logging
-# --- pmx-style robust hybrid topology generation ---
 
 logger = logging.getLogger("hybrid_topology")
 

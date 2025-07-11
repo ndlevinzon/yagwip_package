@@ -1,7 +1,12 @@
+# === Standard Library Imports ===
 import os
 import re
-from .base import LoggingMixin
+
+# === Third-Party Imports ===
 import numpy as np
+
+# === Local Imports ===
+from .base import LoggingMixin
 
 
 class Editor(LoggingMixin):

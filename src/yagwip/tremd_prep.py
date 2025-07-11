@@ -1,10 +1,14 @@
-import math
-import numpy as np
-import sys
+# === Standard Library Imports ===
 import os
+import sys
+import math
+
+# === Third-Party Imports ===
+import numpy as np
 
 # === T-REMD Utilities ===
 # Based on http://dx.doi.org/10.1039/b716554d
+
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
     Parses a GROMACS .gro file to count protein and water residues.
