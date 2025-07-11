@@ -809,11 +809,11 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
 def print_help():
     print("""
 Usage:
-  python fep_utils.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
+  python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
       Find the maximum common substructure and write atom_map.txt
-  python fep_utils.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
+  python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
       Generate hybrid .itp files for all lambda windows
-  python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
+  python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
       Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
 """)
 
@@ -869,7 +869,7 @@ if __name__ == "__main__":
     cmd = sys.argv[1]
     if cmd == "mcs":
         if len(sys.argv) != 5:
-            print("Usage: python fep_utils.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt")
+            print("Usage: python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt")
             sys.exit(1)
         mol1, mol2, outmap = sys.argv[2:5]
         g1 = MolGraph.from_mol2(mol1)
@@ -883,7 +883,7 @@ if __name__ == "__main__":
         write_atom_map(mapping, outmap)
     elif cmd == "hybrid_topology":
         if len(sys.argv) != 5:
-            print("Usage: python fep_utils.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt")
+            print("Usage: python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt")
             sys.exit(1)
         itpA, itpB, mapfile = sys.argv[2:5]
         dfA = parse_itp_atoms_full(itpA)
@@ -923,7 +923,7 @@ if __name__ == "__main__":
             print(f"Wrote {outfilename}")
     elif cmd == "hybrid_coords":
         if len(sys.argv) != 5:
-            print("Usage: python fep_utils.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt")
+            print("Usage: python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt")
             sys.exit(1)
         ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
         lambdas = np.arange(0, 1.05, 0.05)
