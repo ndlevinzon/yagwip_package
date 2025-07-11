@@ -724,7 +724,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
-        solvated_gro = "complex.solv.ions.gro" if self.ligand_pdb_path else "protein.solv.ions.gro"
+        solvated_gro = "complex.solv.ions.gro" if os.path.exists("complex.solv.ions.gro") else "protein.solv.ions.gro"
         if not os.path.isfile(solvated_gro):
             self._log_error(f"File not found: {solvated_gro}")
             return
