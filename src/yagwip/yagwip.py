@@ -449,19 +449,22 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         python_exe = sys.executable
 
         cmds = [
-            [python_exe, fep_utils_path, "mcs", ligandA_mol2, ligandB_mol2, atom_map],
-            [python_exe, fep_utils_path, "hybrid_topology", ligandA_itp, ligandB_itp, atom_map],
-            [python_exe, fep_utils_path, "hybrid_coords", ligandA_mol2, ligandB_mol2, atom_map],
+            ([python_exe, fep_utils_path, "mcs", ligandA_mol2, ligandB_mol2, atom_map],
+             "Run MCS to generate atom_map.txt"),
+            ([python_exe, fep_utils_path, "hybrid_topology", ligandA_itp, ligandB_itp, atom_map],
+             "Generate hybrid topologies for all lambda windows"),
+            ([python_exe, fep_utils_path, "hybrid_coords", ligandA_mol2, ligandB_mol2, atom_map],
+             "Generate hybrid coordinates for all lambda windows"),
         ]
-        for cmd in cmds:
-            self._log_info(f"Running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                self._log_error(result.stderr)
+        for cmd, desc in cmds:
+            command_str = " ".join(cmd)
+            self._log_info(f"Running: {command_str}")
+            success = self._execute_command(command_str, description=desc)
+            if not success:
+                self._log_error(f"Step failed: {desc}")
                 break
-            else:
-                self._log_info(result.stdout)
-        self._log_success("FEP preparation complete.")
+        else:
+            self._log_success("FEP preparation complete.")
 
     def do_pdb2gmx(self, arg):
         """
@@ -697,59 +700,20 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
         args = arg.strip().split()
-
-        gro_path = os.path.abspath(args[1])
+        if len(args) < 1:
+            self._log_error("Usage: tremd_prep <filename.gro>")
+            return
+        gro_path = os.path.abspath(args[0])
         if not os.path.isfile(gro_path):
             self._log_error(f"File not found: {gro_path}")
             return
-
-        # Import the required functions from tremd_prep
-        from .tremd_prep import count_residues_in_gro, tremd_temperature_ladder
-
-        try:
-            protein_residues, water_residues = count_residues_in_gro(gro_path)
-            self._log_info(
-                f"Found {protein_residues} protein residues and {water_residues} water residues."
-            )
-        except Exception as e:
-            self._log_error(f"Failed to parse .gro file: {e}")
-            return
-
-        try:
-            Tlow = float(input("Initial Temperature (K): "))
-            Thigh = float(input("Final Temperature (K): "))
-            Pdes = float(input("Exchange Probability (0 < P < 1): "))
-        except ValueError:
-            self._log_error("Invalid numeric input.")
-            return
-
-        if not (0 < Pdes < 1) or Thigh <= Tlow:
-            self._log_error("Invalid parameters.")
-            return
-
-        try:
-            temperatures = tremd_temperature_ladder(
-                water_residues,  # Nw: Number of water molecules
-                protein_residues,  # Np: Number of protein residues
-                Tlow,  # Tlow: Minimum temperature (K)
-                Thigh,  # Thigh: Maximum temperature (K)
-                Pdes,  # Pdes: Desired exchange probability
-                WC=3,  # Water constraints (3 = all constraints)
-                PC=1,  # Protein constraints (1 = H atoms only)
-                Hff=0,  # Hydrogen force field switch (0 = standard)
-                Vs=0,  # Volume correction (0 = no)
-                Tol=0.0005,  # Tolerance for convergence
-            )
-            if self.debug:
-                for i, temp in enumerate(temperatures):
-                    self._log_debug(f"Replica {i + 1}: {temp:.2f} K")
-            else:
-                with open("TREMD_temp_ranges.txt", "w") as f:
-                    for i, temp in enumerate(temperatures):
-                        f.write(f"Replica {i + 1}: {temp:.2f} K\n")
-                self._log_success("Temperature ladder saved to TREMD_temp_ranges.txt")
-        except Exception as e:
-            self._log_error(f"Temperature calculation failed: {e}")
+        python_exe = sys.executable
+        tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")
+        command_str = f'"{python_exe}" "{tremd_prep_path}" "{gro_path}"'
+        self._log_info(f"Running: {command_str}")
+        success = self._execute_command(command=command_str, description="TREMD temperature ladder calculation (interactive)")
+        if not success:
+            self._log_error("TREMD temperature ladder calculation failed.")
 
     def do_source(self, arg):
         """Source additional .itp files into topology."""
