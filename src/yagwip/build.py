@@ -86,7 +86,7 @@ class Builder(YagwipBase):
         """Run genion to add ions to the system. If lambda directories are present, copy and patch ions_fep.mdp in each lambda dir with correct lambda index and run genions in each."""
         # Detect lambda directories (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
-        if fep_mode and lambda_dirs:
+        if fep_mode:
             # FEP mode: copy and patch ions_fep.mdp in each lambda dir and run genions in each
             vdw_lambdas = [
                 "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45",
@@ -114,7 +114,7 @@ class Builder(YagwipBase):
                     base = f"hybrid_complex_{lam_value}"
                     input_gro = f"{base}.solv.gro"
                     output_gro = f"{base}.solv.ions.gro"
-                    tpr_out = "ions.tpr"
+                    tpr_out = "ions_fep.tpr"
                     ion_options = "-pname NA -nname CL -conc 0.150 -neutral"
                     grompp_opts = ""
                     ion_pipe_input = (
@@ -140,8 +140,6 @@ class Builder(YagwipBase):
         base = self._resolve_basename(basename)
         if base is None:
             return
-        if fep_mode:
-            mdp_file = files("yagwip.templates").joinpath("ions_fep.mdp")
         else:
             mdp_file = files("yagwip.templates").joinpath("ions.mdp")
         input_gro = f"{base}.solv.gro"
