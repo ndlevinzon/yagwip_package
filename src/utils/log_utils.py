@@ -95,7 +95,7 @@ class RuntimeMonitor:
         """Capture current system information."""
         try:
             memory = psutil.virtual_memory()
-            disk = psutil.disk_usage("../yagwip")
+            disk = psutil.disk_usage(".")
             return SystemInfo(
                 timestamp=datetime.now(),
                 cpu_percent=psutil.cpu_percent(interval=0.1),
