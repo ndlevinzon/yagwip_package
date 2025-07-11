@@ -136,6 +136,7 @@ class YagwipBase(LoggingMixin, ABC):
             self._log_error(f"Failed to copy {description}: {e}")
             return False
 
+
     @auto_monitor
     def _execute_command(
         self,
