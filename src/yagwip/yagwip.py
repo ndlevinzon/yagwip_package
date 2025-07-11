@@ -18,20 +18,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 # === Standard Library Imports ===
-import io
 import os
 import cmd
 import sys
 import shutil
 import random
-import subprocess
 import argparse
 import importlib.metadata
 from pathlib import Path
 from importlib.resources import files
-
-# === Third-Party Imports ===
-import pandas as pd
 
 # === Local Imports ===
 from .gromacs_runner import Builder, Sim
@@ -68,12 +63,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.basename = None          # Base PDB filename (without extension)
         self.print_banner()           # Prints intro banner to command line
         self.user_itp_paths = []      # Stores user input paths for do_source
-        self.editor = Editor()        # Initialize the file Editor class from utils.py
+        self.editor = Editor()        # Initialize the file Editor class from pipeline_utils.py
         self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
-        # Initialize the Builder and Sim classes from gromacs_runner.py and sim.py
+        # Initialize the Builder Pipeline class from gromacs_runner.py
         self.builder = Builder(
             gmx_path=self.gmx_path, debug=self.debug, logger=self.logger
         )
@@ -516,12 +511,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
-        )
-        if not os.path.isfile(output_gro):
-            self._log_error(f"Expected {output_gro} was not created.")
-            return
 
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
