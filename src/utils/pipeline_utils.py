@@ -6,7 +6,7 @@ import re
 import numpy as np
 
 # === Local Imports ===
-from .base import LoggingMixin
+from yagwip.base import LoggingMixin
 
 
 class Editor(LoggingMixin):

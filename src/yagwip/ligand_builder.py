@@ -13,9 +13,9 @@ from datetime import date
 import pandas as pd
 
 # === Local Imports ===
-from .base import YagwipBase
-from .pipeline_utils import LigandUtils
-from .log_utils import auto_monitor
+from yagwip.base import YagwipBase
+from utils.pipeline_utils import LigandUtils
+from utils.log_utils import auto_monitor
 
 
 class LigandPipeline(YagwipBase):

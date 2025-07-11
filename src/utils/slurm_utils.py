@@ -8,7 +8,7 @@ import shutil
 from importlib.resources import files
 
 # === Local Imports ===
-from .base import YagwipBase
+from yagwip.base import YagwipBase
 
 
 class SlurmWriter(YagwipBase):
@@ -36,7 +36,7 @@ class SlurmWriter(YagwipBase):
                 "0.50", "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
             ]
             # For FEP, process each lambda directory
-            lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+            lambda_dirs = [d for d in os.listdir('../yagwip') if d.startswith('lambda_') and os.path.isdir(d)]
             mdp_templates = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
             for lam_dir in sorted(lambda_dirs):
                 lam_value = lam_dir.replace('lambda_', '')

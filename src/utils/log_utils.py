@@ -95,7 +95,7 @@ class RuntimeMonitor:
         """Capture current system information."""
         try:
             memory = psutil.virtual_memory()
-            disk = psutil.disk_usage(".")
+            disk = psutil.disk_usage("../yagwip")
             return SystemInfo(
                 timestamp=datetime.now(),
                 cpu_percent=psutil.cpu_percent(interval=0.1),
@@ -742,7 +742,7 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
         import psutil
 
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage(".")
+        disk = psutil.disk_usage("../yagwip")
         logger.info("=== YAGWIP Runtime Monitoring Started ===")
         logger.info(f"Platform: {platform.system()} {platform.release()}")
         logger.info(f"Python Version: {platform.python_version()}")

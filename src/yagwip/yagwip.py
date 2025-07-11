@@ -29,12 +29,12 @@ from pathlib import Path
 from importlib.resources import files
 
 # === Local Imports ===
-from .gromacs_runner import Builder, Sim
-from .ligand_builder import LigandPipeline
-from .base import YagwipBase
-from .config import validate_gromacs_installation
-from .slurm_utils import SlurmWriter
-from .pipeline_utils import Editor
+from utils.gromacs_runner import Builder, Sim
+from yagwip.ligand_builder import LigandPipeline
+from yagwip.base import YagwipBase
+from yagwip.config import validate_gromacs_installation
+from utils.slurm_utils import SlurmWriter
+from utils.pipeline_utils import Editor
 
 # === Metadata ===
 __author__ = "NDL, gregorpatof"
@@ -112,7 +112,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self.debug = not self.debug
         # Update logger and simulation mode
-        from .log_utils import setup_logger
+        from utils.log_utils import setup_logger
 
         self.logger = setup_logger(debug_mode=self.debug)
 
@@ -863,7 +863,7 @@ def main():
 
     # Handle batch processing
     if args.batch:
-        from .batch_processor import ParallelBatchProcessor
+        from utils.batch_processor import ParallelBatchProcessor
 
         # Determine number of workers
         max_workers = args.workers

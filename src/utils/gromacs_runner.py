@@ -8,8 +8,8 @@ import shutil
 from importlib.resources import files
 
 # === Local Imports ===
-from .base import YagwipBase
-from .log_utils import auto_monitor
+from yagwip.base import YagwipBase
+from utils.log_utils import auto_monitor
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}

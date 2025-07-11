@@ -20,7 +20,7 @@ from enum import Enum
 import platform
 
 # === Local Imports ===
-from .log_utils import LoggingMixin, auto_monitor, setup_logger
+from utils.log_utils import LoggingMixin, auto_monitor, setup_logger
 
 
 class DependencyStatus(Enum):

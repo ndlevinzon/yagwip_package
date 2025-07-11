@@ -1,5 +1,5 @@
 from .yagwip import YagwipShell, main
-from .batch_processor import BatchProcessor, BatchJob
+from utils.batch_processor import BatchProcessor, BatchJob
 from .config import (
     YagwipConfig,
     ToolChecker,

@@ -20,8 +20,8 @@ from queue import Queue
 import time
 
 # === Local Imports ===
-from .base import YagwipBase
-from .log_utils import auto_monitor
+from yagwip.base import YagwipBase
+from utils.log_utils import auto_monitor
 
 
 def _setup_job_logger_worker(log_file: str) -> logging.Logger:
