@@ -771,8 +771,9 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
     For each lambda, output hybrid coordinates as:
     - All atoms from both ligands are present.
     - Mapped: interpolate between A and B.
-    - Unique: use real coordinates if available, otherwise place at origin or near mapped neighbor.
+    - Unique: use real coordinates if available, otherwise place near mapped atom centroid (within 1–1.5 nm).
     """
+    import random
     coordsA, namesA = parse_mol2_coords(ligA_mol2)
     coordsB, namesB = parse_mol2_coords(ligB_mol2)
     dfA = parse_itp_atoms_full(ligA_mol2.replace('.mol2', '.itp')) if ligA_mol2.replace('.mol2', '.itp') else None
@@ -783,6 +784,21 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         dfB = pd.DataFrame([{'index': idx, 'atom_name': namesB[idx]} for idx in sorted(coordsB.keys())])
     mapping = load_atom_map(atom_map_txt)
     atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
+
+    # Compute centroid of mapped atoms (core ligand)
+    mapped_coords = []
+    for (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in atom_list:
+        if atom_type == 'mapped':
+            coordA = coordsA.get(origA_idx, None)
+            coordB = coordsB.get(origB_idx, None)
+            if coordA is not None and coordB is not None:
+                coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
+                mapped_coords.append(coord)
+    if mapped_coords:
+        centroid = tuple(np.mean([c[i] for c in mapped_coords]) for i in range(3))
+    else:
+        centroid = (0.0, 0.0, 0.0)
+
     pdb_lines = []
     for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list):
         if atom_type == 'mapped':
@@ -790,11 +806,36 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
         elif atom_type == 'uniqueA':
-            coord = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
+            coord = coordsA.get(origA_idx, None)
+            if coord is None:
+                # Place dummy atom near centroid (1–1.5 nm away)
+                r = random.uniform(1.0, 1.5)
+                theta = random.uniform(0, np.pi)
+                phi = random.uniform(0, 2 * np.pi)
+                dx = r * np.sin(theta) * np.cos(phi)
+                dy = r * np.sin(theta) * np.sin(phi)
+                dz = r * np.cos(theta)
+                coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
         elif atom_type == 'uniqueB':
-            coord = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
+            coord = coordsB.get(origB_idx, None)
+            if coord is None:
+                # Place dummy atom near centroid (1–1.5 nm away)
+                r = random.uniform(1.0, 1.5)
+                theta = random.uniform(0, np.pi)
+                phi = random.uniform(0, 2 * np.pi)
+                dx = r * np.sin(theta) * np.cos(phi)
+                dy = r * np.sin(theta) * np.sin(phi)
+                dz = r * np.cos(theta)
+                coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
         else:
-            coord = (0.0, 0.0, 0.0)
+            # Should not occur, but fallback
+            r = random.uniform(1.0, 1.5)
+            theta = random.uniform(0, np.pi)
+            phi = random.uniform(0, 2 * np.pi)
+            dx = r * np.sin(theta) * np.cos(phi)
+            dy = r * np.sin(theta) * np.sin(phi)
+            dz = r * np.cos(theta)
+            coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
         pdb_lines.append(
             f"HETATM{i + 1:5d}  {atom_name:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
     with open(out_pdb, 'w') as f:
