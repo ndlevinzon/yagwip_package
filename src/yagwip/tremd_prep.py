@@ -169,9 +169,8 @@ def tremd_temperature_ladder(
 def print_help():
     print("""
 Usage:
-  python tremd_prep.py count complex.gro
+  python tremd_prep.py complex.gro
       Count protein and water residues in a .gro file
-  python tremd_prep.py ladder complex.gro
       Interactively prompt for Tlow, Thigh, and exchange probability, then print the T-REMD temperature ladder
 """)
 
@@ -179,32 +178,26 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print_help()
         sys.exit(1)
-    cmd = sys.argv[1]
-    gro_file = sys.argv[2]
+    gro_file = sys.argv[1]
     if not os.path.exists(gro_file):
         print(f"[ERROR] File not found: {gro_file}")
         sys.exit(1)
-    if cmd == "count":
-        prot, wat = count_residues_in_gro(gro_file)
-        print(f"Protein residues: {prot}")
-        print(f"Water residues: {wat}")
-    elif cmd == "ladder":
-        prot, wat = count_residues_in_gro(gro_file)
-        print(f"Protein residues: {prot}")
-        print(f"Water residues: {wat}")
-        try:
-            Tlow = float(input("Enter initial temperature (K): "))
-            Thigh = float(input("Enter final temperature (K): "))
-            Pdes = float(input("Enter desired exchange probability (e.g. 0.2): "))
-        except Exception as e:
-            print(f"[ERROR] Invalid input: {e}")
-            sys.exit(1)
-        temps = tremd_temperature_ladder(
-            Nw=wat, Np=prot, Tlow=Tlow, Thigh=Thigh, Pdes=Pdes
-        )
-        print("\nT-REMD Temperature Ladder:")
-        for i, t in enumerate(temps):
-            print(f"Replica {i+1}: {t:.2f} K")
+    prot, wat = count_residues_in_gro(gro_file)
+    print(f"Protein residues: {prot}")
+    print(f"Water residues: {wat}")
+    try:
+        Tlow = float(input("Enter initial temperature (K): "))
+        Thigh = float(input("Enter final temperature (K): "))
+        Pdes = float(input("Enter desired exchange probability (e.g. 0.2): "))
+    except Exception as e:
+        print(f"[ERROR] Invalid input: {e}")
+        sys.exit(1)
+    temps = tremd_temperature_ladder(
+        Nw=wat, Np=prot, Tlow=Tlow, Thigh=Thigh, Pdes=Pdes
+    )
+    print("\nT-REMD Temperature Ladder:")
+    for i, t in enumerate(temps):
+        print(f"Replica {i+1}: {t:.2f} K")
     else:
         print_help()
         sys.exit(1)
