@@ -52,6 +52,7 @@ init-lambda-state        = __LAMBDA__       ; <--- Replace or script this value 
 delta-lambda             = 0
 couple-lambda0           = vdw-q
 couple-lambda1           = none
+couple-intramol          = yes
 sc-alpha                 = 0.5
 sc-coul                  = yes
 sc-power                 = 1
