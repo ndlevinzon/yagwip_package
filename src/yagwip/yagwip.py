@@ -646,7 +646,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 try:
                     # Run genions on the solvated hybrid complex
                     self.builder.run_genions(
-                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("genions")
+                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("genions"), fep_mode=True
                     )
                     self._log_success(f"Added ions to {solvated_complex}")
                 except Exception as e:

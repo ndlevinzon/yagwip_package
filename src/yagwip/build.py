@@ -82,12 +82,41 @@ class Builder(YagwipBase):
                 self._execute_command(cmd, f"solvate step {i+1}")
 
     @auto_monitor
-    def run_genions(self, basename, custom_command=None):
-        """Run genion to add ions to the system."""
+    def run_genions(self, basename, custom_command=None, fep_mode=False):
+        """Run genion to add ions to the system. If fep_mode is True, use ions_fep.mdp and patch __LAMBDA__ with lambda index."""
         base = self._resolve_basename(basename)
         if base is None:
             return
-        default_ions = files("yagwip.templates").joinpath("ions.mdp")
+        # Use ions_fep.mdp for FEP lambda directories, else ions.mdp
+        if fep_mode:
+            mdp_file = files("yagwip.templates").joinpath("ions_fep.mdp")
+            # Patch ions_fep.mdp in the current directory with correct lambda index
+            local_mdp = os.path.abspath("ions_fep.mdp")
+            if os.path.isfile(local_mdp):
+                # Try to extract lambda value from directory name or basename
+                vdw_lambdas = [
+                    "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45",
+                    "0.50", "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+                ]
+                lambda_value = None
+                cwd = os.path.basename(os.getcwd())
+                if cwd.startswith("lambda_"):
+                    lambda_value = cwd.replace("lambda_", "")
+                elif "lambda_" in base:
+                    lambda_value = base.split("lambda_")[-1]
+                lambda_index = lambda_value
+                if lambda_value in vdw_lambdas:
+                    lambda_index = vdw_lambdas.index(lambda_value)
+                try:
+                    with open(local_mdp, "r", encoding="utf-8") as f:
+                        content = f.read().replace("__LAMBDA__", str(lambda_index))
+                    with open(local_mdp, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    self._log_info(f"Patched ions_fep.mdp with lambda index {lambda_index} for lambda value {lambda_value}")
+                except Exception as e:
+                    self._log_warning(f"Failed to patch ions_fep.mdp: {e}")
+        else:
+            mdp_file = files("yagwip.templates").joinpath("ions.mdp")
         input_gro = f"{base}.solv.gro"
         output_gro = f"{base}.solv.ions.gro"
         tpr_out = "ions.tpr"
@@ -99,7 +128,7 @@ class Builder(YagwipBase):
             else PIPE_INPUTS["genion_complex"]
         )
         default_cmds = [
-            f"{self.gmx_path} grompp -f {default_ions} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
+            f"{self.gmx_path} grompp -f {mdp_file} -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
             f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}",
         ]
         self._log_info(f"Running genion for {base}")
