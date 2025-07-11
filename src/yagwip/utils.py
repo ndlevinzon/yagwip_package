@@ -11,7 +11,7 @@ import subprocess
 import numpy as np
 
 # === Local Imports ===
-from .log import auto_monitor
+from .log_utils import auto_monitor
 
 
 @auto_monitor

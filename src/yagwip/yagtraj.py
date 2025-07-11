@@ -78,7 +78,7 @@ class YagtrajShell(cmd.Cmd, YagwipBase):
             self.debug = False
         else:
             self.debug = not self.debug
-        from .log import setup_logger
+        from .log_utils import setup_logger
         self.logger = setup_logger(debug_mode=self.debug)
         if self.debug:
             self._log_info("Debug mode is now ON")

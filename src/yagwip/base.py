@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from enum import Enum
 
 # === Local Imports ===
-from .log import (
+from .log_utils import (
     LoggingMixin,
     setup_logger,
     auto_monitor,

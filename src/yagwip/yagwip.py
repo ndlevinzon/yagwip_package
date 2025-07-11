@@ -34,9 +34,8 @@ from importlib.resources import files
 import pandas as pd
 
 # === Local Imports ===
-from .build import Builder, Modeller
+from .gromacs_runner import Builder, Sim
 from .ligand_builder import LigandPipeline
-from .sim import Sim
 from .base import YagwipBase
 from .utils import complete_filename
 from .config import validate_gromacs_installation
@@ -79,7 +78,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
-        # Initialize the Builder and Sim classes from build.py and sim.py
+        # Initialize the Builder and Sim classes from gromacs_runner.py and sim.py
         self.builder = Builder(
             gmx_path=self.gmx_path, debug=self.debug, logger=self.logger
         )
@@ -123,7 +122,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self.debug = not self.debug
         # Update logger and simulation mode
-        from .log import setup_logger
+        from .log_utils import setup_logger
 
         self.logger = setup_logger(debug_mode=self.debug)
 
@@ -306,6 +305,35 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
+    def _find_missing_residues(self, protein_pdb):
+        """Identifies missing internal residues by checking for gaps in residue numbering."""
+        self._log_info(f"Checking for missing residues in {protein_pdb}")
+        residue_map = {}  # {chain_id: sorted list of residue IDs}
+        with open(protein_pdb, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(("ATOM", "HETATM")):
+                    chain_id = line[21].strip() or "A"
+                    try:
+                        res_id = int(line[22:26].strip())
+                    except ValueError:
+                        continue
+                    if chain_id not in residue_map:
+                        residue_map[chain_id] = set()
+                    residue_map[chain_id].add(res_id)
+        gaps = []
+        for chain_id, residues in residue_map.items():
+            sorted_residues = sorted(residues)
+            for i in range(len(sorted_residues) - 1):
+                current = sorted_residues[i]
+                next_expected = current + 1
+                if sorted_residues[i + 1] != next_expected:
+                    gaps.append((chain_id, current, sorted_residues[i + 1]))
+        if gaps:
+            self._log_warning(f"Found missing residue ranges: {gaps}")
+        else:
+            self._log_info("No gaps found.")
+        return gaps
+
     def _handle_protein_only(self, lines):
         self.ligand_pdb_path = None
         with open("protein.pdb", "w", encoding="utf-8") as prot_out:
@@ -314,7 +342,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     line = line[:17] + "HIS" + line[20:]
                 prot_out.write(line)
         self._log_info("No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
-        self.modeller.find_missing_residues()
+        self._find_missing_residues(protein_pdb="protein.pdb")
 
     def _assign_ligand_name(self):
         ligand_name = chr(ord('A') + self.ligand_counter)

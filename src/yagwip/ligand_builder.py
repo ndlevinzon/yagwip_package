@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from .base import YagwipBase
 from .utils import build_adjacency_matrix_fast, find_bonds_spatial
-from .log import auto_monitor
+from .log_utils import auto_monitor
 
 
 class LigandPipeline(YagwipBase):
