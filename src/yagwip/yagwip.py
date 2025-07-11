@@ -724,17 +724,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
-        args = arg.strip().split()
-        if len(args) < 1:
-            self._log_error("Usage: tremd_prep <filename.gro>")
-            return
-        gro_path = os.path.abspath(args[0])
-        if not os.path.isfile(gro_path):
-            self._log_error(f"File not found: {gro_path}")
+        solvated_gro = "complex.solv.ions.gro" if self.ligand_pdb_path else "protein.solv.ions.gro"
+        if not os.path.isfile(solvated_gro):
+            self._log_error(f"File not found: {solvated_gro}")
             return
         python_exe = sys.executable
         tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")
-        command_str = f'"{python_exe}" "{tremd_prep_path}" "{gro_path}"'
+        command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}"'
         self._log_info(f"Running: {command_str}")
         success = self._execute_command(command=command_str, description="TREMD temperature ladder calculation (interactive)")
         if not success:

@@ -206,6 +206,7 @@ class Editor(LoggingMixin):
             self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
     ):
         """
+        For FEP:
         Append hybrid ligand coordinates to protein GRO file, ensuring atom indices match the topology.
         This function reads the hybrid ITP file to get the correct atom indices and order.
         """
@@ -344,6 +345,7 @@ class Editor(LoggingMixin):
 
     def fix_lambda_topology_paths(self, topol_file, lambda_value):
         """
+        For FEP:
         Fix paths in topology files for lambda subdirectories.
         - Replace #include "./amber14sb.ff/" with #include "../amber14sb.ff/"
         - Replace #include "./ligand" with #include "./hybrid_lambda_X.itp"
@@ -436,6 +438,7 @@ class Editor(LoggingMixin):
                 f.writelines(new_lines)
 
             self._log(f"Injected {len(itp_path_list)} custom includes into {top_file}")
+
 
 class LigandUtils(LoggingMixin):
     def build_adjacency_matrix_fast(self, df_atoms, df_bonds):
