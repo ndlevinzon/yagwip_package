@@ -136,7 +136,6 @@ class YagwipBase(LoggingMixin, ABC):
             self._log_error(f"Failed to copy {description}: {e}")
             return False
 
-
     @auto_monitor
     def _execute_command(
         self,
@@ -205,28 +204,109 @@ class YagwipBase(LoggingMixin, ABC):
             **kwargs,
         )
 
-    @auto_monitor
     def _run_gromacs_command_internal(
-        self, command: str, pipe_input: Optional[str] = None, **kwargs
+            self, command: str, pipe_input: Optional[str] = None
     ) -> bool:
         """Internal method to run GROMACS command with runtime monitoring."""
-        from .utils import run_gromacs_command
+        import subprocess
+        import re
 
-        self._log_info(f"Running command: {command}")
-        success = run_gromacs_command(
-            command=command,
-            pipe_input=pipe_input,
-            debug=self.debug,
-            logger=self.logger,
-            **kwargs,
-        )
+        # Log the command about to be executed
+        self._log_info(f"[RUNNING] {command}")
 
-        if success:
-            self._log_success(f"Command completed successfully")
-        else:
-            self._log_error(f"Command failed")
+        # In debug mode, skip execution and only log/print a message
+        if self.debug:
+            msg = "[DEBUG MODE] Command not executed."
+            self._log_debug(msg)
+            return True  # Or False, depending on your policy
 
-        return success
+        try:
+            # Execute the command with optional piped input
+            result = subprocess.run(
+                command,
+                input=pipe_input,  # Piped input to stdin, if any (e.g., group number)
+                shell=True,  # Run command through shell
+                capture_output=True,  # Capture both stdout and stderr
+                text=True,  # Decode outputs as strings instead of bytes
+                check=False,  # Do not raise an error if the command fails
+            )
+
+            # Strip leading/trailing whitespace from stderr and stdout
+            stderr = result.stderr.strip()
+            stdout = result.stdout.strip()
+            error_text = f"{stderr}\n{stdout}".lower()  # Combined output for error checks
+
+            # Check if the command failed based on return code
+            if result.returncode != 0:
+                err_msg = f"[!] Command failed with return code {result.returncode}"
+                self._log_error(err_msg)
+                if stderr:
+                    self._log_error(f"[STDERR] {stderr}")
+                if stdout:
+                    self._log_info(f"[STDOUT] {stdout}")
+                print(err_msg)
+                if stderr:
+                    print("[STDERR]", stderr)
+                if stdout:
+                    print("[STDOUT]", stdout)
+
+                # Catch atom number mismatch error
+                if "number of coordinates in coordinate file" in error_text:
+                    specific_msg = "[!] Check ligand and protonation: .gro and .top files have different atom counts."
+                    self._log_warning(specific_msg)
+                    print(specific_msg)
+
+                # Catch periodic improper dihedral type error
+                elif "no default periodic improper dih. types" in error_text:
+                    match = re.search(r"\[file topol\.top, line (\d+)\]", stderr, re.IGNORECASE)
+                    if match:
+                        line_num = int(match.group(1))
+                        top_path = "./topol.top"
+                        try:
+                            with open(top_path, "r", encoding="utf-8") as f:
+                                lines = f.readlines()
+                            if 0 <= line_num - 1 < len(lines):
+                                if not lines[line_num - 1].strip().startswith(";"):
+                                    lines[line_num - 1] = f";{lines[line_num - 1]}"
+                                    with open(top_path, "w", encoding="utf-8") as f:
+                                        f.writelines(lines)
+                                    msg = (
+                                        f"[#] Detected improper dihedral error, likely an artifact from AMBER forcefields."
+                                        f" Commenting out line {line_num} in topol.top and rerunning..."
+                                    )
+                                    self._log_warning(msg)
+                                    print(msg)
+                                    # Retry the command
+                                    retry_msg = "[#] Rerunning command after modifying topol.top..."
+                                    self._log_info(retry_msg)
+                                    print(retry_msg)
+                                    # Recursive retry, but prevent infinite loops (user responsibility)
+                                    return self._run_gromacs_command_internal(
+                                        command,
+                                        pipe_input,
+                                    )
+                        except Exception as e:
+                            fail_msg = f"[!] Failed to modify topol.top: {e}"
+                            self._log_error(fail_msg)
+                            print(fail_msg)
+                    else:
+                        fallback_msg = "[!] Detected dihedral error, but couldn't find line number in topol.top."
+                        self._log_warning(fallback_msg)
+                        print(fallback_msg)
+
+                return False  # Final return if not resolved
+
+            else:
+                # If successful, optionally print/log stdout
+                if stdout:
+                    self._log_info(f"[STDOUT] {stdout}")
+                    print(stdout)
+                return True
+
+        except Exception as e:
+            # Catch and log any unexpected runtime exceptions (e.g., permission issues)
+            self._log_error(f"[!] Failed to run command: {e}")
+            return False
 
     @auto_monitor
     def _get_file_basename(self, filepath: str) -> str:

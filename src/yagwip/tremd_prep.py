@@ -169,9 +169,10 @@ def tremd_temperature_ladder(
 def print_help():
     print("""
 Usage:
-  python tremd_prep.py complex.gro
+  tremd_prep [complex.solvated.ions.gro]
       Count protein and water residues in a .gro file
       Interactively prompt for Tlow, Thigh, and exchange probability, then print the T-REMD temperature ladder
+      Based on http://dx.doi.org/10.1039/b716554d
 """)
 
 

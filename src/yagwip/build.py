@@ -17,7 +17,6 @@ import numpy as np
 # === Local Imports ===
 from .base import YagwipBase
 from .utils import (
-    run_gromacs_command,
     build_adjacency_matrix_fast,
     find_bonds_spatial,
 )
@@ -48,19 +47,14 @@ class Builder(YagwipBase):
         base = self._resolve_basename(basename)
         if base is None:
             return
-        command = custom_command or (
+        cmd = custom_command or (
             f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         )
         if self.debug:
-            print(f"[DEBUG] Command: {command}")
+            print(f"[DEBUG] Command: {cmd}")
             return
         self._log(f"Running pdb2gmx for {base}.pdb...")
-        run_gromacs_command(
-            command,
-            pipe_input=PIPE_INPUTS["pdb2gmx"],
-            debug=self.debug,
-            logger=self.logger,
-        )
+        self._execute_command(cmd, f"pdb2gmx for {base}", pipe_input=PIPE_INPUTS["pdb2gmx"])
 
     @auto_monitor
     def run_solvate(self, basename, custom_command=None):
