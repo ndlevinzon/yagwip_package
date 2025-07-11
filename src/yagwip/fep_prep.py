@@ -434,7 +434,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                 chargeA=rowA['charge'],
                 chargeB=0.0,
                 massA=rowA['mass'],
-                massB=0.0,
+                massB=0.1,
                 mapped=False
             ))
         else:
@@ -455,7 +455,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                 typeB=rowB['type'],
                 chargeA=0.0,
                 chargeB=rowB['charge'],
-                massA=0.0,
+                massA=0.1,
                 massB=rowB['mass'],
                 mapped=False
             ))
@@ -648,8 +648,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     For each lambda, build a new hybrid atom list with correct dual topology logic:
     - All atoms from both ligands are present.
     - Mapped atoms: interpolate charge/mass/type.
-    - Unique to A: typeB='DUM', chargeB=0, massB=0.0 (dummy mass zero).
-    - Unique to B: typeA='DUM', chargeA=0, massA=0.0 (dummy mass zero).
+    - Unique to A: typeB='DUM', chargeB=0, massB=0.1 (dummy mass zero).
+    - Unique to B: typeA='DUM', chargeA=0, massA=0.1 (dummy mass zero).
     """
     atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
     hybrid_atoms = []
@@ -669,12 +669,12 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             massA = rowA['mass']
             typeA = rowA['type']
             chargeB = 0.0
-            massB = 0.0  # Dummy gets zero mass in decoupled state
+            massB = 0.1  # Dummy gets zero mass in decoupled state
             typeB = 'DUM'
         elif atom_type == 'uniqueB':
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
             chargeA = 0.0
-            massA = 0.0  # Dummy gets zero mass in decoupled state
+            massA = 0.1  # Dummy gets zero mass in decoupled state
             typeA = 'DUM'
             chargeB = rowB['charge']
             massB = rowB['mass']
