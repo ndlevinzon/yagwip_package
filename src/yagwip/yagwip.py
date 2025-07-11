@@ -307,7 +307,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
-    def _find_missing_residues(self, protein_pdb):
+    def _warn_if_missing_residues(self, protein_pdb):
         """Identifies missing internal residues by checking for gaps in residue numbering."""
         self._log_info(f"Checking for missing residues in {protein_pdb}")
         residue_map = {}  # {chain_id: sorted list of residue IDs}
@@ -344,7 +344,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     line = line[:17] + "HIS" + line[20:]
                 prot_out.write(line)
         self._log_info("No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
-        self._find_missing_residues(protein_pdb="protein.pdb")
+        self._warn_if_missing_residues(protein_pdb="protein.pdb")
 
     def _assign_ligand_name(self):
         ligand_name = chr(ord('A') + self.ligand_counter)
@@ -505,8 +505,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         3) Lambda subdirectories: processes each lambda window with hybrid files
         Usage: "pdb2gmx"
         """
-        # if not self._require_pdb():
-        #     return
 
         # First, run pdb2gmx on protein only
         protein_pdb = "protein"
@@ -588,8 +586,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-        # if not self._require_pdb():
-        #     return
 
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
@@ -645,8 +641,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
-        # if not self._require_pdb():
-        #     return
 
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
@@ -732,7 +726,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         if args.i is None or args.f is None or args.p is None:
             self._log_error("Missing required flags: -i, -f, -p")
-            return
 
         python_exe = sys.executable
         tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")

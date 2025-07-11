@@ -417,49 +417,49 @@ class FileProcessorMixin:
         return backup_path
 
 
-class CommandExecutorMixin:
-    """Mixin for command execution with automatic monitoring."""
-
-    def execute_command(
-        self,
-        command: str,
-        description: str = "Command",
-        pipe_input: Optional[str] = None,
-        **kwargs,
-    ) -> bool:
-        """
-        Execute a command with automatic runtime monitoring.
-
-        Args:
-            command: Command to execute
-            description: Description for logging
-            pipe_input: Input to pipe to command
-            **kwargs: Additional arguments
-
-        Returns:
-            True if command successful, False otherwise
-        """
-        from .utils import run_gromacs_command
-
-        logger = getattr(self, "logger", None)
-        debug = getattr(self, "debug", False)
-
-        if debug:
-            if logger:
-                logger.debug(f"{description}: {command}")
-            return True
-
-        if logger:
-            logger.info(f"Executing: {description}")
-
-        success = run_gromacs_command(
-            command=command, pipe_input=pipe_input, debug=debug, logger=logger, **kwargs
-        )
-
-        if logger:
-            if success:
-                logger.info(f"{description} completed successfully")
-            else:
-                logger.error(f"{description} failed")
-
-        return success
+# class CommandExecutorMixin:
+#     """Mixin for command execution with automatic monitoring."""
+#
+#     def execute_command(
+#         self,
+#         command: str,
+#         description: str = "Command",
+#         pipe_input: Optional[str] = None,
+#         **kwargs,
+#     ) -> bool:
+#         """
+#         Execute a command with automatic runtime monitoring.
+#
+#         Args:
+#             command: Command to execute
+#             description: Description for logging
+#             pipe_input: Input to pipe to command
+#             **kwargs: Additional arguments
+#
+#         Returns:
+#             True if command successful, False otherwise
+#         """
+#         from .utils import run_gromacs_command
+#
+#         logger = getattr(self, "logger", None)
+#         debug = getattr(self, "debug", False)
+#
+#         if debug:
+#             if logger:
+#                 logger.debug(f"{description}: {command}")
+#             return True
+#
+#         if logger:
+#             logger.info(f"Executing: {description}")
+#
+#         success = run_gromacs_command(
+#             command=command, pipe_input=pipe_input, debug=debug, logger=logger, **kwargs
+#         )
+#
+#         if logger:
+#             if success:
+#                 logger.info(f"{description} completed successfully")
+#             else:
+#                 logger.error(f"{description} failed")
+#
+#         return success
