@@ -466,8 +466,7 @@ def write_hybrid_topology(
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
-    # Build a set of dummy atom indices for filtering
-    dummy_indices = set(atom.index for atom in sorted_atoms if atom.typeA == 'DUM' or atom.typeB == 'DUM')
+
     with open(filename, 'w') as f:
         f.write(f'; Include force field parameters\n')
         f.write('[ moleculetype ]\n')
@@ -476,17 +475,9 @@ def write_hybrid_topology(
         f.write('[ atoms ]\n')
         f.write('; nr type resnr residue atom cgnr  charge    mass  typeB chargeB  massB\n')
         for atom in sorted_atoms:
-            # Ensure dummy atoms have zero mass and charge
-            chargeA = 0.0 if atom.typeA == 'DUM' else atom.chargeA
-            chargeB = 0.0 if atom.typeB == 'DUM' else atom.chargeB
-            massA = 0.0 if atom.typeA == 'DUM' else atom.massA
-            massB = 0.0 if atom.typeB == 'DUM' else atom.massB
             f.write(f'{atom.index:4d} {atom.typeA:6s} {1:4d} {"LIG":6s} {atom.atom_name:4s} {1:4d} '
-                    f'{chargeA:8.4f} {massA:7.3f} {atom.typeB:6s} {chargeB:8.4f} {massB:7.3f}\n')
+                    f'{atom.chargeA:8.4f} {atom.massA:7.3f} {atom.typeB:6s} {atom.chargeB:8.4f} {atom.massB:7.3f}\n')
         f.write('\n')
-        # Helper to check if any atom in a term is a dummy
-        def has_dummy(*indices):
-            return any(idx in dummy_indices for idx in indices)
         if hybrid_bonds is not None:
             f.write('[ bonds ]\n')
             f.write(';  ai    aj funct    par_A1  par_A2  par_B1  par_B2\n')
@@ -496,9 +487,6 @@ def write_hybrid_topology(
                 funct = getattr(bond, 'funct', None)
                 parA = getattr(bond, 'parA', [])
                 parB = getattr(bond, 'parB', [])
-                # Filter out bonds involving dummy atoms
-                if has_dummy(ai, aj):
-                    continue
                 # Handle both single values and lists
                 if isinstance(parA, list):
                     parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
@@ -517,8 +505,6 @@ def write_hybrid_topology(
                 ai = getattr(pair, 'ai', pair['ai'])
                 aj = getattr(pair, 'aj', pair['aj'])
                 funct = getattr(pair, 'funct', pair['funct'])
-                if has_dummy(ai, aj):
-                    continue
                 f.write(f'{int(ai):5d} {int(aj):5d} {int(funct):5d}\n')
             f.write('\n')
         if hybrid_angles is not None:
@@ -531,8 +517,7 @@ def write_hybrid_topology(
                 funct = getattr(angle, 'funct', None)
                 parA = getattr(angle, 'parA', [])
                 parB = getattr(angle, 'parB', [])
-                if has_dummy(ai, aj, ak):
-                    continue
+                # Handle both single values and lists
                 if isinstance(parA, list):
                     parA_str = ' '.join('0.00' if pd.isna(p) or p == '' else str(p) for p in parA)
                 else:
@@ -554,8 +539,6 @@ def write_hybrid_topology(
                 funct = getattr(dih, 'funct', None)
                 parA = getattr(dih, 'parA', [])
                 parB = getattr(dih, 'parB', [])
-                if has_dummy(ai, aj, ak, al):
-                    continue
                 # Use function type 2 for all dihedrals (2 parameters: amplitude, phase)
                 if isinstance(parA, list):
                     parA_clean = [p for p in parA if not pd.isna(p) and p != ''][:2]
@@ -653,7 +636,6 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     """
     For each lambda, build a new hybrid atom list with correct interpolation and original indices.
     Only include atoms present at this lambda. Renumber atoms sequentially starting from 1.
-    Dummy atoms must have zero mass and charge.
     """
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
     hybrid_atoms = []
@@ -678,32 +660,34 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             ))
         elif atom_type == 'uniqueA':
             rowA = dfA[dfA['index'] == origA_idx].iloc[0]
-            # Dummy atom: zero mass and charge
+            charge = (1 - lam) * rowA['charge']
+            mass = (1 - lam) * rowA['mass']
             hybrid_atoms.append(HybridAtom(
                 index=new_idx,
                 atom_name=atom_name,
                 typeA=rowA['type'],
                 typeB='DUM',
-                chargeA=0.0,
-                chargeB=0.0,
-                massA=0.0,
-                massB=0.0,
+                chargeA=charge,
+                chargeB=charge,
+                massA=mass,
+                massB=mass,
                 mapped=False,
                 origA_idx=origA_idx,
                 origB_idx=None
             ))
         elif atom_type == 'uniqueB':
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
-            # Dummy atom: zero mass and charge
+            charge = lam * rowB['charge']
+            mass = lam * rowB['mass']
             hybrid_atoms.append(HybridAtom(
                 index=new_idx,
                 atom_name=atom_name,
                 typeA='DUM',
                 typeB=rowB['type'],
-                chargeA=0.0,
-                chargeB=0.0,
-                massA=0.0,
-                massB=0.0,
+                chargeA=charge,
+                chargeB=charge,
+                massA=mass,
+                massB=mass,
                 mapped=False,
                 origA_idx=None,
                 origB_idx=origB_idx
@@ -793,9 +777,10 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
     """
     For each lambda, output hybrid coordinates as:
     - mapped: interpolate between A and B
-    - uniqueA: use A's coordinates (if dummy, place at centroid or mapped neighbor)
-    - uniqueB: use B's coordinates (if dummy, place at centroid or mapped neighbor)
-    All dummy atoms are placed within 1.4 nm of each other.
+    - uniqueA: use A's coordinates
+    - uniqueB: use B's coordinates
+    At lambda=0, output is exactly ligandA; at lambda=1, exactly ligandB.
+    Only atoms present at this lambda are included.
     """
     coordsA, namesA = parse_mol2_coords(ligA_mol2)
     coordsB, namesB = parse_mol2_coords(ligB_mol2)
@@ -807,73 +792,22 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         dfB = pd.DataFrame([{'index': idx, 'atom_name': namesB[idx]} for idx in sorted(coordsB.keys())])
     mapping = load_atom_map(atom_map_txt)
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
-    # Compute centroid of all real atoms (for dummy placement)
-    real_coords = []
-    for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list):
-        if atom_type == 'mapped':
-            coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
-            coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
-            coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
-            real_coords.append(coord)
-        elif atom_type == 'uniqueA' and origA_idx in coordsA:
-            real_coords.append(coordsA[origA_idx])
-        elif atom_type == 'uniqueB' and origB_idx in coordsB:
-            real_coords.append(coordsB[origB_idx])
-    if real_coords:
-        centroid = tuple(np.mean([np.array(c) for c in real_coords], axis=0))
-    else:
-        centroid = (0.0, 0.0, 0.0)
-    # Place dummy atoms at centroid or at mapped neighbor if possible
     pdb_lines = []
-    dummy_coords = []
     for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list):
         if atom_type == 'mapped':
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
         elif atom_type == 'uniqueA':
-            # Try to find mapped neighbor
-            neighbor_coord = None
-            if origA_idx is not None:
-                for idxA, idxB in mapping.items():
-                    if idxA == origA_idx:
-                        if idxB in coordsB:
-                            neighbor_coord = coordsB[idxB]
-                            break
-                if neighbor_coord is None and origA_idx in coordsA:
-                    neighbor_coord = coordsA[origA_idx]
-            coord = neighbor_coord if neighbor_coord is not None else centroid
-            dummy_coords.append(coord)
+            coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
+            coord = coordA
         elif atom_type == 'uniqueB':
-            neighbor_coord = None
-            if origB_idx is not None:
-                for idxA, idxB in mapping.items():
-                    if idxB == origB_idx:
-                        if idxA in coordsA:
-                            neighbor_coord = coordsA[idxA]
-                            break
-                if neighbor_coord is None and origB_idx in coordsB:
-                    neighbor_coord = coordsB[origB_idx]
-            coord = neighbor_coord if neighbor_coord is not None else centroid
-            dummy_coords.append(coord)
+            coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
+            coord = coordB
         else:
-            coord = centroid
-            dummy_coords.append(coord)
+            coord = (0.0, 0.0, 0.0)
         pdb_lines.append(
             f"HETATM{i + 1:5d}  {atom_name:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n")
-    # Ensure all dummy atoms are within 1.4 nm of each other
-    max_dist = 0.0
-    if len(dummy_coords) > 1:
-        for i in range(len(dummy_coords)):
-            for j in range(i + 1, len(dummy_coords)):
-                d = np.linalg.norm(np.array(dummy_coords[i]) - np.array(dummy_coords[j]))
-                if d > max_dist:
-                    max_dist = d
-        if max_dist > 1.4:
-            # Reposition all dummy atoms to centroid
-            for idx, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list):
-                if atom_type in ('uniqueA', 'uniqueB'):
-                    pdb_lines[idx] = f"HETATM{idx + 1:5d}  {atom_name:<4s}LIG     1    {centroid[0]:8.3f}{centroid[1]:8.3f}{centroid[2]:8.3f}  1.00  0.00\n"
     with open(out_pdb, 'w') as f:
         for line in pdb_lines:
             f.write(line)
