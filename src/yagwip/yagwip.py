@@ -131,7 +131,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def print_banner(self):
         """Prints YAGWIP Banner Logo on Start."""
         try:
-            banner_path = files("utils").joinpath("yagwip_banner.txt")
+            banner_path = files("assets").joinpath("yagwip_banner.txt")
             with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
@@ -381,7 +381,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             )
 
     def _run_ligand_builder(self, ligand_file, ligand_name, charge, multiplicity):
-        amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
+        amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
         if not os.path.exists(amber_ff_dest):
             os.makedirs(amber_ff_dest)
@@ -889,7 +889,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def print_random_quote(self):
         """Print a random quote from the quotes file."""
         try:
-            quotes_path = files("utils").joinpath("quotes.txt")
+            quotes_path = files("assets").joinpath("quotes.txt")
             with open(str(quotes_path), "r", encoding="utf-8") as f:
                 quotes = f.readlines()
             if quotes:

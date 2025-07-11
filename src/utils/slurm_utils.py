@@ -17,7 +17,7 @@ class SlurmWriter(YagwipBase):
     Handles generation and writing of SLURM job scripts for GROMACS and TREMD workflows.
     """
 
-    def __init__(self, template_pkg="yagwip.templates", logger=None, debug=False):
+    def __init__(self, template_pkg="templates", logger=None, debug=False):
         super().__init__(debug=debug, logger=logger)
         self.template_dir = files(template_pkg)
 
