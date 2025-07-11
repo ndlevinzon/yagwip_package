@@ -169,38 +169,74 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-            self, protein_gro, ligand_pdb, combined_gro="complex.gro"
+            self, protein_gro, ligand_pdb, ligand_itp, combined_gro="complex.gro"
     ):
+        """
+        Append ligand coordinates to protein GRO file, using atom names from ligand_itp ([ atoms ] section) to ensure consistency with topology.
+        Args:
+            protein_gro (str): Path to protein .gro file
+            ligand_pdb (str): Path to ligand .pdb file
+            ligand_itp (str): Path to ligand .itp file (for atom names)
+            combined_gro (str): Output .gro file
+        """
+
+        # Parse atom names from ligand .itp
+        def parse_itp_atom_names(itp_path):
+            atom_names = []
+            with open(itp_path, "r") as f:
+                in_atoms = False
+                for line in f:
+                    if line.strip().startswith("[ atoms ]"):
+                        in_atoms = True
+                        continue
+                    if in_atoms:
+                        if line.strip().startswith("[") or not line.strip():
+                            break
+                        if not line.strip().startswith(";"):
+                            parts = line.split()
+                            if len(parts) >= 5:
+                                atom_names.append(parts[4])
+            return atom_names
+
+        ligand_atom_names = parse_itp_atom_names(ligand_itp)
+
+        # Parse ligand coordinates from PDB
         coords = []
         with open(ligand_pdb, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     res_id = int(line[23:26].strip())
-                    atom_name = line[13:16].strip()
-                    res_name = line[17:20].strip()
                     atom_index = int(line[6:11].strip())
+                    res_name = line[17:20].strip()
                     x = float(line[30:38])
                     y = float(line[38:46])
                     z = float(line[46:54])
-                    coords.append((res_id, res_name, atom_name, atom_index, x, y, z))
+                    coords.append((res_id, res_name, atom_index, x, y, z))
 
+        if len(coords) != len(ligand_atom_names):
+            self._log(
+                f"[ERROR] Ligand atom count mismatch: {len(coords)} coords vs {len(ligand_atom_names)} atom names in {ligand_itp}")
+            raise ValueError("Ligand atom count mismatch between PDB and ITP")
+
+        # Read protein GRO
         with open(protein_gro, "r", encoding="utf-8") as f:
             lines = f.readlines()
-
         header, atom_lines, box = lines[:2], lines[2:-1], lines[-1]
         total_atoms = len(atom_lines) + len(coords)
 
+        # Write combined GRO file
         with open(combined_gro, "w", encoding="utf-8") as fout:
             fout.write(header[0])
             fout.write(f"{total_atoms}\n")
             fout.writelines(atom_lines)
-            for res_id, res_name, atom_name, atom_index, x, y, z in coords:
+            for i, (res_id, res_name, atom_index, x, y, z) in enumerate(coords):
+                atom_name = ligand_atom_names[i] if i < len(ligand_atom_names) else "X"
                 fout.write(
                     f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x / 10:8.3f}{y / 10:8.3f}{z / 10:8.3f}\n"
                 )
             fout.write(box)
 
-        self._log(f"Wrote combined coordinates to {combined_gro}")
+        self._log(f"Wrote combined coordinates to {combined_gro} with ligand atom names from {ligand_itp}")
 
     def append_hybrid_ligand_coordinates_to_gro(
             self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"

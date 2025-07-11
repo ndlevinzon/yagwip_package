@@ -572,7 +572,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             if self.ligand_pdb_path and os.path.exists("ligandA.pdb") and os.path.getsize("ligandA.pdb") > 0:
                 # Case 2: Protein + single ligand
                 self.editor.append_ligand_coordinates_to_gro(
-                    output_gro, "ligandA.pdb", "complex.gro"
+                    output_gro, "ligandA.pdb", "ligandA.itp", "complex.gro"
                 )
                 self.editor.include_ligand_itp_in_topol("topol.top", "LIG")
             else:
