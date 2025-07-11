@@ -95,7 +95,10 @@ class Builder(YagwipBase):
                 "0.95",
                 "1.00",
             ]
-            template_mdp = files("yagwip.templates").joinpath("ions_fep.mdp")
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            assets_dir = os.path.join(os.path.dirname(module_dir), "templates")
+            template_mdp = os.path.join(assets_dir, "ions_fep.mdp")
+
             # Use only the directory name for lambda value and filenames
             cwd = os.path.basename(os.getcwd())  # e.g., 'lambda_0.00'
             lam_value = cwd.replace("lambda_", "")  # '0.00'

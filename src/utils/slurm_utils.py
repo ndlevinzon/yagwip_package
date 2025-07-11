@@ -19,7 +19,9 @@ class SlurmWriter(YagwipBase):
 
     def __init__(self, template_pkg="templates", logger=None, debug=False):
         super().__init__(debug=debug, logger=logger)
-        self.template_dir = files(template_pkg)
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_dir = os.path.join(os.path.dirname(module_dir), "templates")
+        self.template_dir = files(assets_dir)
 
     def write_slurm_scripts(self, sim_type, hardware, basename, ligand_pdb_path=None):
         """

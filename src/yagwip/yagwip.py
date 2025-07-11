@@ -131,7 +131,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def print_banner(self):
         """Prints YAGWIP Banner Logo on Start."""
         try:
-            banner_path = files(".assets").joinpath("yagwip_banner.txt")
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            assets_dir = os.path.join(os.path.dirname(module_dir), "assets")
+            banner_path = os.path.join(assets_dir, "yagwip_banner.txt")
             with open(str(banner_path), "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
@@ -889,7 +891,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def print_random_quote(self):
         """Print a random quote from the quotes file."""
         try:
-            quotes_path = files(".assets").joinpath("quotes.txt")
+            # Get the path to the assets directory relative to this module
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            assets_dir = os.path.join(os.path.dirname(module_dir), "assets")
+            quotes_path = os.path.join(assets_dir, "quotes.txt")
+
             with open(str(quotes_path), "r", encoding="utf-8") as f:
                 quotes = f.readlines()
             if quotes:
