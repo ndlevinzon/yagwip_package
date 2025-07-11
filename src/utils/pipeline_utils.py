@@ -11,7 +11,7 @@ from yagwip.base import LoggingMixin
 
 class Editor(LoggingMixin):
     def __init__(
-            self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
+        self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
     ):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
@@ -59,7 +59,9 @@ class Editor(LoggingMixin):
         with open(self.ffnonbonded_itp, "r", encoding="utf-8") as f:
             ff_content = f.read()
             if f";ligand {ligand_name}" in ff_content:
-                self._log(f"Ligand {ligand_name} atomtypes already exist in ffnonbonded.itp. Skipping...")
+                self._log(
+                    f"Ligand {ligand_name} atomtypes already exist in ffnonbonded.itp. Skipping..."
+                )
                 return
 
         # Append the new ligand's atomtypes block to the forcefield file
@@ -174,7 +176,7 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-            self, protein_gro, ligand_pdb, ligand_itp, combined_gro="complex.gro"
+        self, protein_gro, ligand_pdb, ligand_itp, combined_gro="complex.gro"
     ):
         """
         Append ligand coordinates to protein GRO file, using atom names from ligand_itp ([ atoms ] section) to ensure consistency with topology.
@@ -220,7 +222,8 @@ class Editor(LoggingMixin):
 
         if len(coords) != len(ligand_atom_names):
             self._log(
-                f"[ERROR] Ligand atom count mismatch: {len(coords)} coords vs {len(ligand_atom_names)} atom names in {ligand_itp}")
+                f"[ERROR] Ligand atom count mismatch: {len(coords)} coords vs {len(ligand_atom_names)} atom names in {ligand_itp}"
+            )
             raise ValueError("Ligand atom count mismatch between PDB and ITP")
 
         # Read protein GRO
@@ -241,10 +244,12 @@ class Editor(LoggingMixin):
                 )
             fout.write(box)
 
-        self._log(f"Wrote combined coordinates to {combined_gro} with ligand atom names from {ligand_itp}")
+        self._log(
+            f"Wrote combined coordinates to {combined_gro} with ligand atom names from {ligand_itp}"
+        )
 
     def append_hybrid_ligand_coordinates_to_gro(
-            self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
+        self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
     ):
         """
         For FEP:
@@ -290,7 +295,9 @@ class Editor(LoggingMixin):
             # Find matching coordinate by atom name (since PDB indices are sequential)
             for pdb_index, (res_id, res_name, atom_name, x, y, z) in coords.items():
                 if atom_name.strip() == topo_name.strip():
-                    ordered_coords.append((res_id, res_name, atom_name, topo_index, x, y, z))
+                    ordered_coords.append(
+                        (res_id, res_name, atom_name, topo_index, x, y, z)
+                    )
                     break
 
         # Read protein GRO file
@@ -311,13 +318,18 @@ class Editor(LoggingMixin):
                 )
             fout.write(box)
 
-        self._log(f"Wrote combined coordinates to {combined_gro} with topology-matched indices")
-        self._log(f"Protein atoms: {len(atom_lines)}, Ligand atoms: {len(ordered_coords)}, Total: {total_atoms}")
+        self._log(
+            f"Wrote combined coordinates to {combined_gro} with topology-matched indices"
+        )
+        self._log(
+            f"Protein atoms: {len(atom_lines)}, Ligand atoms: {len(ordered_coords)}, Total: {total_atoms}"
+        )
 
         # Debug: Check if all hybrid atoms were matched
         if len(ordered_coords) != len(hybrid_atoms):
             self._log(
-                f"[WARNING] Atom count mismatch: {len(ordered_coords)} coordinates vs {len(hybrid_atoms)} topology atoms")
+                f"[WARNING] Atom count mismatch: {len(ordered_coords)} coordinates vs {len(hybrid_atoms)} topology atoms"
+            )
             missing_atoms = []
             for topo_index, topo_name in hybrid_atoms:
                 found = False
@@ -330,7 +342,9 @@ class Editor(LoggingMixin):
             if missing_atoms:
                 self._log(f"[WARNING] Missing atoms in PDB: {missing_atoms}")
 
-    def include_ligand_itp_in_topol(self, topol_top="topol.top", ligand_name="LIG", ligand_itp_path=None):
+    def include_ligand_itp_in_topol(
+        self, topol_top="topol.top", ligand_name="LIG", ligand_itp_path=None
+    ):
         if ligand_itp_path is None:
             ligand_itp_path = self.ligand_itp
         with open(topol_top, "r", encoding="utf-8") as f:
@@ -346,9 +360,9 @@ class Editor(LoggingMixin):
             stripped = line.strip()
 
             if (
-                    not inserted_include
-                    and "#include" in stripped
-                    and "forcefield.itp" in stripped
+                not inserted_include
+                and "#include" in stripped
+                and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
                 new_lines.append(f'#include "./{ligand_itp_path}"\n')
@@ -409,7 +423,7 @@ class Editor(LoggingMixin):
         for line in lines:
             # Fix amber14sb.ff path
             if '#include "./amber14sb.ff/' in line:
-                line = line.replace('./amber14sb.ff/', '../amber14sb.ff/')
+                line = line.replace("./amber14sb.ff/", "../amber14sb.ff/")
                 modified = True
                 self._log(f"Fixed amber14sb.ff path in {topol_file}")
 
@@ -417,11 +431,13 @@ class Editor(LoggingMixin):
             if '#include "./ligand' in line:
                 line = f'#include "./hybrid_lambda_{lambda_value}.itp"\n'
                 modified = True
-                self._log(f"Updated ligand include to hybrid_lambda_{lambda_value}.itp in {topol_file}")
+                self._log(
+                    f"Updated ligand include to hybrid_lambda_{lambda_value}.itp in {topol_file}"
+                )
 
             # Fix amber14sb.ff path
             if '#include "posre.itp' in line:
-                line = line.replace('posre.itp', '../posre.itp')
+                line = line.replace("posre.itp", "../posre.itp")
                 modified = True
                 self._log(f"Fixed amber14sb.ff path in {topol_file}")
 
@@ -498,7 +514,9 @@ class LigandUtils(LoggingMixin):
         adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
 
         # Create atom_id to index mapping for O(1) lookups
-        atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms["atom_id"])}
+        atom_id_to_idx = {
+            atom_id: idx for idx, atom_id in enumerate(df_atoms["atom_id"])
+        }
 
         # Build adjacency matrix from bonds in O(bonds) time
         for _, bond in df_bonds.iterrows():
@@ -552,7 +570,9 @@ class LigandUtils(LoggingMixin):
                     neighbors.append((x + dx, y + dy, z + dz))
         return neighbors
 
-    def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance, logger=None):
+    def find_bonds_spatial(
+        self, coords, elements, covalent_radii, bond_tolerance, logger=None
+    ):
         """
         Find bonds using spatial partitioning for O(n) average case performance.
 
@@ -679,7 +699,7 @@ class LigandUtils(LoggingMixin):
 
         for invalid_i, invalid_j in invalid_pairs:
             if (elem_i == invalid_i and elem_j == invalid_j) or (
-                    elem_i == invalid_j and elem_j == invalid_i
+                elem_i == invalid_j and elem_j == invalid_i
             ):
                 return False
 
@@ -728,7 +748,9 @@ class LigandUtils(LoggingMixin):
             DataFrame with updated atom types
         """
         # Use optimized adjacency matrix construction
-        adjacency, atom_id_to_idx = LigandUtils().build_adjacency_matrix_fast(df_atoms, df_bonds)
+        adjacency, atom_id_to_idx = LigandUtils().build_adjacency_matrix_fast(
+            df_atoms, df_bonds
+        )
 
         # Calculate valence for each atom
         valence_counts = np.sum(adjacency, axis=1)
@@ -881,6 +903,3 @@ class LigandUtils(LoggingMixin):
         Calculate current valence for an atom based on existing bonds.
         """
         return len(atom_bonds[atom_idx])
-
-
-

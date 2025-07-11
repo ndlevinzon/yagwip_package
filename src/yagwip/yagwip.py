@@ -59,11 +59,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
 
         self.current_pdb_path = None  # Full path to the loaded PDB file
-        self.ligand_pdb_path = None   # Full path to the ligand PDB file, if any
-        self.basename = None          # Base PDB filename (without extension)
-        self.print_banner()           # Prints intro banner to command line
-        self.user_itp_paths = []      # Stores user input paths for do_source
-        self.editor = Editor()        # Initialize the file Editor class from pipeline_utils.py
+        self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
+        self.basename = None  # Base PDB filename (without extension)
+        self.print_banner()  # Prints intro banner to command line
+        self.user_itp_paths = []  # Stores user input paths for do_source
+        self.editor = (
+            Editor()
+        )  # Initialize the file Editor class from pipeline_utils.py
         self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
@@ -255,9 +257,15 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def _parse_loadpdb_args(self, arg):
         parser = argparse.ArgumentParser(description="Load PDB file")
         parser.add_argument("pdb_file", help="PDB file to load")
-        parser.add_argument("--ligand_builder", action="store_true", help="Use ligand builder")
-        parser.add_argument("--c", type=int, default=0, help="Total charge for QM input")
-        parser.add_argument("--m", type=int, default=1, help="Multiplicity for QM input")
+        parser.add_argument(
+            "--ligand_builder", action="store_true", help="Use ligand builder"
+        )
+        parser.add_argument(
+            "--c", type=int, default=0, help="Total charge for QM input"
+        )
+        parser.add_argument(
+            "--m", type=int, default=1, help="Multiplicity for QM input"
+        )
         return parser.parse_args(arg.split())
 
     def _read_pdb_file(self, pdb_file):
@@ -343,11 +351,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 if line[17:20] in ("HSP", "HSD"):
                     line = line[:17] + "HIS" + line[20:]
                 prot_out.write(line)
-        self._log_info("No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein.")
+        self._log_info(
+            "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
+        )
         self._warn_if_missing_residues(protein_pdb="protein.pdb")
 
     def _assign_ligand_name(self):
-        ligand_name = chr(ord('A') + self.ligand_counter)
+        ligand_name = chr(ord("A") + self.ligand_counter)
         ligand_name = f"ligand{ligand_name}"
         self.current_ligand_name = ligand_name
         self.ligand_counter += 1
@@ -357,11 +367,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         with open(ligand_file, "w", encoding="utf-8") as lig_out:
             for line in hetatm_lines:
                 lig_out.write(line[:17] + "LIG" + line[20:])
-        self._log_info(f"Ligand-only PDB detected. Assigned name: {ligand_file}. Wrote ligand to {ligand_file}")
+        self._log_info(
+            f"Ligand-only PDB detected. Assigned name: {ligand_file}. Wrote ligand to {ligand_file}"
+        )
 
     def _warn_if_no_hydrogens(self, hetatm_lines):
-        if not any(line[76:78].strip() == "H" or line[12:16].strip().startswith("H") for line in hetatm_lines):
-            self._log_warning("Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences.")
+        if not any(
+            line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
+            for line in hetatm_lines
+        ):
+            self._log_warning(
+                "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
+            )
 
     def _run_ligand_builder(self, ligand_file, ligand_name, charge, multiplicity):
         amber_ff_source = str(files("yagwip.templates").joinpath("amber14sb.ff/"))
@@ -385,7 +402,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file)
         if not mol2_file or not os.path.isfile(mol2_file):
-            self._log_error(f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline...")
+            self._log_error(
+                f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline..."
+            )
             return
 
         with open(mol2_file, encoding="utf-8") as f:
@@ -394,7 +413,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         for i, line in enumerate(lines):
             if line.strip() == "@<TRIPOS>ATOM":
                 atom_start = i + 1
-            elif (line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None):
+            elif line.strip().startswith("@<TRIPOS>BOND") and atom_start is not None:
                 atom_end = i
                 break
         if atom_start is None:
@@ -405,6 +424,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         atom_lines = lines[atom_start:atom_end]
         import pandas as pd
         import io
+
         df_atoms = pd.read_csv(
             io.StringIO("".join(atom_lines)),
             sep=r"\s+",
@@ -434,7 +454,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Check if ORCA property file exists before applying charges
         property_file = f"orca/{ligand_name}.property.txt"
         if not os.path.exists(property_file):
-            self._log_error(f"ORCA property file not found: {property_file}. ORCA calculation may have failed.")
+            self._log_error(
+                f"ORCA property file not found: {property_file}. ORCA calculation may have failed."
+            )
             return
 
         self.ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, property_file)
@@ -480,12 +502,39 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         python_exe = sys.executable
 
         cmds = [
-            ([python_exe, fep_utils_path, "mcs", ligandA_mol2, ligandB_mol2, atom_map],
-             "Run MCS to generate atom_map.txt"),
-            ([python_exe, fep_utils_path, "hybrid_topology", ligandA_itp, ligandB_itp, atom_map],
-             "Generate hybrid topologies for all lambda windows"),
-            ([python_exe, fep_utils_path, "hybrid_coords", ligandA_mol2, ligandB_mol2, atom_map],
-             "Generate hybrid coordinates for all lambda windows"),
+            (
+                [
+                    python_exe,
+                    fep_utils_path,
+                    "mcs",
+                    ligandA_mol2,
+                    ligandB_mol2,
+                    atom_map,
+                ],
+                "Run MCS to generate atom_map.txt",
+            ),
+            (
+                [
+                    python_exe,
+                    fep_utils_path,
+                    "hybrid_topology",
+                    ligandA_itp,
+                    ligandB_itp,
+                    atom_map,
+                ],
+                "Generate hybrid topologies for all lambda windows",
+            ),
+            (
+                [
+                    python_exe,
+                    fep_utils_path,
+                    "hybrid_coords",
+                    ligandA_mol2,
+                    ligandB_mol2,
+                    atom_map,
+                ],
+                "Generate hybrid coordinates for all lambda windows",
+            ),
         ]
         for cmd, desc in cmds:
             command_str = " ".join(cmd)
@@ -511,15 +560,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         output_gro = f"{protein_pdb}.gro"
 
         # Check if lambda subdirectories exist (case 3)
-        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+        lambda_dirs = [
+            d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
+        ]
 
         if lambda_dirs:
             # Case 3: Lambda subdirectories with hybrid files
-            self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing hybrid FEP setup...")
+            self._log_info(
+                f"Found {len(lambda_dirs)} lambda subdirectories. Processing hybrid FEP setup..."
+            )
 
             # Process each lambda subdirectory
             for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace('lambda_', '')
+                lam_value = lam_dir.replace("lambda_", "")
                 self._log_info(f"Processing {lam_dir} (lambda = {lam_value})")
 
                 # Check for required files in lambda directory
@@ -546,12 +599,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
                 # Include the hybrid ITP in the lambda-specific topology (pass correct path)
                 lambda_itp = f"hybrid_lambda_{lam_value}.itp"
-                self.editor.include_ligand_itp_in_topol(lambda_topol, "LIG", ligand_itp_path=lambda_itp)
+                self.editor.include_ligand_itp_in_topol(
+                    lambda_topol, "LIG", ligand_itp_path=lambda_itp
+                )
 
                 # Fix paths in the lambda-specific topology file
                 self.editor.fix_lambda_topology_paths(lambda_topol, lam_value)
 
-                self._log_success(f"Created {complex_gro} and updated {lambda_topol} for lambda {lam_value}")
+                self._log_success(
+                    f"Created {complex_gro} and updated {lambda_topol} for lambda {lam_value}"
+                )
 
             self._log_success(f"Processed {len(lambda_dirs)} lambda windows")
 
@@ -567,7 +624,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 return
 
             # Check if we have a single ligand (case 2)
-            if self.ligand_pdb_path and os.path.exists("ligandA.pdb") and os.path.getsize("ligandA.pdb") > 0:
+            if (
+                self.ligand_pdb_path
+                and os.path.exists("ligandA.pdb")
+                and os.path.getsize("ligandA.pdb") > 0
+            ):
                 # Case 2: Protein + single ligand
                 self.editor.append_ligand_coordinates_to_gro(
                     output_gro, "ligandA.pdb", "ligandA.itp", "complex.gro"
@@ -588,18 +649,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
 
         # Check if lambda subdirectories exist (case 3)
-        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+        lambda_dirs = [
+            d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
+        ]
 
         if lambda_dirs:
             # Case 3: Lambda subdirectories with hybrid files
-            self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing solvation for each lambda...")
+            self._log_info(
+                f"Found {len(lambda_dirs)} lambda subdirectories. Processing solvation for each lambda..."
+            )
 
             for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace('lambda_', '')
+                lam_value = lam_dir.replace("lambda_", "")
                 self._log_info(f"Solvating {lam_dir} (lambda = {lam_value})")
 
                 # Check for hybrid complex file in lambda directory
-                hybrid_complex = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.gro")
+                hybrid_complex = os.path.join(
+                    lam_dir, f"hybrid_complex_{lam_value}.gro"
+                )
 
                 if not os.path.exists(hybrid_complex):
                     self._log_warning(f"Hybrid complex not found: {hybrid_complex}")
@@ -612,7 +679,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 try:
                     # Run solvate on the hybrid complex
                     self.builder.run_solvate(
-                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("solvate")
+                        f"hybrid_complex_{lam_value}",
+                        custom_command=self.custom_cmds.get("solvate"),
                     )
                     self._log_success(f"Solvated {hybrid_complex}")
                 except Exception as e:
@@ -621,7 +689,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Return to original directory
                     os.chdir(original_dir)
 
-            self._log_success(f"Processed solvation for {len(lambda_dirs)} lambda windows")
+            self._log_success(
+                f"Processed solvation for {len(lambda_dirs)} lambda windows"
+            )
 
         else:
             # Cases 1 & 2: Protein-only or protein + single ligand
@@ -643,22 +713,29 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
 
         # Check if lambda subdirectories exist (case 3)
-        lambda_dirs = [d for d in os.listdir('.') if d.startswith('lambda_') and os.path.isdir(d)]
+        lambda_dirs = [
+            d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
+        ]
 
         if lambda_dirs:
             # Case 3: Lambda subdirectories with hybrid files
             self._log_info(
-                f"Found {len(lambda_dirs)} lambda subdirectories. Processing ion addition for each lambda...")
+                f"Found {len(lambda_dirs)} lambda subdirectories. Processing ion addition for each lambda..."
+            )
 
             for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace('lambda_', '')
+                lam_value = lam_dir.replace("lambda_", "")
                 self._log_info(f"Adding ions to {lam_dir} (lambda = {lam_value})")
 
                 # Check for solvated hybrid complex file in lambda directory
-                solvated_complex = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.solv.gro")
+                solvated_complex = os.path.join(
+                    lam_dir, f"hybrid_complex_{lam_value}.solv.gro"
+                )
 
                 if not os.path.exists(solvated_complex):
-                    self._log_warning(f"Solvated hybrid complex not found: {solvated_complex}")
+                    self._log_warning(
+                        f"Solvated hybrid complex not found: {solvated_complex}"
+                    )
                     continue
 
                 # Change to lambda directory and run genions
@@ -668,7 +745,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 try:
                     # Run genions on the solvated hybrid complex
                     self.builder.run_genions(
-                        f"hybrid_complex_{lam_value}", custom_command=self.custom_cmds.get("genions"), fep_mode=True
+                        f"hybrid_complex_{lam_value}",
+                        custom_command=self.custom_cmds.get("genions"),
+                        fep_mode=True,
                     )
                     self._log_success(f"Added ions to {solvated_complex}")
                 except Exception as e:
@@ -677,7 +756,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Return to original directory
                     os.chdir(original_dir)
 
-            self._log_success(f"Processed ion addition for {len(lambda_dirs)} lambda windows")
+            self._log_success(
+                f"Processed ion addition for {len(lambda_dirs)} lambda windows"
+            )
 
         else:
             # Cases 1 & 2: Protein-only or protein + single ligand
@@ -719,7 +800,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep -i <init_temp> -f <final_temp> -p <prob>"""
         args = self._parse_tremd_prep(arg)
-        solvated_gro = "complex.solv.ions.gro" if os.path.exists("complex.solv.ions.gro") else "protein.solv.ions.gro"
+        solvated_gro = (
+            "complex.solv.ions.gro"
+            if os.path.exists("complex.solv.ions.gro")
+            else "protein.solv.ions.gro"
+        )
         if not os.path.isfile(solvated_gro):
             self._log_error(f"File not found: {solvated_gro}")
             return
@@ -731,17 +816,28 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")
         command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}" -i {args.i} -f {args.f} -p {args.p}'
         self._log_info(f"Running: {command_str}")
-        success = self._execute_command(command=command_str,
-                                        description="TREMD temperature ladder calculation (non-interactive)")
+        success = self._execute_command(
+            command=command_str,
+            description="TREMD temperature ladder calculation (non-interactive)",
+        )
         if not success:
             self._log_error("TREMD temperature ladder calculation failed.")
 
     def _parse_tremd_prep(self, arg):
         import argparse
-        parser = argparse.ArgumentParser(description="Calculate Replicas Temperature Replica Exchange")
-        parser.add_argument("-i", type=float, required=True, help="Initial Temperature (K)")
-        parser.add_argument("-f", type=float, required=True, help="Final Temperature (K)")
-        parser.add_argument("-p", type=float, required=True, help="Probability of Exchange (0-1)")
+
+        parser = argparse.ArgumentParser(
+            description="Calculate Replicas Temperature Replica Exchange"
+        )
+        parser.add_argument(
+            "-i", type=float, required=True, help="Initial Temperature (K)"
+        )
+        parser.add_argument(
+            "-f", type=float, required=True, help="Final Temperature (K)"
+        )
+        parser.add_argument(
+            "-p", type=float, required=True, help="Probability of Exchange (0-1)"
+        )
         return parser.parse_args(arg.split())
 
     def do_source(self, arg):

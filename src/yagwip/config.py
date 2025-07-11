@@ -25,6 +25,7 @@ from utils.log_utils import LoggingMixin, auto_monitor, setup_logger
 
 class DependencyStatus(Enum):
     """Status of external dependencies."""
+
     AVAILABLE = "available"
     NOT_FOUND = "not_found"
     ERROR = "error"
@@ -34,6 +35,7 @@ class DependencyStatus(Enum):
 @dataclass
 class DependencyInfo:
     """Information about an external dependency."""
+
     name: str
     executable: str
     required: bool = True
@@ -107,7 +109,7 @@ class YagwipConfig:
                 required=True,
                 description="Molecular dynamics simulation package",
                 website="https://www.gromacs.org/",
-                citation="Abraham, M.J., et al. GROMACS: High performance molecular simulations through multi-level parallelism from laptops to supercomputers. SoftwareX 1-2, 19-25 (2015)."
+                citation="Abraham, M.J., et al. GROMACS: High performance molecular simulations through multi-level parallelism from laptops to supercomputers. SoftwareX 1-2, 19-25 (2015).",
             ),
             "orca": DependencyInfo(
                 name="ORCA",
@@ -115,7 +117,7 @@ class YagwipConfig:
                 required=False,
                 description="Quantum chemistry program for calculations",
                 website="https://orcaforum.kofo.mpg.de/",
-                citation="Neese, F. Software update: the ORCA program system. WIREs Comput. Mol. Sci. 12, e1606 (2022)."
+                citation="Neese, F. Software update: the ORCA program system. WIREs Comput. Mol. Sci. 12, e1606 (2022).",
             ),
             "openmpi": DependencyInfo(
                 name="OpenMPI",
@@ -123,7 +125,7 @@ class YagwipConfig:
                 required=False,
                 description="Message passing interface for parallel computing",
                 website="https://www.open-mpi.org/",
-                citation="Gabriel, E., et al. Open MPI: Goals, concept, and design of a next generation MPI implementation. In Recent Advances in Parallel Virtual Machine and Message Passing Interface, 97-104 (2004)."
+                citation="Gabriel, E., et al. Open MPI: Goals, concept, and design of a next generation MPI implementation. In Recent Advances in Parallel Virtual Machine and Message Passing Interface, 97-104 (2004).",
             ),
             "amber": DependencyInfo(
                 name="AmberTools",
@@ -131,7 +133,7 @@ class YagwipConfig:
                 required=False,
                 description="Molecular mechanics force field and simulation package",
                 website="https://ambermd.org/",
-                citation="Case, D.A., et al. AMBER 2021. University of California, San Francisco (2021)."
+                citation="Case, D.A., et al. AMBER 2021. University of California, San Francisco (2021).",
             ),
             "openbabel": DependencyInfo(
                 name="OpenBabel",
@@ -139,7 +141,7 @@ class YagwipConfig:
                 required=False,
                 description="Chemical toolbox for molecular modeling",
                 website="https://openbabel.org/",
-                citation="O'Boyle, N.M., et al. Open Babel: An open chemical toolbox. J. Cheminform. 3, 33 (2011)."
+                citation="O'Boyle, N.M., et al. Open Babel: An open chemical toolbox. J. Cheminform. 3, 33 (2011).",
             ),
             "acpype": DependencyInfo(
                 name="ACPYPE",
@@ -147,8 +149,8 @@ class YagwipConfig:
                 required=False,
                 description="AnteChamber PYthon Parser interfacE for topology generation",
                 website="https://github.com/alanwilter/acpype",
-                citation="Sousa da Silva, A.W. & Vranken, W.F. ACPYPE - AnteChamber PYthon Parser interfacE. BMC Res. Notes 5, 367 (2012)."
-            )
+                citation="Sousa da Silva, A.W. & Vranken, W.F. ACPYPE - AnteChamber PYthon Parser interfacE. BMC Res. Notes 5, 367 (2012).",
+            ),
         }
 
     def set_dependency_path(self, name: str, path: str):
@@ -186,14 +188,14 @@ class YagwipConfig:
                 "status": dep.status.value,
                 "description": dep.description,
                 "website": dep.website,
-                "citation": dep.citation
+                "citation": dep.citation,
             }
             for name, dep in self.dependencies.items()
         }
         return config_dict
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'YagwipConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "YagwipConfig":
         """Create configuration from dictionary."""
         # Handle dependencies separately
         dependencies = {}
@@ -208,7 +210,7 @@ class YagwipConfig:
                     status=DependencyStatus(dep_dict.get("status", "unknown")),
                     description=dep_dict.get("description", ""),
                     website=dep_dict.get("website", ""),
-                    citation=dep_dict.get("citation", "")
+                    citation=dep_dict.get("citation", ""),
                 )
                 dependencies[name] = dep_info
             del config_dict["dependencies"]
@@ -275,7 +277,9 @@ class ToolChecker(LoggingMixin):
         Returns:
             Path to executable if found, None otherwise
         """
-        self._log_debug(f"Intensive detection for {dep_info.name} ({dep_info.executable})")
+        self._log_debug(
+            f"Intensive detection for {dep_info.name} ({dep_info.executable})"
+        )
 
         # Strategy 1: Check current PATH
         path = shutil.which(dep_info.executable)
@@ -289,7 +293,7 @@ class ToolChecker(LoggingMixin):
             f"{dep_info.name.upper()}_HOME",
             f"{dep_info.name.upper()}_DIR",
             f"{dep_info.executable.upper()}_PATH",
-            f"{dep_info.executable.upper()}_HOME"
+            f"{dep_info.executable.upper()}_HOME",
         ]
 
         for env_var in env_vars:
@@ -298,8 +302,12 @@ class ToolChecker(LoggingMixin):
                 # Check if it's a directory or file
                 if os.path.isdir(env_path):
                     potential_path = os.path.join(env_path, dep_info.executable)
-                    if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
-                        self._log_debug(f"Found via env var {env_var}: {potential_path}")
+                    if os.path.exists(potential_path) and os.access(
+                        potential_path, os.X_OK
+                    ):
+                        self._log_debug(
+                            f"Found via env var {env_var}: {potential_path}"
+                        )
                         return potential_path
                 elif os.path.isfile(env_path) and os.access(env_path, os.X_OK):
                     self._log_debug(f"Found via env var {env_var}: {env_path}")
@@ -350,39 +358,39 @@ class ToolChecker(LoggingMixin):
                 "/opt/gromacs/bin/gmx",
                 "/usr/bin/gmx",
                 "C:/Program Files/GROMACS/bin/gmx.exe",
-                "C:/GROMACS/bin/gmx.exe"
+                "C:/GROMACS/bin/gmx.exe",
             ],
             "orca": [
                 "/opt/orca/orca",
                 "/usr/local/bin/orca",
                 "/usr/bin/orca",
                 "C:/Program Files/ORCA/orca.exe",
-                "C:/ORCA/orca.exe"
+                "C:/ORCA/orca.exe",
             ],
             "openmpi": [
                 "/usr/local/bin/mpirun",
                 "/usr/bin/mpirun",
                 "/opt/openmpi/bin/mpirun",
-                "C:/Program Files/OpenMPI/bin/mpirun.exe"
+                "C:/Program Files/OpenMPI/bin/mpirun.exe",
             ],
             "amber": [
                 "/usr/local/amber/bin/parmchk2",
                 "/opt/amber/bin/parmchk2",
                 "/usr/bin/parmchk2",
-                "C:/Program Files/AmberTools/bin/parmchk2.exe"
+                "C:/Program Files/AmberTools/bin/parmchk2.exe",
             ],
             "openbabel": [
                 "/usr/local/bin/obabel",
                 "/usr/bin/obabel",
                 "/opt/openbabel/bin/obabel",
-                "C:/Program Files/OpenBabel/bin/obabel.exe"
+                "C:/Program Files/OpenBabel/bin/obabel.exe",
             ],
             "acpype": [
                 "/usr/local/bin/acpype",
                 "/usr/bin/acpype",
                 "/opt/acpype/bin/acpype",
-                "C:/Program Files/ACPYPE/acpype.exe"
-            ]
+                "C:/Program Files/ACPYPE/acpype.exe",
+            ],
         }
 
         return common_paths.get(tool_name.lower(), [])
@@ -395,7 +403,7 @@ class ToolChecker(LoggingMixin):
                 dep_info.name.lower(),
                 dep_info.executable,
                 f"{dep_info.name.lower()}/{dep_info.executable}",
-                f"{dep_info.executable}/{dep_info.name.lower()}"
+                f"{dep_info.executable}/{dep_info.name.lower()}",
             ]
 
             for module_name in module_names:
@@ -405,15 +413,19 @@ class ToolChecker(LoggingMixin):
                         ["module", "show", module_name],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
                     )
                     if result.returncode == 0:
                         # Parse module show output to find PATH additions
-                        for line in result.stdout.split('\n'):
-                            if 'PATH' in line and '=' in line:
-                                path_part = line.split('=')[1].strip()
-                                potential_path = os.path.join(path_part, dep_info.executable)
-                                if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
+                        for line in result.stdout.split("\n"):
+                            if "PATH" in line and "=" in line:
+                                path_part = line.split("=")[1].strip()
+                                potential_path = os.path.join(
+                                    path_part, dep_info.executable
+                                )
+                                if os.path.exists(potential_path) and os.access(
+                                    potential_path, os.X_OK
+                                ):
                                     return potential_path
                 except (subprocess.TimeoutExpired, FileNotFoundError):
                     continue
@@ -438,7 +450,7 @@ class ToolChecker(LoggingMixin):
             "/opt/modules",
             "/usr/local/modules",
             "/opt/packages",
-            "/usr/local/packages"
+            "/usr/local/packages",
         ]
 
         for hpc_dir in hpc_dirs:
@@ -448,7 +460,7 @@ class ToolChecker(LoggingMixin):
                     os.path.join(hpc_dir, dep_info.name.lower()),
                     os.path.join(hpc_dir, dep_info.executable),
                     os.path.join(hpc_dir, dep_info.name.upper()),
-                    os.path.join(hpc_dir, dep_info.executable.upper())
+                    os.path.join(hpc_dir, dep_info.executable.upper()),
                 ]
 
                 for tool_dir in tool_dirs:
@@ -470,15 +482,11 @@ class ToolChecker(LoggingMixin):
             # Try to get path using an interactive shell that sources .bashrc
             shell_commands = [
                 f"bash -i -c 'source ~/.bashrc && which {dep_info.executable}'",
-                f"bash -i -c 'module load {dep_info.name.lower()} && which {dep_info.executable}'"
+                f"bash -i -c 'module load {dep_info.name.lower()} && which {dep_info.executable}'",
             ]
             for cmd in shell_commands:
                 result = subprocess.run(
-                    cmd,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    cmd, shell=True, capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     path = result.stdout.strip()
@@ -493,18 +501,16 @@ class ToolChecker(LoggingMixin):
         try:
             # Get extended PATH from shell
             result = subprocess.run(
-                "echo $PATH",
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=5
+                "echo $PATH", shell=True, capture_output=True, text=True, timeout=5
             )
 
             if result.returncode == 0:
-                path_dirs = result.stdout.strip().split(':')
+                path_dirs = result.stdout.strip().split(":")
                 for path_dir in path_dirs:
                     potential_path = os.path.join(path_dir, dep_info.executable)
-                    if os.path.exists(potential_path) and os.access(potential_path, os.X_OK):
+                    if os.path.exists(potential_path) and os.access(
+                        potential_path, os.X_OK
+                    ):
                         return potential_path
 
         except Exception as e:
@@ -518,83 +524,69 @@ class ToolChecker(LoggingMixin):
         try:
             if dep_name == "gromacs":
                 result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--version"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'GROMACS version' in line:
-                            return line.split('version')[1].strip()
+                    for line in result.stdout.split("\n"):
+                        if "GROMACS version" in line:
+                            return line.split("version")[1].strip()
 
             elif dep_name == "orca":
                 result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--version"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'ORCA' in line and 'version' in line.lower():
+                    for line in result.stdout.split("\n"):
+                        if "ORCA" in line and "version" in line.lower():
                             return line.strip()
 
             elif dep_name == "openmpi":
                 result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--version"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'Open MPI' in line:
+                    for line in result.stdout.split("\n"):
+                        if "Open MPI" in line:
                             return line.strip()
 
             elif dep_name == "amber":
                 result = subprocess.run(
-                    [path, "--help"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--help"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'AmberTools' in line:
+                    for line in result.stdout.split("\n"):
+                        if "AmberTools" in line:
                             return line.strip()
 
             elif dep_name == "openbabel":
                 result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--version"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'Open Babel' in line:
+                    for line in result.stdout.split("\n"):
+                        if "Open Babel" in line:
                             return line.strip()
 
             elif dep_name == "acpype":
                 result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                    [path, "--version"], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     # Extract version from output
-                    for line in result.stdout.split('\n'):
-                        if 'ACPYPE' in line:
+                    for line in result.stdout.split("\n"):
+                        if "ACPYPE" in line:
                             return line.strip()
 
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            subprocess.SubprocessError,
+        ):
             pass
 
         return None
@@ -614,7 +606,9 @@ class ToolChecker(LoggingMixin):
                 missing_required.append(dep_name)
 
         if missing_required:
-            self._log_error(f"Missing required dependencies: {', '.join(missing_required)}")
+            self._log_error(
+                f"Missing required dependencies: {', '.join(missing_required)}"
+            )
             return False
 
         self._log_success("All required dependencies are available")
@@ -642,7 +636,11 @@ class ToolChecker(LoggingMixin):
                 check=False,
             )
             return result.returncode == 0
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            subprocess.SubprocessError,
+        ):
             return False
 
     @auto_monitor
@@ -802,13 +800,15 @@ class ConfigManager:
         """
         if self.config_file.exists():
             try:
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, "r") as f:
                     config_dict = json.load(f)
                 config = YagwipConfig.from_dict(config_dict)
                 self.logger.info(f"Loaded configuration from {self.config_file}")
                 return config
             except Exception as e:
-                self.logger.warning(f"Failed to load config from {self.config_file}: {e}")
+                self.logger.warning(
+                    f"Failed to load config from {self.config_file}: {e}"
+                )
                 self.logger.info("Creating default configuration")
 
         # Create default configuration
@@ -830,7 +830,7 @@ class ConfigManager:
             # Ensure directory exists
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(config.to_dict(), f, indent=2)
 
             self.logger.info(f"Configuration saved to {self.config_file}")
@@ -873,6 +873,7 @@ class ConfigManager:
 
 
 # === Convenience Functions ===
+
 
 def get_config() -> YagwipConfig:
     """Get the current configuration."""

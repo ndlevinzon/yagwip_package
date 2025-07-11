@@ -1,6 +1,7 @@
 """
 slurm_utils.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
 """
+
 # === Standard Library Imports ===
 import os
 import re
@@ -32,47 +33,88 @@ class SlurmWriter(YagwipBase):
         if sim_type == "fep":
             # Define the vdw_lambdas array (should match your simulation setup)
             vdw_lambdas = [
-                "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45",
-                "0.50", "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+                "0.00",
+                "0.05",
+                "0.10",
+                "0.15",
+                "0.20",
+                "0.25",
+                "0.30",
+                "0.35",
+                "0.40",
+                "0.45",
+                "0.50",
+                "0.55",
+                "0.60",
+                "0.65",
+                "0.70",
+                "0.75",
+                "0.80",
+                "0.85",
+                "0.90",
+                "0.95",
+                "1.00",
             ]
             # For FEP, process each lambda directory
-            lambda_dirs = [d for d in os.listdir('../yagwip') if d.startswith('lambda_') and os.path.isdir(d)]
-            mdp_templates = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
+            lambda_dirs = [
+                d
+                for d in os.listdir("../yagwip")
+                if d.startswith("lambda_") and os.path.isdir(d)
+            ]
+            mdp_templates = [
+                "em_fep.mdp",
+                "nvt_fep.mdp",
+                "npt_fep.mdp",
+                "production_fep.mdp",
+            ]
             for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace('lambda_', '')
+                lam_value = lam_dir.replace("lambda_", "")
                 # Find the index of this lambda value in vdw_lambdas
                 try:
                     lambda_index = vdw_lambdas.index(lam_value)
                 except ValueError:
-                    self._log_warning(f"Lambda value {lam_value} not found in vdw_lambdas array!")
+                    self._log_warning(
+                        f"Lambda value {lam_value} not found in vdw_lambdas array!"
+                    )
                     lambda_index = lam_value  # fallback to value
                 # Copy and patch .mdp files
                 for mdp_name in mdp_templates:
                     src_path = self.template_dir / mdp_name
                     if not src_path.is_file():
-                        self._log_warning(f"Template {mdp_name} not found in {self.template_dir}")
+                        self._log_warning(
+                            f"Template {mdp_name} not found in {self.template_dir}"
+                        )
                         continue
                     with open(str(src_path), "r", encoding="utf-8") as f:
                         content = f.read().replace("__LAMBDA__", str(lambda_index))
                     dest_path = os.path.join(lam_dir, mdp_name)
                     with open(dest_path, "w", encoding="utf-8") as f:
                         f.write(content)
-                    self._log_success(f"Wrote {mdp_name} to {lam_dir} with lambda index {lambda_index}")
-                # If hardware is cpu, also copy SLURM scripts to each lambda directory
+                    self._log_success(
+                        f"Wrote {mdp_name} to {lam_dir} with lambda index {lambda_index}"
+                    )
+                    # If hardware is cpu, also copy SLURM scripts to each lambda directory
                     # If hardware is cpu, also copy SLURM scripts to current directory
                     if hardware == "cpu":
-                        slurm_files = ["run_gmx_fep_min_cpu.slurm", "run_gmx_fep_cpu.slurm"]
+                        slurm_files = [
+                            "run_gmx_fep_min_cpu.slurm",
+                            "run_gmx_fep_cpu.slurm",
+                        ]
                         for slurm_name in slurm_files:
                             src_slurm = self.template_dir / slurm_name
                             if not src_slurm.is_file():
-                                self._log_warning(f"SLURM template {slurm_name} not found in {self.template_dir}")
+                                self._log_warning(
+                                    f"SLURM template {slurm_name} not found in {self.template_dir}"
+                                )
                                 continue
                             dest_slurm = os.path.join(os.getcwd(), slurm_name)
                             with open(str(src_slurm), "r", encoding="utf-8") as f:
                                 content = f.read()
                             with open(dest_slurm, "w", encoding="utf-8") as f:
                                 f.write(content)
-                            self._log_success(f"Copied {slurm_name} to {dest_slurm} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})")
+                            self._log_success(
+                                f"Copied {slurm_name} to {dest_slurm} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})"
+                            )
             return
 
         # Copy only relevant .mdp files

@@ -197,6 +197,7 @@ class LigandPipeline(YagwipBase):
         )
         # Get ToolChecker instance with configuration
         from .config import get_tool_checker
+
         tool_checker = get_tool_checker()
 
         orca_path = tool_checker.check_orca_available()  # Check if ORCA is available
@@ -375,6 +376,7 @@ class LigandPipeline(YagwipBase):
         """
         # Get ToolChecker instance with configuration
         from .config import get_tool_checker
+
         tool_checker = get_tool_checker()
 
         acpype_path = tool_checker.check_acpype_available()
@@ -410,7 +412,10 @@ class LigandPipeline(YagwipBase):
         acpype_dir = f"{base_name}.acpype"
 
         # Define source and destination files
-        source_files = {f"{base_name}_GMX.gro": f"{base_name}.gro", f"{base_name}_GMX.itp": f"{base_name}.itp"}
+        source_files = {
+            f"{base_name}_GMX.gro": f"{base_name}.gro",
+            f"{base_name}_GMX.itp": f"{base_name}.itp",
+        }
 
         if not os.path.exists(acpype_dir):
             self._log_warning(

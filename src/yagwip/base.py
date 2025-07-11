@@ -1,6 +1,7 @@
 """
 base.py -- Base classes and common patterns for YAGWIP
 """
+
 # === Standard Library Imports ===
 import os
 import shutil
@@ -68,8 +69,6 @@ class YagwipBase(LoggingMixin, ABC):
     def _setup(self):
         """Component-specific initialization. Override in subclasses."""
         pass
-
-
 
     @auto_monitor
     def _validate_file_exists(self, filepath: str, description: str = "File") -> bool:
@@ -205,7 +204,7 @@ class YagwipBase(LoggingMixin, ABC):
         )
 
     def _run_gromacs_command_internal(
-            self, command: str, pipe_input: Optional[str] = None
+        self, command: str, pipe_input: Optional[str] = None
     ) -> bool:
         """Internal method to run GROMACS command with runtime monitoring."""
         import subprocess
@@ -234,7 +233,9 @@ class YagwipBase(LoggingMixin, ABC):
             # Strip leading/trailing whitespace from stderr and stdout
             stderr = result.stderr.strip()
             stdout = result.stdout.strip()
-            error_text = f"{stderr}\n{stdout}".lower()  # Combined output for error checks
+            error_text = (
+                f"{stderr}\n{stdout}".lower()
+            )  # Combined output for error checks
 
             # Check if the command failed based on return code
             if result.returncode != 0:
@@ -258,7 +259,9 @@ class YagwipBase(LoggingMixin, ABC):
 
                 # Catch periodic improper dihedral type error
                 elif "no default periodic improper dih. types" in error_text:
-                    match = re.search(r"\[file topol\.top, line (\d+)\]", stderr, re.IGNORECASE)
+                    match = re.search(
+                        r"\[file topol\.top, line (\d+)\]", stderr, re.IGNORECASE
+                    )
                     if match:
                         line_num = int(match.group(1))
                         top_path = "./topol.top"

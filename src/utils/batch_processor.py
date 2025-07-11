@@ -4,6 +4,7 @@ Batch Processor for YAGWIP
 Handles batch processing of multiple PDB files from different directories
 with the same YAGWIP command script execution.
 """
+
 # === Standard Library Imports ===
 import os
 import shutil
@@ -575,9 +576,16 @@ class ParallelBatchProcessor(YagwipBase):
         self, previous_results: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Get results for already completed jobs."""
-        results = {"start_time": datetime.now(), "total_jobs": len(self.jobs), "completed_jobs": len(previous_results),
-                   "failed_jobs": 0, "job_results": list(previous_results.values()),
-                   "parallel_workers": self.max_workers, "end_time": datetime.now(), "duration": 0}
+        results = {
+            "start_time": datetime.now(),
+            "total_jobs": len(self.jobs),
+            "completed_jobs": len(previous_results),
+            "failed_jobs": 0,
+            "job_results": list(previous_results.values()),
+            "parallel_workers": self.max_workers,
+            "end_time": datetime.now(),
+            "duration": 0,
+        }
 
         return results
 

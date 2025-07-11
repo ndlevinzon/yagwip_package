@@ -9,6 +9,7 @@ import numpy as np
 # === T-REMD Utilities ===
 # Based on http://dx.doi.org/10.1039/b716554d
 
+
 def count_residues_in_gro(gro_path, water_resnames=("SOL",)):
     """
     Parses a GROMACS .gro file to count protein and water residues.
@@ -171,13 +172,15 @@ def tremd_temperature_ladder(
 
 
 def print_help():
-    print("""
+    print(
+        """
 Usage:
   tremd_prep [complex.solvated.ions.gro]
       Count protein and water residues in a .gro file
       Interactively prompt for Tlow, Thigh, and exchange probability, then print the T-REMD temperature ladder
       Based on http://dx.doi.org/10.1039/b716554d
-""")
+"""
+    )
 
 
 def main():
@@ -198,9 +201,7 @@ def main():
     except Exception as e:
         print(f"[ERROR] Invalid input: {e}")
         sys.exit(1)
-    temps = tremd_temperature_ladder(
-        Nw=wat, Np=prot, Tlow=Tlow, Thigh=Thigh, Pdes=Pdes
-    )
+    temps = tremd_temperature_ladder(Nw=wat, Np=prot, Tlow=Tlow, Thigh=Thigh, Pdes=Pdes)
     print("\nT-REMD Temperature Ladder:")
     for i, t in enumerate(temps):
         print(f"Replica {i+1}: {t:.2f} K")

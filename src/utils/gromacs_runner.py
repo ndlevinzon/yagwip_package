@@ -43,7 +43,9 @@ class Builder(YagwipBase):
             print(f"[DEBUG] Command: {cmd}")
             return
         self._log(f"Running pdb2gmx for {base}.pdb...")
-        self._execute_command(cmd, f"pdb2gmx for {base}", pipe_input=PIPE_INPUTS["pdb2gmx"])
+        self._execute_command(
+            cmd, f"pdb2gmx for {base}", pipe_input=PIPE_INPUTS["pdb2gmx"]
+        )
 
     @auto_monitor
     def run_solvate(self, basename, custom_command=None):
@@ -71,13 +73,32 @@ class Builder(YagwipBase):
         if fep_mode:
             # FEP mode: copy and patch ions_fep.mdp in each lambda dir and run genions in each
             vdw_lambdas = [
-                "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45",
-                "0.50", "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+                "0.00",
+                "0.05",
+                "0.10",
+                "0.15",
+                "0.20",
+                "0.25",
+                "0.30",
+                "0.35",
+                "0.40",
+                "0.45",
+                "0.50",
+                "0.55",
+                "0.60",
+                "0.65",
+                "0.70",
+                "0.75",
+                "0.80",
+                "0.85",
+                "0.90",
+                "0.95",
+                "1.00",
             ]
             template_mdp = files("yagwip.templates").joinpath("ions_fep.mdp")
             # Use only the directory name for lambda value and filenames
             cwd = os.path.basename(os.getcwd())  # e.g., 'lambda_0.00'
-            lam_value = cwd.replace('lambda_', '')  # '0.00'
+            lam_value = cwd.replace("lambda_", "")  # '0.00'
             lambda_index = lam_value
             if lam_value in vdw_lambdas:
                 lambda_index = vdw_lambdas.index(lam_value)
@@ -88,7 +109,9 @@ class Builder(YagwipBase):
                 content = f.read().replace("__LAMBDA__", str(lambda_index))
             with open(dest_mdp, "w", encoding="utf-8") as f:
                 f.write(content)
-            self._log_info(f"Copied and patched ions_fep.mdp in {os.getcwd()} with lambda index {lambda_index}")
+            self._log_info(
+                f"Copied and patched ions_fep.mdp in {os.getcwd()} with lambda index {lambda_index}"
+            )
             # Run genions in lambda dir
             base = f"hybrid_complex_{lam_value}"
             input_gro = f"{base}.solv.gro"
@@ -111,7 +134,9 @@ class Builder(YagwipBase):
             else:
                 for i, cmd in enumerate(default_cmds):
                     pipe_input = ion_pipe_input if i == 1 else None
-                    self._execute_command(cmd, f"genion step {i+1}", pipe_input=pipe_input)
+                    self._execute_command(
+                        cmd, f"genion step {i+1}", pipe_input=pipe_input
+                    )
             return
         # Non-FEP or no lambda dirs: original logic
         base = self._resolve_basename(basename)
@@ -141,6 +166,7 @@ class Builder(YagwipBase):
             for i, cmd in enumerate(default_cmds):
                 pipe_input = ion_pipe_input if i == 1 else None
                 self._execute_command(cmd, f"genion step {i+1}", pipe_input=pipe_input)
+
 
 class Sim(YagwipBase):
     def __init__(self, gmx_path, debug=False, logger=None):
@@ -200,4 +226,3 @@ class Sim(YagwipBase):
 
         self._execute_command(grompp_cmd, f"grompp for {tprname}")
         self._execute_command(mdrun_cmd, f"mdrun for {tprname}")
-
