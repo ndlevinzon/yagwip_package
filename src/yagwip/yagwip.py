@@ -34,7 +34,8 @@ from importlib.resources import files
 import pandas as pd
 
 # === Local Imports ===
-from .build import Builder, Modeller, LigandPipeline
+from .build import Builder, Modeller
+from .ligand_builder import LigandPipeline
 from .sim import Sim
 from .base import YagwipBase
 from .utils import complete_filename
