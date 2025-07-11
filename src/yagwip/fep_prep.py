@@ -808,8 +808,8 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         elif atom_type == 'uniqueA':
             coord = coordsA.get(origA_idx, None)
             if coord is None:
-                # Place dummy atom near centroid (1–1.5 nm away)
-                r = random.uniform(1.0, 1.5)
+                # Place dummy atom near centroid
+                r = random.uniform(0.5, 0.8)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
                 dx = r * np.sin(theta) * np.cos(phi)
@@ -819,8 +819,8 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         elif atom_type == 'uniqueB':
             coord = coordsB.get(origB_idx, None)
             if coord is None:
-                # Place dummy atom near centroid (1–1.5 nm away)
-                r = random.uniform(1.0, 1.5)
+                # Place dummy atom near centroid
+                r = random.uniform(0.5, 0.8)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
                 dx = r * np.sin(theta) * np.cos(phi)
@@ -829,7 +829,7 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
                 coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
         else:
             # Should not occur, but fallback
-            r = random.uniform(1.0, 1.5)
+            r = random.uniform(0.5, 0.8)
             theta = random.uniform(0, np.pi)
             phi = random.uniform(0, 2 * np.pi)
             dx = r * np.sin(theta) * np.cos(phi)

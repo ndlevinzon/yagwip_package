@@ -21,6 +21,8 @@ setuptools.setup(
         "console_scripts": [
             "yagwip = yagwip.yagwip:main",
             "yagtraj = yagwip.yagtraj:main",
+            "fep_prep = yagwip.fep_prep:main",
+            "tremd_prep = yagwip.tremd_prep:main"
         ],
     },
     include_package_data=True,
