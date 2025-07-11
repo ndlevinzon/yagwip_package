@@ -31,7 +31,18 @@ setuptools.setup(
             "assets/*.txt",
             "templates/*.mdp",
             "templates/*.slurm",
-            "templates/amber14sb.ff/",
+            "templates/amber14sb.ff/*",
+        ],
+        "utils": [
+            "*.py",
+        ],
+        "templates": [
+            "*.mdp",
+            "*.slurm",
+            "amber14sb.ff/*",
+        ],
+        "assets": [
+            "*.txt",
         ],
     }
 )
