@@ -1,6 +1,7 @@
 import os
 import re
 from .base import LoggingMixin
+import numpy as np
 
 
 class Editor(LoggingMixin):
@@ -435,6 +436,240 @@ class Editor(LoggingMixin):
                 f.writelines(new_lines)
 
             self._log(f"Injected {len(itp_path_list)} custom includes into {top_file}")
+
+class LigandUtils(LoggingMixin):
+    def build_adjacency_matrix_fast(self, df_atoms, df_bonds):
+        """
+        Build adjacency matrix using optimized indexing for O(n) performance.
+
+        Args:
+            df_atoms: DataFrame with atom information
+            df_bonds: DataFrame with bond information
+
+        Returns:
+            adjacency: numpy array adjacency matrix
+            atom_id_to_idx: mapping from atom_id to DataFrame index
+        """
+        n_atoms = len(df_atoms)
+        adjacency = np.zeros((n_atoms, n_atoms), dtype=int)
+
+        # Create atom_id to index mapping for O(1) lookups
+        atom_id_to_idx = {atom_id: idx for idx, atom_id in enumerate(df_atoms["atom_id"])}
+
+        # Build adjacency matrix from bonds in O(bonds) time
+        for _, bond in df_bonds.iterrows():
+            origin_idx = atom_id_to_idx[bond["origin_atom_id"]]
+            target_idx = atom_id_to_idx[bond["target_atom_id"]]
+            adjacency[origin_idx, target_idx] = 1
+            adjacency[target_idx, origin_idx] = 1
+
+        return adjacency, atom_id_to_idx
+
+    def build_spatial_grid(self, coords, max_bond_distance):
+        """
+        Build a 3D spatial grid for efficient neighbor searching.
+
+        Args:
+            coords: numpy array of atom coordinates (n_atoms, 3)
+            max_bond_distance: maximum distance to consider for bonds
+
+        Returns:
+            grid: dictionary mapping grid coordinates to atom indices
+            grid_size: size of each grid cell
+        """
+        # Calculate grid size based on maximum bond distance
+        grid_size = max_bond_distance * 2
+
+        # Find bounding box
+        min_coords = np.min(coords, axis=0)
+        max_coords = np.max(coords, axis=0)
+
+        # Build grid
+        grid = {}
+        for i, coord in enumerate(coords):
+            grid_x = int((coord[0] - min_coords[0]) / grid_size)
+            grid_y = int((coord[1] - min_coords[1]) / grid_size)
+            grid_z = int((coord[2] - min_coords[2]) / grid_size)
+            grid_key = (grid_x, grid_y, grid_z)
+
+            if grid_key not in grid:
+                grid[grid_key] = []
+            grid[grid_key].append(i)
+
+        return grid, grid_size
+
+    def get_neighbor_cells(self, grid_key):
+        """Get all neighboring grid cells for a given cell."""
+        x, y, z = grid_key
+        neighbors = []
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                for dz in [-1, 0, 1]:
+                    neighbors.append((x + dx, y + dy, z + dz))
+        return neighbors
+
+    def find_bonds_spatial(self, coords, elements, covalent_radii, bond_tolerance, logger=None):
+        """
+        Find bonds using spatial partitioning for O(n) average case performance.
+
+        Args:
+            coords: numpy array of atom coordinates
+            elements: array of element symbols
+            covalent_radii: dictionary of covalent radii
+            bond_tolerance: bond distance tolerance
+
+        Returns:
+            bonds: list of bond dictionaries
+            atom_bonds: dictionary tracking bonds per atom
+        """
+        # Calculate maximum bond distance
+        max_radii = max(covalent_radii.values())
+        max_bond_distance = 2 * max_radii + bond_tolerance
+
+        # Build spatial grid
+        grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
+
+        bonds = []
+        atom_bonds = {i: [] for i in range(len(coords))}
+        bond_id = 1
+
+        # Check each atom against atoms in neighboring cells
+        for i in range(len(coords)):
+            coord_i = coords[i]
+            elem_i = elements[i]
+
+            # Find grid cell for this atom
+            min_coords = np.min(coords, axis=0)
+            grid_x = int((coord_i[0] - min_coords[0]) / grid_size)
+            grid_y = int((coord_i[1] - min_coords[1]) / grid_size)
+            grid_z = int((coord_i[2] - min_coords[2]) / grid_size)
+            current_cell = (grid_x, grid_y, grid_z)
+
+            # Check atoms in current and neighboring cells
+            neighbor_cells = self.get_neighbor_cells(current_cell)
+            checked_atoms = set()
+
+            for cell_key in neighbor_cells:
+                if cell_key not in grid:
+                    continue
+
+                for j in grid[cell_key]:
+                    if j <= i or j in checked_atoms:  # Avoid duplicates
+                        continue
+                    checked_atoms.add(j)
+
+                    elem_j = elements[j]
+                    coord_j = coords[j]
+
+                    # Calculate distance
+                    dist = np.linalg.norm(coord_i - coord_j)
+
+                    # Check if atoms could form a bond
+                    r_cov_i = covalent_radii.get(elem_i, 0.77)
+                    r_cov_j = covalent_radii.get(elem_j, 0.77)
+                    max_bond = r_cov_i + r_cov_j + bond_tolerance
+
+                    if 0.4 < dist < max_bond:
+                        # Validate bond is chemically possible
+                        if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
+                            bonds.append(
+                                {
+                                    "bond_id": bond_id,
+                                    "origin_atom_id": i + 1,  # 1-based indexing
+                                    "target_atom_id": j + 1,
+                                    "bond_type": "1",
+                                    "status_bit": "",
+                                }
+                            )
+                            # Update bond tracking
+                            atom_bonds[i].append(j)
+                            atom_bonds[j].append(i)
+                            bond_id += 1
+                        else:
+                            if logger:
+                                logger.warning(
+                                    f"Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
+                                )
+
+        return bonds, atom_bonds
+
+    def is_valid_bond(self, elem_i, elem_j, atom_bonds, i, j):
+        """
+        Check if a bond between two atoms is chemically valid.
+
+        Args:
+            elem_i, elem_j: Element symbols
+            atom_bonds: Dictionary with lists of bonded atoms
+            i, j: Atom indices
+
+        Returns:
+            bool: True if bond is chemically valid
+        """
+        # Prevent H-H bonds (hydrogen can only bond to one other atom)
+        if elem_i == "H" and elem_j == "H":
+            return False
+
+        # Prevent multiple bonds to hydrogen (hydrogen can only have one bond)
+        if elem_i == "H":
+            # Check if hydrogen already has any bonds
+            if len(atom_bonds[i]) > 0:
+                return False
+
+        if elem_j == "H":
+            # Check if hydrogen already has any bonds
+            if len(atom_bonds[j]) > 0:
+                return False
+
+        # Check valence limits for both atoms
+        if not self.check_valence_limits(elem_i, elem_j, atom_bonds, i, j):
+            return False
+
+        # Check for common invalid combinations
+        invalid_pairs = [
+            ("H", "H"),  # H-H bonds
+            ("F", "F"),  # F-F bonds (rare and unstable)
+            ("CL", "CL"),  # Cl-Cl bonds (rare in organic molecules)
+            ("BR", "BR"),  # Br-Br bonds (rare in organic molecules)
+            ("I", "I"),  # I-I bonds (rare in organic molecules)
+        ]
+
+        for invalid_i, invalid_j in invalid_pairs:
+            if (elem_i == invalid_i and elem_j == invalid_j) or (
+                    elem_i == invalid_j and elem_j == invalid_i
+            ):
+                return False
+
+        return True
+
+    def check_valence_limits(self, elem_i, elem_j, atom_bonds, i, j):
+        """
+        Check if adding this bond would exceed valence limits for either atom.
+        """
+        # Get current valence for both atoms
+        valence_i = len(atom_bonds[i])
+        valence_j = len(atom_bonds[j])
+
+        # Define maximum valence for each element
+        max_valence = {
+            "H": 1,
+            "C": 4,
+            "N": 3,
+            "O": 2,
+            "F": 1,
+            "P": 5,
+            "S": 6,
+            "CL": 1,
+            "BR": 1,
+            "I": 1,
+        }
+
+        # Check if adding this bond would exceed valence
+        if elem_i in max_valence and valence_i >= max_valence[elem_i]:
+            return False
+        if elem_j in max_valence and valence_j >= max_valence[elem_j]:
+            return False
+
+        return True
 
 
 

@@ -10,7 +10,7 @@ from datetime import date
 import pandas as pd
 import numpy as np
 from .base import YagwipBase
-from .utils import build_adjacency_matrix_fast, find_bonds_spatial
+from .pipeline_utils import LigandUtils
 from .log_utils import auto_monitor
 
 
@@ -99,7 +99,7 @@ class LigandPipeline(YagwipBase):
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
         # Use spatial partitioning for O(n) bond detection
-        bonds, atom_bonds = find_bonds_spatial(
+        bonds, atom_bonds = LigandUtils.find_bonds_spatial(
             coords, elements, covalent_radii, bond_tolerance, self.logger
         )
         df_bonds = pd.DataFrame(bonds)
@@ -170,7 +170,7 @@ class LigandPipeline(YagwipBase):
             DataFrame with updated atom types
         """
         # Use optimized adjacency matrix construction
-        adjacency, atom_id_to_idx = build_adjacency_matrix_fast(df_atoms, df_bonds)
+        adjacency, atom_id_to_idx = LigandUtils.build_adjacency_matrix_fast(df_atoms, df_bonds)
 
         # Calculate valence for each atom
         valence_counts = np.sum(adjacency, axis=1)

@@ -37,10 +37,9 @@ import pandas as pd
 from .gromacs_runner import Builder, Sim
 from .ligand_builder import LigandPipeline
 from .base import YagwipBase
-from .utils import complete_filename
 from .config import validate_gromacs_installation
 from .slurm_utils import SlurmWriter
-from .forcefield_utils import Editor
+from .pipeline_utils import Editor
 
 # === Metadata ===
 __author__ = "NDL, gregorpatof"
@@ -71,10 +70,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.user_itp_paths = []      # Stores user input paths for do_source
         self.editor = Editor()        # Initialize the file Editor class from utils.py
         self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
-        # Initialize the Editor class from utils.py
-        self.modeller = Modeller(
-            pdb="protein.pdb", debug=self.debug, logger=self.logger
-        )
         # Initialize the Sim class from sim.py
         self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
@@ -222,9 +217,21 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.custom_cmds[cmd_key] = new_cmd
         self._log_success(f"Updated command for {cmd_key}.")
 
+    def _complete_filename(self, text, suffix, line=None, begidx=None, endidx=None):
+        """
+        Generic TAB Autocomplete for filenames in the current directory matching a suffix.
+
+        Parameters:
+            text (str): The current input text to match.
+            suffix (str): The file suffix or pattern to match (e.g., ".pdb", "solv.ions.gro").
+        """
+        if not text:
+            return [f for f in os.listdir() if f.endswith(suffix)]
+        return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
+
     def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
         """Tab completion for .pdb files."""
-        return complete_filename(text, ".pdb", line, begidx, endidx)
+        return self._complete_filename(text, ".pdb", line, begidx, endidx)
 
     def do_loadpdb(self, arg):
         """
@@ -724,7 +731,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def complete_tremd_prep(self, text, line, begidx, endidx):
         """Tab completion for tremd_prep command."""
-        return complete_filename(text, ".gro", line, begidx, endidx)
+        return self._complete_filename(text, ".gro", line, begidx, endidx)
 
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
