@@ -742,7 +742,7 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
         import psutil
 
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage("../yagwip")
+        disk = psutil.disk_usage(".")
         logger.info("=== YAGWIP Runtime Monitoring Started ===")
         logger.info(f"Platform: {platform.system()} {platform.release()}")
         logger.info(f"Python Version: {platform.python_version()}")
