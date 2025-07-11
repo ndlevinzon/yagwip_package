@@ -177,7 +177,7 @@ Usage:
 
 
 def main():
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         print_help()
         sys.exit(1)
     gro_file = sys.argv[1]
@@ -200,9 +200,12 @@ def main():
     print("\nT-REMD Temperature Ladder:")
     for i, t in enumerate(temps):
         print(f"Replica {i+1}: {t:.2f} K")
-    else:
-        print_help()
-        sys.exit(1)
+    # Write to file
+    output_file = "TREMD_temp_ladder.txt"
+    with open(output_file, "w") as f:
+        for i, t in enumerate(temps):
+            f.write(f"Replica {i+1}: {t:.2f} K\n")
+    print(f"\nTemperature ladder written to {output_file}")
 
 
 if __name__ == "__main__":
