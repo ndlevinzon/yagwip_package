@@ -641,22 +641,15 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     For each lambda, build a new hybrid atom list with correct dual topology logic:
     - All atoms from both ligands are present.
     - Mapped atoms: interpolate charge/mass/type.
-    - Unique to A: typeB='DUM', chargeB=0, massB=element mass.
-    - Unique to B: typeA='DUM', chargeA=0, massA=element mass.
+    - Unique to A: typeB='DUM', chargeB=0, massB=massA.
+    - Unique to B: typeA='DUM', chargeA=0, massA=massB.
     """
-    # Periodic table fallback for atomic masses (in daltons)
-    element_masses = {
-        'H': 1.008, 'C': 12.01, 'N': 14.01, 'O': 16.00, 'F': 19.00, 'P': 30.97, 'S': 32.07,
-        'CL': 35.45, 'BR': 79.90, 'I': 126.90
-    }
-    # Build canonical hybrid atom list (order: mapped, uniqueA, uniqueB)
     atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
     hybrid_atoms = []
     for new_idx, (old_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list, 1):
         if atom_type == 'mapped':
             rowA = dfA[dfA['index'] == origA_idx].iloc[0]
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
-            # Interpolate charge/mass for mapped atoms
             chargeA = rowA['charge']
             chargeB = rowB['charge']
             massA = rowA['mass']
@@ -669,21 +662,12 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             massA = rowA['mass']
             typeA = rowA['type']
             chargeB = 0.0
-            # Assign dummy atom mass based on element from A
-            # Try to extract element from typeA or atom_name
-            element = ''.join([c for c in typeA if c.isalpha()]).upper()
-            if not element or element not in element_masses:
-                element = atom_name[0].upper()
-            massB = element_masses.get(element, rowA['mass'])
+            massB = massA  # Dummy gets real mass
             typeB = 'DUM'
         elif atom_type == 'uniqueB':
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
             chargeA = 0.0
-            # Assign dummy atom mass based on element from B
-            element = ''.join([c for c in rowB['type'] if c.isalpha()]).upper()
-            if not element or element not in element_masses:
-                element = atom_name[0].upper()
-            massA = element_masses.get(element, rowB['mass'])
+            massA = rowB['mass']  # Dummy gets real mass
             typeA = 'DUM'
             chargeB = rowB['charge']
             massB = rowB['mass']
