@@ -690,15 +690,66 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
         self.sim.run_production(self.basename, arg)
 
-    def complete_tremd(self, text, line, begidx, endidx):
-        """Tab completion for tremd command."""
+    def complete_tremd_prep(self, text, line, begidx, endidx):
+        """Tab completion for tremd_prep command."""
         return complete_filename(text, ".gro", line, begidx, endidx)
 
-    def do_tremd(self, arg):
-        """Calculate temperature ladder for TREMD simulations."""
-        if not self._require_pdb():
+    def do_tremd_prep(self, arg):
+        """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
+        args = arg.strip().split()
+
+        gro_path = os.path.abspath(args[1])
+        if not os.path.isfile(gro_path):
+            self._log_error(f"File not found: {gro_path}")
             return
-        self.sim.run_tremd(self.basename, arg)
+
+        # Import the required functions from tremd_prep
+        from .tremd_prep import count_residues_in_gro, tremd_temperature_ladder
+
+        try:
+            protein_residues, water_residues = count_residues_in_gro(gro_path)
+            self._log_info(
+                f"Found {protein_residues} protein residues and {water_residues} water residues."
+            )
+        except Exception as e:
+            self._log_error(f"Failed to parse .gro file: {e}")
+            return
+
+        try:
+            Tlow = float(input("Initial Temperature (K): "))
+            Thigh = float(input("Final Temperature (K): "))
+            Pdes = float(input("Exchange Probability (0 < P < 1): "))
+        except ValueError:
+            self._log_error("Invalid numeric input.")
+            return
+
+        if not (0 < Pdes < 1) or Thigh <= Tlow:
+            self._log_error("Invalid parameters.")
+            return
+
+        try:
+            temperatures = tremd_temperature_ladder(
+                water_residues,  # Nw: Number of water molecules
+                protein_residues,  # Np: Number of protein residues
+                Tlow,  # Tlow: Minimum temperature (K)
+                Thigh,  # Thigh: Maximum temperature (K)
+                Pdes,  # Pdes: Desired exchange probability
+                WC=3,  # Water constraints (3 = all constraints)
+                PC=1,  # Protein constraints (1 = H atoms only)
+                Hff=0,  # Hydrogen force field switch (0 = standard)
+                Vs=0,  # Volume correction (0 = no)
+                Tol=0.0005,  # Tolerance for convergence
+            )
+            if self.debug:
+                for i, temp in enumerate(temperatures):
+                    self._log_debug(f"Replica {i + 1}: {temp:.2f} K")
+            else:
+                with open("TREMD_temp_ranges.txt", "w") as f:
+                    for i, temp in enumerate(temperatures):
+                        f.write(f"Replica {i + 1}: {temp:.2f} K\n")
+                self._log_success("Temperature ladder saved to TREMD_temp_ranges.txt")
+        except Exception as e:
+            self._log_error(f"Temperature calculation failed: {e}")
 
     def do_source(self, arg):
         """Source additional .itp files into topology."""

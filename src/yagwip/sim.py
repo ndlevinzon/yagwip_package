@@ -4,7 +4,6 @@ from importlib.resources import files
 
 # === Local Imports ===
 from .base import YagwipBase
-from .tremd_prep import tremd_temperature_ladder, count_residues_in_gro
 
 
 class Sim(YagwipBase):
@@ -42,62 +41,6 @@ class Sim(YagwipBase):
 
         self._execute_command(grompp_cmd, "grompp for production")
         self._execute_command(mdrun_cmd, "mdrun for production")
-
-    def run_tremd(self, basename, arg=""):
-        args = arg.strip().split()
-        if len(args) != 2 or args[0].lower() != "calc":
-            self._log_error("Usage: tremd calc <filename.gro>")
-            return
-
-        gro_path = os.path.abspath(args[1])
-        if not os.path.isfile(gro_path):
-            self._log_error(f"File not found: {gro_path}")
-            return
-
-        try:
-            protein_residues, water_residues = count_residues_in_gro(gro_path)
-            self._log_info(
-                f"Found {protein_residues} protein residues and {water_residues} water residues."
-            )
-        except Exception as e:
-            self._log_error(f"Failed to parse .gro file: {e}")
-            return
-
-        try:
-            Tlow = float(input("Initial Temperature (K): "))
-            Thigh = float(input("Final Temperature (K): "))
-            Pdes = float(input("Exchange Probability (0 < P < 1): "))
-        except ValueError:
-            self._log_error("Invalid numeric input.")
-            return
-
-        if not (0 < Pdes < 1) or Thigh <= Tlow:
-            self._log_error("Invalid parameters.")
-            return
-
-        try:
-            temperatures = tremd_temperature_ladder(
-                water_residues,  # Nw: Number of water molecules
-                protein_residues,  # Np: Number of protein residues
-                Tlow,  # Tlow: Minimum temperature (K)
-                Thigh,  # Thigh: Maximum temperature (K)
-                Pdes,  # Pdes: Desired exchange probability
-                WC=3,  # Water constraints (3 = all constraints)
-                PC=1,  # Protein constraints (1 = H atoms only)
-                Hff=0,  # Hydrogen force field switch (0 = standard)
-                Vs=0,  # Volume correction (0 = no)
-                Tol=0.0005,  # Tolerance for convergence
-            )
-            if self.debug:
-                for i, temp in enumerate(temperatures):
-                    self._log_debug(f"Replica {i + 1}: {temp:.2f} K")
-            else:
-                with open("TREMD_temp_ranges.txt", "w") as f:
-                    for i, temp in enumerate(temperatures):
-                        f.write(f"Replica {i + 1}: {temp:.2f} K\n")
-                self._log_success("Temperature ladder saved to TREMD_temp_ranges.txt")
-        except Exception as e:
-            self._log_error(f"Temperature calculation failed: {e}")
 
     def _run_stage(self, basename, arg, default_mdp, suffix, tprname):
         base = basename if basename else "PLACEHOLDER"
