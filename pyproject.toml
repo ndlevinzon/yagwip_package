@@ -24,7 +24,7 @@ classifiers = [
 yagwip = "yagwip.yagwip:main"
 yagtraj = "yagwip.yagtraj:main"
 fep_prep = "yagwip.fep_prep:main"
-tremd_prep = "yagwip.fep_prep:main"
+tremd_prep = "yagwip.tremd_prep:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

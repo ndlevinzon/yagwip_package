@@ -326,7 +326,8 @@ def build_hybrid_terms(dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB, 
         # A state
         valsA, fakeA = robust_lookup(termsA, keycols, key, paramcolsA, dummyA)
         # B state (map indices if needed)
-        mapped_key_B = tuple(mapping.get(k, k) for k in key)
+        # If any k in key is not in mapping, treat as dummy (use -1 as dummy index)
+        mapped_key_B = tuple(mapping[k] if k in mapping else -1 for k in key)
         valsB, fakeB = robust_lookup(termsB, keycols, mapped_key_B, paramcolsB, dummyB)
         mapped = not (fakeA or fakeB)
         # If term is missing in one state, use dummy indices and zeroed parameters
@@ -424,6 +425,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
             ))
         elif inA:
             rowA = dfA[dfA['index'] == idx].iloc[0]
+            logger.warning(f"Dummy atom in state B: index {idx}, type {rowA['type']}, mass {rowA['mass']}")
             hybrid_atoms.append(HybridAtom(
                 index=idx,
                 atom_name=rowA['atom_name'],
@@ -445,6 +447,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                 rowB = dfB[dfB['index'] == idxB].iloc[0]
             else:
                 rowB = dfB[dfB['index'] == idx].iloc[0]
+            logger.warning(f"Dummy atom in state A: index {idx}, type {rowB['type']}, mass {rowB['mass']}")
             hybrid_atoms.append(HybridAtom(
                 index=idx,
                 atom_name=rowB['atom_name'],
@@ -456,6 +459,10 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                 massB=rowB['mass'],
                 mapped=False
             ))
+    # Validation: check for mapped atoms with zero mass
+    for atom in hybrid_atoms:
+        if atom.mapped and (atom.massA == 0.0 or atom.massB == 0.0):
+            logger.error(f"Mapped atom {atom.index} has zero mass! massA={atom.massA}, massB={atom.massB}")
     return hybrid_atoms
 
 
@@ -641,8 +648,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     For each lambda, build a new hybrid atom list with correct dual topology logic:
     - All atoms from both ligands are present.
     - Mapped atoms: interpolate charge/mass/type.
-    - Unique to A: typeB='DUM', chargeB=0, massB=massA.
-    - Unique to B: typeA='DUM', chargeA=0, massA=massB.
+    - Unique to A: typeB='DUM', chargeB=0, massB=0.0 (dummy mass zero).
+    - Unique to B: typeA='DUM', chargeA=0, massA=0.0 (dummy mass zero).
     """
     atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
     hybrid_atoms = []
@@ -662,12 +669,12 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             massA = rowA['mass']
             typeA = rowA['type']
             chargeB = 0.0
-            massB = massA  # Dummy gets real mass
+            massB = 0.0  # Dummy gets zero mass in decoupled state
             typeB = 'DUM'
         elif atom_type == 'uniqueB':
             rowB = dfB[dfB['index'] == origB_idx].iloc[0]
             chargeA = 0.0
-            massA = rowB['mass']  # Dummy gets real mass
+            massA = 0.0  # Dummy gets zero mass in decoupled state
             typeA = 'DUM'
             chargeB = rowB['charge']
             massB = rowB['mass']
@@ -808,8 +815,8 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         elif atom_type == 'uniqueA':
             coord = coordsA.get(origA_idx, None)
             if coord is None:
-                # Place dummy atom near centroid
-                r = random.uniform(0.5, 0.8)
+                # Place dummy atom near centroid (1–1.5 nm away)
+                r = random.uniform(0.1, 0.3)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
                 dx = r * np.sin(theta) * np.cos(phi)
@@ -819,8 +826,8 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         elif atom_type == 'uniqueB':
             coord = coordsB.get(origB_idx, None)
             if coord is None:
-                # Place dummy atom near centroid
-                r = random.uniform(0.5, 0.8)
+                # Place dummy atom near centroid (1–1.5 nm away)
+                r = random.uniform(0.1, 0.3)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
                 dx = r * np.sin(theta) * np.cos(phi)
@@ -829,7 +836,7 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
                 coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
         else:
             # Should not occur, but fallback
-            r = random.uniform(0.5, 0.8)
+            r = random.uniform(0.1, 0.3)
             theta = random.uniform(0, np.pi)
             phi = random.uniform(0, 2 * np.pi)
             dx = r * np.sin(theta) * np.cos(phi)
@@ -842,22 +849,6 @@ def hybridize_coords_from_itp_interpolated(ligA_mol2, ligB_mol2, hybrid_itp, ato
         for line in pdb_lines:
             f.write(line)
         f.write("END\n")
-
-
-# =====================
-# CLI
-# =====================
-def print_help():
-    print("""
-Usage:
-  python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
-      Find the maximum common substructure and write atom_map.txt
-  python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
-      Generate hybrid .itp files for all lambda windows
-  python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
-      Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
-""")
-
 
 def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam):
     """
@@ -902,8 +893,22 @@ def create_hybrid_topology_for_lambda(dfA, dfB, bondsA, bondsB, anglesA, anglesB
 
     return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
 
+# =====================
+# CLI
+# =====================
+def print_help():
+    print("""
+Usage:
+  python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
+      Find the maximum common substructure and write atom_map.txt
+  python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
+      Generate hybrid .itp files for all lambda windows
+  python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
+      Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
+""")
 
-if __name__ == "__main__":
+
+def main():
     if len(sys.argv) < 2:
         print_help()
         sys.exit(1)
@@ -988,3 +993,6 @@ if __name__ == "__main__":
     else:
         print_help()
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()

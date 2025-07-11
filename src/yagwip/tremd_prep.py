@@ -174,7 +174,8 @@ Usage:
       Interactively prompt for Tlow, Thigh, and exchange probability, then print the T-REMD temperature ladder
 """)
 
-if __name__ == "__main__":
+
+def main():
     if len(sys.argv) < 3:
         print_help()
         sys.exit(1)
@@ -201,3 +202,7 @@ if __name__ == "__main__":
     else:
         print_help()
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
