@@ -724,15 +724,34 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_tremd_prep(self, arg):
         """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep <filename.gro>"""
+        args = shlex.split(arg)
+        if len(args) < 7:
+            self._log_error("Usage: tremd_prep -i <init_temp> -f <final_temp> -p <prob>")
+            return
         solvated_gro = "complex.solv.ions.gro" if os.path.exists("complex.solv.ions.gro") else "protein.solv.ions.gro"
+        if not os.path.isfile(solvated_gro):
+            self._log_error(f"File not found: {solvated_gro}")
+            return
+        try:
+            i_idx = args.index("-i")
+            f_idx = args.index("-f")
+            p_idx = args.index("-p")
+            initial = args[i_idx + 1]
+            final = args[f_idx + 1]
+            prob = args[p_idx + 1]
+        except (ValueError, IndexError):
+            self._log_error("Missing required flags: -i, -f, -p")
+            return
+
         if not os.path.isfile(solvated_gro):
             self._log_error(f"File not found: {solvated_gro}")
             return
         python_exe = sys.executable
         tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")
-        command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}"'
+        command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}" -i {initial} -f {final} -p {prob}'
         self._log_info(f"Running: {command_str}")
-        success = self._execute_command(command=command_str, description="TREMD temperature ladder calculation (interactive)")
+        success = self._execute_command(command=command_str,
+                                        description="TREMD temperature ladder calculation (non-interactive)")
         if not success:
             self._log_error("TREMD temperature ladder calculation failed.")
 
