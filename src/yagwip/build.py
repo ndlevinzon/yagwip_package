@@ -92,14 +92,15 @@ class Builder(YagwipBase):
                 "0.50", "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
             ]
             template_mdp = files("yagwip.templates").joinpath("ions_fep.mdp")
-            dest_mdp = os.path.join(os.getcwd(), "ions_fep.mdp")
-            shutil.copy2(str(template_mdp), dest_mdp)
-            lam_value = os.getcwd().replace('lambda_', '')
+            # Use only the directory name for lambda value and filenames
+            cwd = os.path.basename(os.getcwd())  # e.g., 'lambda_0.00'
+            lam_value = cwd.replace('lambda_', '')  # '0.00'
             lambda_index = lam_value
             if lam_value in vdw_lambdas:
                 lambda_index = vdw_lambdas.index(lam_value)
-            # Copy ions_fep.mdp into lambda dir (overwrite if exists)
-            # Patch __LAMBDA__ in the copied file
+            # Copy ions_fep.mdp into current dir (overwrite if exists)
+            dest_mdp = os.path.join(os.getcwd(), "ions_fep.mdp")
+            shutil.copy2(str(template_mdp), dest_mdp)
             with open(dest_mdp, "r", encoding="utf-8") as f:
                 content = f.read().replace("__LAMBDA__", str(lambda_index))
             with open(dest_mdp, "w", encoding="utf-8") as f:
