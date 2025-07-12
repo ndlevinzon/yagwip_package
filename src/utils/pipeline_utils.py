@@ -333,7 +333,7 @@ class Editor(LoggingMixin):
             missing_atoms = []
             for topo_index, topo_name in hybrid_atoms:
                 found = False
-                for _, _, atom_name, _, _, _ in ordered_coords:
+                for _, _, atom_name, _, _, _, _ in ordered_coords:
                     if atom_name.strip() == topo_name.strip():
                         found = True
                         break
