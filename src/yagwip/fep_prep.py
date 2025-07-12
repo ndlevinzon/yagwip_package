@@ -1,5 +1,6 @@
 # === Standard Library Imports ===
 import sys
+import os
 from collections import defaultdict
 import logging
 
@@ -8,6 +9,113 @@ import pandas as pd
 import numpy as np
 
 logger = logging.getLogger("hybrid_topology")
+
+
+# =====================
+# Ligand Alignment Functions
+# =====================
+def kabsch_align(coords_A, coords_B):
+    """
+    Align coordinates B to coordinates A using Kabsch algorithm.
+
+    Args:
+        coords_A: numpy array of coordinates for reference (ligand A)
+        coords_B: numpy array of coordinates to align (ligand B)
+
+    Returns:
+        aligned_coords_B: numpy array of aligned coordinates
+        rotation_matrix: 3x3 rotation matrix
+        translation_vector: translation vector
+    """
+    # Center both coordinate sets
+    centroid_A = np.mean(coords_A, axis=0)
+    centroid_B = np.mean(coords_B, axis=0)
+
+    centered_A = coords_A - centroid_A
+    centered_B = coords_B - centroid_B
+
+    # Compute covariance matrix
+    H = centered_B.T @ centered_A
+
+    # SVD decomposition
+    U, S, Vt = np.linalg.svd(H)
+
+    # Ensure proper rotation matrix (handle reflection case)
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    Vt[-1, :] *= d
+
+    # Compute rotation matrix
+    R = Vt.T @ U.T
+
+    # Apply rotation and translation
+    aligned_coords_B = (centered_B @ R) + centroid_A
+
+    return aligned_coords_B, R, centroid_A - centroid_B
+
+
+def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
+    """
+    Align ligand B to ligand A and save the aligned coordinates.
+
+    Args:
+        ligandA_mol2: Path to ligand A mol2 file (reference)
+        ligandB_mol2: Path to ligand B mol2 file (to be aligned)
+        aligned_ligandB_mol2: Path to save aligned ligand B mol2 file
+    """
+    # Parse coordinates from mol2 files
+    coordsA, namesA = parse_mol2_coords(ligandA_mol2)
+    coordsB, namesB = parse_mol2_coords(ligandB_mol2)
+
+    # Convert to numpy arrays
+    coords_A = np.array([coordsA[i] for i in sorted(coordsA.keys())])
+    coords_B = np.array([coordsB[i] for i in sorted(coordsB.keys())])
+
+    # Align coordinates
+    aligned_coords_B, rotation_matrix, translation = kabsch_align(coords_A, coords_B)
+
+    # Read original mol2 file to preserve all sections
+    with open(ligandB_mol2, 'r') as f:
+        lines = f.readlines()
+
+    # Update coordinates in the mol2 file
+    new_lines = []
+    atom_idx = 0
+    in_atoms_section = False
+
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms_section = True
+            new_lines.append(line)
+            continue
+        elif in_atoms_section and line.startswith("@<TRIPOS>"):
+            in_atoms_section = False
+            new_lines.append(line)
+            continue
+        elif in_atoms_section:
+            # Update atom coordinates
+            parts = line.split()
+            if len(parts) >= 6:
+                x, y, z = aligned_coords_B[atom_idx]
+                new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
+                if len(parts) > 6:
+                    new_line += f" {parts[6]}"
+                new_line += "\n"
+                new_lines.append(new_line)
+                atom_idx += 1
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    # Write aligned mol2 file
+    with open(aligned_ligandB_mol2, 'w') as f:
+        f.writelines(new_lines)
+
+    print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
+    print(f"Rotation matrix:\n{rotation_matrix}")
+    print(f"Translation vector: {translation}")
+
+    return aligned_ligandB_mol2
 
 
 # =====================
@@ -1192,12 +1300,16 @@ def print_help():
     print(
         """
 Usage:
+  python fep_prep.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2
+      Align ligand B to ligand A using Kabsch algorithm
   python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
       Find the maximum common substructure and write atom_map.txt
   python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
       Generate hybrid .itp files for all lambda windows
   python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
       Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
+  python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2
+      Complete workflow: align ligands, find MCS, generate hybrid topology and coordinates
 """
     )
 
@@ -1207,7 +1319,15 @@ def main():
         print_help()
         sys.exit(1)
     cmd = sys.argv[1]
-    if cmd == "mcs":
+    if cmd == "align":
+        if len(sys.argv) != 5:
+            print(
+                "Usage: python fep_prep.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2"
+            )
+            sys.exit(1)
+        ligA_mol2, ligB_mol2, aligned_ligandB_mol2 = sys.argv[2:5]
+        align_ligands(ligA_mol2, ligB_mol2, aligned_ligandB_mol2)
+    elif cmd == "mcs":
         if len(sys.argv) != 5:
             print(
                 "Usage: python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt"
@@ -1298,6 +1418,15 @@ def main():
             )
             sys.exit(1)
         ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
+
+        # Check if aligned ligand B exists, otherwise use original
+        aligned_ligandB_mol2 = ligB_mol2.replace(".mol2", "_aligned.mol2")
+        if os.path.exists(aligned_ligandB_mol2):
+            print(f"Using aligned ligand B: {aligned_ligandB_mol2}")
+            ligB_mol2 = aligned_ligandB_mol2
+        else:
+            print(f"Using original ligand B: {ligB_mol2}")
+
         lambdas = np.arange(0, 1.05, 0.05)
         for lam in lambdas:
             lam_str = f"{lam:.2f}"
@@ -1321,6 +1450,90 @@ def main():
 
             # Verify synchronization
             verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
+    elif cmd == "full_workflow":
+        if len(sys.argv) != 4:
+            print(
+                "Usage: python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2"
+            )
+            sys.exit(1)
+        ligA_mol2, ligB_mol2 = sys.argv[2:4]
+        aligned_ligandB_mol2 = ligB_mol2.replace(".mol2", "_aligned.mol2")
+        align_ligands(ligA_mol2, ligB_mol2, aligned_ligandB_mol2)
+        mol1, mol2 = aligned_ligandB_mol2, ligB_mol2
+        g1 = MolGraph.from_mol2(mol1)
+        g2 = MolGraph.from_mol2(mol2)
+        size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
+        if mapping is None:
+            print("No MCS found.")
+            sys.exit(1)
+        print(f"MCS size: {size}")
+        print(f"Mapping (mol1 -> mol2): {mapping}")
+        outmap = "atom_map.txt"
+        write_atom_map(mapping, outmap)
+
+        itpA = ligA_mol2.replace(".mol2", ".itp")
+        itpB = ligB_mol2.replace(".mol2", ".itp")
+        dfA = parse_itp_atoms_full(itpA)
+        dfB = parse_itp_atoms_full(itpB)
+        mapping = load_atom_map(outmap)
+        bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+        bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+        anglesA = parse_itp_section(
+            itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
+        )
+        anglesB = parse_itp_section(
+            itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
+        )
+        dihedA = parse_itp_section(
+            itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
+        )
+        dihedB = parse_itp_section(
+            itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
+        )
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            import os
+
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+
+            # Create hybrid topology for this lambda
+            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = (
+                create_hybrid_topology_for_lambda(
+                    dfA,
+                    dfB,
+                    bondsA,
+                    bondsB,
+                    anglesA,
+                    anglesB,
+                    dihedA,
+                    dihedB,
+                    mapping,
+                    lam,
+                )
+            )
+
+            write_hybrid_topology(
+                outfilename,
+                hybrid_atoms,
+                hybrid_bonds=hybrid_bonds,
+                hybrid_angles=hybrid_angles,
+                hybrid_dihedrals=hybrid_dihedrals,
+                system_name="LigandA to LigandB Hybrid",
+                molecule_name="LIG",
+                nmols=1,
+            )
+
+            # Create position restraints file for this lambda
+            posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
+            write_position_restraints_file(posre_filename, hybrid_atoms)
+
+            print(f"Wrote {outfilename}")
+            if os.path.exists(posre_filename):
+                print(f"Wrote {posre_filename}")
     else:
         print_help()
         sys.exit(1)
