@@ -113,17 +113,13 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
             parts = line.split()
             if len(parts) >= 6:
                 atom_id = int(parts[0])
-                if atom_id in mapping:
-                    # This atom is part of the MCS, use aligned coordinates
-                    mcs_idx = list(mapping.keys()).index(atom_id)
-                    x, y, z = aligned_coords_B[mcs_idx]
-                else:
-                    # This atom is not part of MCS, apply rotation and translation to original coordinates
-                    orig_coord = coordsB[atom_id]
-                    centered_coord = np.array(orig_coord) - np.mean(coords_B, axis=0)
-                    rotated_coord = centered_coord @ rotation_matrix
-                    final_coord = rotated_coord + np.mean(coords_A, axis=0)
-                    x, y, z = final_coord
+                # Apply the same transformation to ALL atoms in ligand B
+                # This ensures the entire molecule is properly aligned
+                orig_coord = coordsB[atom_id]
+                centered_coord = np.array(orig_coord) - np.mean(coords_B, axis=0)
+                rotated_coord = centered_coord @ rotation_matrix
+                final_coord = rotated_coord + np.mean(coords_A, axis=0)
+                x, y, z = final_coord
 
                 new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
                 if len(parts) > 6:
