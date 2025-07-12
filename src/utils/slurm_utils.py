@@ -19,9 +19,8 @@ class SlurmWriter(YagwipBase):
 
     def __init__(self, template_pkg="templates", logger=None, debug=False):
         super().__init__(debug=debug, logger=logger)
-        module_dir = os.path.dirname(os.path.abspath(__file__))
-        assets_dir = os.path.join(os.path.dirname(module_dir), "templates")
-        self.template_dir = files(assets_dir)
+        # Use importlib.resources to access templates from the package
+        self.template_dir = files("templates")
 
     def write_slurm_scripts(self, sim_type, hardware, basename, ligand_pdb_path=None):
         """
@@ -60,7 +59,7 @@ class SlurmWriter(YagwipBase):
             # For FEP, process each lambda directory
             lambda_dirs = [
                 d
-                for d in os.listdir("../yagwip")
+                for d in os.listdir(".")
                 if d.startswith("lambda_") and os.path.isdir(d)
             ]
             mdp_templates = [
