@@ -909,10 +909,12 @@ def hybridize_coords_from_itp_interpolated(
         ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
 ):
     """
-    For each lambda, output hybrid coordinates as:
-    - All atoms from both ligands are present.
-    - Mapped: interpolate between A and B.
-    - Unique: use real coordinates if available, otherwise place near mapped atom centroid (within 1–1.5 nm).
+    For each lambda, output hybrid coordinates with proper dual topology logic:
+    - Lambda 0: Only ligand A atoms have real atom types, ligand B atoms are "DUM"
+    - Lambda 1: Only ligand B atoms have real atom types, ligand A atoms are "DUM"
+    - 0 < lambda < 1: Only mapped atoms have real atom types, unique atoms are "DUM"
+    - Mapped atoms: interpolate between A and B coordinates
+    - Unique atoms: use real coordinates if available, otherwise place near mapped centroid
     """
     import random
 
@@ -937,7 +939,9 @@ def hybridize_coords_from_itp_interpolated(
             [{"index": idx, "atom_name": namesB[idx]} for idx in sorted(coordsB.keys())]
         )
     mapping = load_atom_map(atom_map_txt)
-    atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
+
+    # Get lambda-specific atom list
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
 
     # Compute centroid of mapped atoms (core ligand)
     mapped_coords = []
@@ -957,14 +961,17 @@ def hybridize_coords_from_itp_interpolated(
     for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(
             atom_list
     ):
+        # Determine atom type based on lambda and atom type
         if atom_type == "mapped":
+            # Mapped atoms always have real atom types (they're always present)
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
+            atom_type_pdb = atom_name  # Use real atom name
         elif atom_type == "uniqueA":
             coord = coordsA.get(origA_idx, None)
             if coord is None:
-                # Place dummy atom near centroid (1–1.5 nm away)
+                # Place dummy atom near centroid
                 r = random.uniform(0.1, 0.3)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
@@ -972,10 +979,18 @@ def hybridize_coords_from_itp_interpolated(
                 dy = r * np.sin(theta) * np.sin(phi)
                 dz = r * np.cos(theta)
                 coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
+
+            # Determine atom type based on lambda
+            if lam == 0:
+                atom_type_pdb = atom_name  # Real atom type at lambda 0
+            elif lam == 1:
+                atom_type_pdb = "DUM"  # Dummy at lambda 1
+            else:
+                atom_type_pdb = "DUM"  # Dummy at intermediate lambda
         elif atom_type == "uniqueB":
             coord = coordsB.get(origB_idx, None)
             if coord is None:
-                # Place dummy atom near centroid (1–1.5 nm away)
+                # Place dummy atom near centroid
                 r = random.uniform(0.1, 0.3)
                 theta = random.uniform(0, np.pi)
                 phi = random.uniform(0, 2 * np.pi)
@@ -983,6 +998,14 @@ def hybridize_coords_from_itp_interpolated(
                 dy = r * np.sin(theta) * np.sin(phi)
                 dz = r * np.cos(theta)
                 coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
+
+            # Determine atom type based on lambda
+            if lam == 0:
+                atom_type_pdb = "DUM"  # Dummy at lambda 0
+            elif lam == 1:
+                atom_type_pdb = atom_name  # Real atom type at lambda 1
+            else:
+                atom_type_pdb = "DUM"  # Dummy at intermediate lambda
         else:
             # Should not occur, but fallback
             r = random.uniform(0.1, 0.3)
@@ -992,8 +1015,10 @@ def hybridize_coords_from_itp_interpolated(
             dy = r * np.sin(theta) * np.sin(phi)
             dz = r * np.cos(theta)
             coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
+            atom_type_pdb = "DUM"
+
         pdb_lines.append(
-            f"HETATM{i + 1:5d}  {atom_name:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
+            f"HETATM{i + 1:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
     with open(out_pdb, "w") as f:
         for line in pdb_lines:

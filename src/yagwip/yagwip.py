@@ -540,7 +540,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         ]
         for cmd, desc in cmds:
             command_str = " ".join(cmd)
-            self._log_info(f"Running: {command_str}")
             success = self._execute_command(command_str, description=desc)
             if not success:
                 self._log_error(f"Step failed: {desc}")
