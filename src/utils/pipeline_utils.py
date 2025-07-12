@@ -11,7 +11,7 @@ from yagwip.base import LoggingMixin
 
 class Editor(LoggingMixin):
     def __init__(
-        self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
+            self, ligand_itp="ligand.itp", ffnonbonded_itp="./amber14sb.ff/ffnonbonded.itp"
     ):
         self.ligand_itp = ligand_itp
         self.ffnonbonded_itp = ffnonbonded_itp
@@ -176,7 +176,7 @@ class Editor(LoggingMixin):
         )
 
     def append_ligand_coordinates_to_gro(
-        self, protein_gro, ligand_pdb, ligand_itp, combined_gro="complex.gro"
+            self, protein_gro, ligand_pdb, ligand_itp, combined_gro="complex.gro"
     ):
         """
         Append ligand coordinates to protein GRO file, using atom names from ligand_itp ([ atoms ] section) to ensure consistency with topology.
@@ -208,7 +208,7 @@ class Editor(LoggingMixin):
         ligand_atom_names = parse_itp_atom_names(ligand_itp)
 
         # Parse ligand coordinates from PDB
-        coords = []
+        coords = {}
         with open(ligand_pdb, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
@@ -218,7 +218,7 @@ class Editor(LoggingMixin):
                     x = float(line[30:38])
                     y = float(line[38:46])
                     z = float(line[46:54])
-                    coords.append((res_id, res_name, atom_index, x, y, z))
+                    coords[atom_index] = (res_id, res_name, atom_index, x, y, z)
 
         if len(coords) != len(ligand_atom_names):
             self._log(
@@ -249,7 +249,7 @@ class Editor(LoggingMixin):
         )
 
     def append_hybrid_ligand_coordinates_to_gro(
-        self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
+            self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
     ):
         """
         For FEP:
@@ -291,14 +291,21 @@ class Editor(LoggingMixin):
 
         # Create ordered coordinates based on hybrid ITP atom order
         ordered_coords = []
-        for topo_index, topo_name in hybrid_atoms:
-            # Find matching coordinate by atom name (since PDB indices are sequential)
-            for pdb_index, (res_id, res_name, atom_name, x, y, z) in coords.items():
-                if atom_name.strip() == topo_name.strip():
-                    ordered_coords.append(
-                        (res_id, res_name, atom_name, topo_index, x, y, z)
-                    )
-                    break
+        # Convert coords to a list ordered by PDB atom index
+        coords_list = []
+        for i in range(1, max(coords.keys()) + 1):
+            if i in coords:
+                coords_list.append(coords[i])
+
+        # Match by position (index) rather than by name
+        for i, (topo_index, topo_name) in enumerate(hybrid_atoms):
+            if i < len(coords_list):
+                res_id, res_name, atom_name, x, y, z = coords_list[i]
+                ordered_coords.append(
+                    (res_id, res_name, atom_name, topo_index, x, y, z)
+                )
+            else:
+                self._log(f"[WARNING] No coordinate found for topology atom {topo_index}:{topo_name}")
 
         # Read protein GRO file
         with open(protein_gro, "r", encoding="utf-8") as f:
@@ -343,7 +350,7 @@ class Editor(LoggingMixin):
                 self._log(f"[WARNING] Missing atoms in PDB: {missing_atoms}")
 
     def include_ligand_itp_in_topol(
-        self, topol_top="topol.top", ligand_name="LIG", ligand_itp_path=None
+            self, topol_top="topol.top", ligand_name="LIG", ligand_itp_path=None
     ):
         if ligand_itp_path is None:
             ligand_itp_path = self.ligand_itp
@@ -360,9 +367,9 @@ class Editor(LoggingMixin):
             stripped = line.strip()
 
             if (
-                not inserted_include
-                and "#include" in stripped
-                and "forcefield.itp" in stripped
+                    not inserted_include
+                    and "#include" in stripped
+                    and "forcefield.itp" in stripped
             ):
                 new_lines.append(line)
                 new_lines.append(f'#include "./{ligand_itp_path}"\n')
@@ -571,7 +578,7 @@ class LigandUtils(LoggingMixin):
         return neighbors
 
     def find_bonds_spatial(
-        self, coords, elements, covalent_radii, bond_tolerance, logger=None
+            self, coords, elements, covalent_radii, bond_tolerance, logger=None
     ):
         """
         Find bonds using spatial partitioning for O(n) average case performance.
@@ -699,7 +706,7 @@ class LigandUtils(LoggingMixin):
 
         for invalid_i, invalid_j in invalid_pairs:
             if (elem_i == invalid_i and elem_j == invalid_j) or (
-                elem_i == invalid_j and elem_j == invalid_i
+                    elem_i == invalid_j and elem_j == invalid_i
             ):
                 return False
 
@@ -783,7 +790,7 @@ class LigandUtils(LoggingMixin):
         return df_atoms
 
     def assign_atom_type(
-        self, element, valence, common_types, df_atoms, atom_idx, adjacency
+            self, element, valence, common_types, df_atoms, atom_idx, adjacency
     ):
         """
         Assign specific atom type based on element, valence, and local environment.
