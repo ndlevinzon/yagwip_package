@@ -738,10 +738,14 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
     At lambda=1: mapped + uniqueB (B order)
     0 < lambda < 1: mapped (A order) + uniqueA (A order) + uniqueB (B order)
     """
+    print(f"[DEBUG] build_lambda_atom_list: dfA has {len(dfA)} rows, dfB has {len(dfB)} rows")
+    print(f"[DEBUG] build_lambda_atom_list: mapping has {len(mapping)} entries")
+
     mapped_atoms = []
     uniqueA_atoms = []
     uniqueB_atoms = []
     usedB = set()
+
     for _, rowA in dfA.iterrows():
         idxA = int(rowA["index"])
         if idxA in mapping:
@@ -750,16 +754,27 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
             usedB.add(idxB)
         else:
             uniqueA_atoms.append((idxA, rowA["atom_name"], idxA, None, "uniqueA"))
+
     for _, rowB in dfB.iterrows():
         idxB = int(rowB["index"])
         if idxB not in usedB:
             uniqueB_atoms.append((idxB, rowB["atom_name"], None, idxB, "uniqueB"))
+
+    print(
+        f"[DEBUG] build_lambda_atom_list: mapped={len(mapped_atoms)}, uniqueA={len(uniqueA_atoms)}, uniqueB={len(uniqueB_atoms)}")
+
     if lam == 0:
-        return mapped_atoms + uniqueA_atoms
+        result = mapped_atoms + uniqueA_atoms
+        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
+        return result
     elif lam == 1:
-        return mapped_atoms + uniqueB_atoms
+        result = mapped_atoms + uniqueB_atoms
+        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
+        return result
     else:
-        return mapped_atoms + uniqueA_atoms + uniqueB_atoms
+        result = mapped_atoms + uniqueA_atoms + uniqueB_atoms
+        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
+        return result
 
 
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
@@ -942,6 +957,11 @@ def hybridize_coords_from_itp_interpolated(
 
     # Get lambda-specific atom list to match the topology
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+    print(f"[DEBUG] Lambda {lam}: Found {len(atom_list)} atoms in atom_list")
+    if len(atom_list) == 0:
+        print(f"[DEBUG] Lambda {lam}: atom_list is empty!")
+        print(f"[DEBUG] dfA has {len(dfA)} atoms, dfB has {len(dfB)} atoms")
+        print(f"[DEBUG] mapping has {len(mapping)} entries")
 
     # Compute centroid of mapped atoms (core ligand)
     mapped_coords = []
@@ -959,6 +979,14 @@ def hybridize_coords_from_itp_interpolated(
 
         pdb_lines = []
     atom_counter = 0
+
+    # Check if we have any atoms to process
+    if not atom_list:
+        print(f"[WARNING] No atoms found for lambda {lam}")
+        with open(out_pdb, "w") as f:
+            f.write("END\n")
+        return
+
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
         atom_counter += 1
         # Determine atom type based on lambda and atom type
