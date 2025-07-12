@@ -252,18 +252,18 @@ logger = logging.getLogger("hybrid_topology")
 # --- Enhanced HybridAtom, HybridBond, HybridAngle, HybridDihedral ---
 class HybridAtom:
     def __init__(
-        self,
-        index,
-        atom_name,
-        typeA,
-        typeB,
-        chargeA,
-        chargeB,
-        massA,
-        massB,
-        mapped,
-        origA_idx=None,
-        origB_idx=None,
+            self,
+            index,
+            atom_name,
+            typeA,
+            typeB,
+            chargeA,
+            chargeB,
+            massA,
+            massB,
+            mapped,
+            origA_idx=None,
+            origB_idx=None,
     ):
         self.index = index
         self.atom_name = atom_name
@@ -305,7 +305,7 @@ class HybridAngle:
 
 class HybridDihedral:
     def __init__(
-        self, ai, aj, ak, al, funct, parA, parB, mapped, fakeA=False, fakeB=False
+            self, ai, aj, ak, al, funct, parA, parB, mapped, fakeA=False, fakeB=False
     ):
         self.ai = ai
         self.aj = aj
@@ -339,7 +339,7 @@ def robust_lookup(df, keycols, key, paramcols, dummy):
 
 # --- pmx-style build_hybrid_terms ---
 def build_hybrid_terms(
-    dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB, paramcolsA, paramcolsB
+        dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB, paramcolsA, paramcolsB
 ):
     """
     For each unique term (bond/angle/dihedral) in the union of A and B:
@@ -523,15 +523,13 @@ def build_hybrid_atoms(dfA, dfB, mapping):
 
 
 def write_hybrid_topology(
-    filename,
-    hybrid_atoms,
-    hybrid_bonds=None,
-    hybrid_pairs=None,
-    hybrid_angles=None,
-    hybrid_dihedrals=None,
-    system_name="Hybrid System",
-    molecule_name="LIG",
-    nmols=1,
+        filename,
+        hybrid_atoms,
+        hybrid_bonds=None,
+        hybrid_pairs=None,
+        hybrid_angles=None,
+        hybrid_dihedrals=None,
+        molecule_name="LIG",
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
@@ -630,11 +628,11 @@ def write_hybrid_topology(
                 parA = getattr(dih, "parA", [])
                 parB = getattr(dih, "parB", [])
                 if (
-                    ai is None
-                    or aj is None
-                    or ak is None
-                    or al is None
-                    or funct is None
+                        ai is None
+                        or aj is None
+                        or ak is None
+                        or al is None
+                        or funct is None
                 ):
                     continue
                 if isinstance(parA, list):
@@ -654,6 +652,15 @@ def write_hybrid_topology(
                 f.write(
                     f"{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d}     2 {parA_str} {parB_str}\n"
                 )
+            f.write("\n")
+
+        # Add position restraints for dummy atoms
+        dummy_atoms = [atom for atom in sorted_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
+        if dummy_atoms:
+            f.write("[ position_restraints ]\n")
+            f.write("; atom  type      fx      fy      fz\n")
+            for atom in dummy_atoms:
+                f.write(f"{atom.index:5d}     1    1000    1000    1000\n")
             f.write("\n")
 
 
@@ -743,7 +750,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
     hybrid_atoms = []
     for new_idx, (old_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(
-        atom_list, 1
+            atom_list, 1
     ):
         if atom_type == "mapped":
             rowA = dfA[dfA["index"] == origA_idx].iloc[0]
@@ -873,7 +880,7 @@ def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
 
 
 def hybridize_coords_from_itp_interpolated(
-    ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+        ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
 ):
     """
     For each lambda, output hybrid coordinates as:
@@ -922,7 +929,7 @@ def hybridize_coords_from_itp_interpolated(
 
     pdb_lines = []
     for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(
-        atom_list
+            atom_list
     ):
         if atom_type == "mapped":
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
@@ -969,7 +976,7 @@ def hybridize_coords_from_itp_interpolated(
 
 
 def create_hybrid_topology_for_lambda(
-    dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+        dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
 ):
     """
     Create hybrid topology for a specific lambda value with proper filtering.
@@ -1042,11 +1049,11 @@ def create_hybrid_topology_for_lambda(
         dih
         for dih in hybrid_dihedrals
         if dih.ai != dih.aj
-        and dih.ai != dih.ak
-        and dih.ai != dih.al
-        and dih.aj != dih.ak
-        and dih.aj != dih.al
-        and dih.ak != dih.al
+           and dih.ai != dih.ak
+           and dih.ai != dih.al
+           and dih.aj != dih.ak
+           and dih.aj != dih.al
+           and dih.ak != dih.al
     ]
 
     return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
