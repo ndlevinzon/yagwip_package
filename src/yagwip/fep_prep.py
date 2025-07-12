@@ -904,15 +904,25 @@ def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
         )
         return False
 
-    # Check if atom names match in order
+    # Check if atom names match in order, accounting for dual topology logic
+    lambda_val = float(lam)
+    mismatches = []
     for i, (topo_idx, topo_name) in enumerate(topo_atoms):
         if i < len(pdb_atoms):
             pdb_name = pdb_atoms[i]
-            if topo_name.strip() != pdb_name.strip():
-                print(
-                    f"[ERROR] Lambda {lam}: Atom {i + 1} mismatch - Topology: {topo_name}, PDB: {pdb_name}"
-                )
-                return False
+            # In dual topology, some atoms should be "DUM" at intermediate lambdas
+            # Only flag as error if both names are non-dummy and different
+            if (topo_name.strip() != "DUM" and pdb_name.strip() != "DUM" and
+                    topo_name.strip() != pdb_name.strip()):
+                mismatches.append((i + 1, topo_name, pdb_name))
+
+    if mismatches:
+        print(f"[ERROR] Lambda {lam}: Found {len(mismatches)} atom name mismatches:")
+        for atom_num, topo_name, pdb_name in mismatches[:5]:  # Show first 5 mismatches
+            print(f"  Atom {atom_num}: Topology: {topo_name}, PDB: {pdb_name}")
+        if len(mismatches) > 5:
+            print(f"  ... and {len(mismatches) - 5} more mismatches")
+        return False
 
     print(
         f"[INFO] Lambda {lam}: Topology and PDB are synchronized ({len(topo_atoms)} atoms)"
