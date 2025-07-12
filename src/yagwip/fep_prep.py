@@ -53,30 +53,21 @@ def kabsch_align(coords_A, coords_B):
     return aligned_coords_B, R, centroid_A - centroid_B
 
 
-def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
+def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2, mapping):
     """
-    Align ligand B to ligand A using MCS-based alignment and save the aligned coordinates.
+    Align ligand B to ligand A using provided atom mapping and save the aligned coordinates.
 
     Args:
         ligandA_mol2: Path to ligand A mol2 file (reference)
         ligandB_mol2: Path to ligand B mol2 file (to be aligned)
         aligned_ligandB_mol2: Path to save aligned ligand B mol2 file
+        mapping: Dictionary mapping atom indices from ligandA to ligandB
     """
     # Parse coordinates from mol2 files
     coordsA, namesA = parse_mol2_coords(ligandA_mol2)
     coordsB, namesB = parse_mol2_coords(ligandB_mol2)
 
-    # Find MCS to get atom mapping
-    g1 = MolGraph.from_mol2(ligandA_mol2)
-    g2 = MolGraph.from_mol2(ligandB_mol2)
-    size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
-
-    if mapping is None or size == 0:
-        print("No common substructure found. Cannot align ligands.")
-        return None
-
-    print(f"MCS size: {size}")
-    print(f"Mapping (ligandA -> ligandB): {mapping}")
+    print(f"Mapping provided: {mapping}")
 
     # Extract coordinates for mapped atoms only
     mapped_coords_A = []
@@ -106,7 +97,6 @@ def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
 
     # Update coordinates in the mol2 file
     new_lines = []
-    atom_idx = 0
     in_atoms_section = False
 
     for line in lines:
@@ -1339,7 +1329,7 @@ def print_help():
         """
 Usage:
   python fep_prep.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2
-      Align ligand B to ligand A using Kabsch algorithm
+      Find MCS and align ligand B to ligand A using MCS-based alignment
   python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
       Find the maximum common substructure and write atom_map.txt
   python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
@@ -1347,7 +1337,7 @@ Usage:
   python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
       Generate hybridized .pdb files for all lambda windows, each in its own lambda_XX directory
   python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2
-      Complete workflow: align ligands, find MCS, generate hybrid topology and coordinates
+      Complete workflow: find MCS, align ligands, generate hybrid topology and coordinates
 """
     )
 
@@ -1364,7 +1354,21 @@ def main():
             )
             sys.exit(1)
         ligA_mol2, ligB_mol2, aligned_ligandB_mol2 = sys.argv[2:5]
-        align_ligands(ligA_mol2, ligB_mol2, aligned_ligandB_mol2)
+
+        # First find MCS to get atom mapping
+        g1 = MolGraph.from_mol2(ligA_mol2)
+        g2 = MolGraph.from_mol2(ligB_mol2)
+        size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
+
+        if mapping is None or size == 0:
+            print("No common substructure found. Cannot align ligands.")
+            sys.exit(1)
+
+        print(f"MCS size: {size}")
+        print(f"Mapping (ligandA -> ligandB): {mapping}")
+
+        # Then align using the mapping
+        align_ligands_with_mapping(ligA_mol2, ligB_mol2, aligned_ligandB_mol2, mapping)
     elif cmd == "mcs":
         if len(sys.argv) != 5:
             print(
@@ -1496,16 +1500,21 @@ def main():
             sys.exit(1)
         ligA_mol2, ligB_mol2 = sys.argv[2:4]
         aligned_ligandB_mol2 = ligB_mol2.replace(".mol2", "_aligned.mol2")
-        align_ligands(ligA_mol2, ligB_mol2, aligned_ligandB_mol2)
-        mol1, mol2 = aligned_ligandB_mol2, ligB_mol2
-        g1 = MolGraph.from_mol2(mol1)
-        g2 = MolGraph.from_mol2(mol2)
+
+        # Step 1: Find MCS to get atom mapping
+        g1 = MolGraph.from_mol2(ligA_mol2)
+        g2 = MolGraph.from_mol2(ligB_mol2)
         size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
         if mapping is None:
             print("No MCS found.")
             sys.exit(1)
         print(f"MCS size: {size}")
-        print(f"Mapping (mol1 -> mol2): {mapping}")
+        print(f"Mapping (ligandA -> ligandB): {mapping}")
+
+        # Step 2: Align ligands using the MCS mapping
+        align_ligands_with_mapping(ligA_mol2, ligB_mol2, aligned_ligandB_mol2, mapping)
+
+        # Step 3: Write atom map for further processing
         outmap = "atom_map.txt"
         write_atom_map(mapping, outmap)
 
