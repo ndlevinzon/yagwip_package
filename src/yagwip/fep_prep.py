@@ -940,8 +940,8 @@ def hybridize_coords_from_itp_interpolated(
         )
     mapping = load_atom_map(atom_map_txt)
 
-    # Get the canonical atom list to match the topology (which contains all atoms)
-    atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
+    # Get lambda-specific atom list to match the topology
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
 
     # Compute centroid of mapped atoms (core ligand)
     mapped_coords = []
@@ -957,15 +957,9 @@ def hybridize_coords_from_itp_interpolated(
     else:
         centroid = (0.0, 0.0, 0.0)
 
-    pdb_lines = []
+        pdb_lines = []
     atom_counter = 0
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
-        # Skip atoms that shouldn't be present at this lambda
-        if lam == 0 and atom_type == "uniqueB":
-            continue  # Skip uniqueB atoms at lambda 0
-        elif lam == 1 and atom_type == "uniqueA":
-            continue  # Skip uniqueA atoms at lambda 1
-
         atom_counter += 1
         # Determine atom type based on lambda and atom type
         if atom_type == "mapped":
