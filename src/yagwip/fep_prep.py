@@ -940,8 +940,8 @@ def hybridize_coords_from_itp_interpolated(
         )
     mapping = load_atom_map(atom_map_txt)
 
-    # Get lambda-specific atom list
-    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
+    # Get the canonical atom list to match the topology (which contains all atoms)
+    atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
 
     # Compute centroid of mapped atoms (core ligand)
     mapped_coords = []
@@ -958,9 +958,15 @@ def hybridize_coords_from_itp_interpolated(
         centroid = (0.0, 0.0, 0.0)
 
     pdb_lines = []
-    for i, (hybrid_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(
-            atom_list
-    ):
+    atom_counter = 0
+    for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
+        # Skip atoms that shouldn't be present at this lambda
+        if lam == 0 and atom_type == "uniqueB":
+            continue  # Skip uniqueB atoms at lambda 0
+        elif lam == 1 and atom_type == "uniqueA":
+            continue  # Skip uniqueA atoms at lambda 1
+
+        atom_counter += 1
         # Determine atom type based on lambda and atom type
         if atom_type == "mapped":
             # Mapped atoms always have real atom types (they're always present)
@@ -1018,7 +1024,7 @@ def hybridize_coords_from_itp_interpolated(
             atom_type_pdb = "DUM"
 
         pdb_lines.append(
-            f"HETATM{i + 1:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
+            f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
