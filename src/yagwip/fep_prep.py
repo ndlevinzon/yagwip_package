@@ -529,7 +529,9 @@ def write_hybrid_topology(
         hybrid_pairs=None,
         hybrid_angles=None,
         hybrid_dihedrals=None,
+        system_name="Hybrid System",
         molecule_name="LIG",
+        nmols=1,
 ):
     # Sort hybrid atoms by their index to ensure correct order
     sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
