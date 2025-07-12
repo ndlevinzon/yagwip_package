@@ -1298,6 +1298,9 @@ def main():
                 os.makedirs(lam_dir)
             hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
             out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+            print(f"[DEBUG] Processing lambda {lam_str}")
+            print(f"[DEBUG] hybrid_itp path: {hybrid_itp}")
+            print(f"[DEBUG] hybrid_itp exists: {os.path.exists(hybrid_itp)}")
             if not os.path.exists(hybrid_itp):
                 print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
                 continue
