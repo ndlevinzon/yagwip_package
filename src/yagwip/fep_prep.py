@@ -765,12 +765,15 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     """
     For each lambda, build a new hybrid atom list with correct dual topology logic:
-    - All atoms from both ligands are present.
+    - Lambda 0: mapped + uniqueA atoms (A atoms are real, B atoms are dummies)
+    - Lambda 1: mapped + uniqueB atoms (B atoms are real, A atoms are dummies)
+    - 0 < lambda < 1: mapped + uniqueA + uniqueB atoms (all atoms present, some are dummies)
     - Mapped atoms: interpolate charge/mass/type.
     - Unique to A: typeB='DUM', chargeB=0, massB=0.1 (dummy mass zero).
     - Unique to B: typeA='DUM', chargeA=0, massA=0.1 (dummy mass zero).
     """
-    atom_list = get_canonical_hybrid_atom_list(dfA, dfB, mapping)
+    # Get the lambda-specific atom list
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
     hybrid_atoms = []
     for new_idx, (old_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(
             atom_list, 1
@@ -1004,12 +1007,11 @@ def create_hybrid_topology_for_lambda(
     """
     Create hybrid topology for a specific lambda value with proper filtering.
     """
-    # Get atom list for this lambda
-    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
-    present_indices = [idx for idx, _, _, _, _ in atom_list]
-
-    # Create hybrid atoms
+    # Create hybrid atoms (this now gets the correct atom list for this lambda)
     hybrid_atoms = build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam)
+
+    # Get present indices from the hybrid atoms
+    present_indices = [atom.index for atom in hybrid_atoms]
 
     # Filter topology sections to only include present atoms and remove invalid terms
     bondsA_filtered = filter_topology_sections(bondsA, present_indices)
