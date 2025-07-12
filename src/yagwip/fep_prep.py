@@ -932,28 +932,60 @@ def hybridize_coords_from_itp_interpolated(
     - Unique atoms: use real coordinates if available, otherwise place near mapped centroid
     """
     import random
+    import os
+
+    print(f"[DEBUG] Starting hybridize_coords_from_itp_interpolated for lambda {lam}")
+    print(f"[DEBUG] ligA_mol2: {ligA_mol2}")
+    print(f"[DEBUG] ligB_mol2: {ligB_mol2}")
+    print(f"[DEBUG] hybrid_itp: {hybrid_itp}")
+    print(f"[DEBUG] atom_map_txt: {atom_map_txt}")
+    print(f"[DEBUG] out_pdb: {out_pdb}")
 
     coordsA, namesA = parse_mol2_coords(ligA_mol2)
     coordsB, namesB = parse_mol2_coords(ligB_mol2)
-    dfA = (
-        parse_itp_atoms_full(ligA_mol2.replace(".mol2", ".itp"))
-        if ligA_mol2.replace(".mol2", ".itp")
-        else None
-    )
-    dfB = (
-        parse_itp_atoms_full(ligB_mol2.replace(".mol2", ".itp"))
-        if ligB_mol2.replace(".mol2", ".itp")
-        else None
-    )
+    print(f"[DEBUG] Parsed coordsA: {len(coordsA)} atoms")
+    print(f"[DEBUG] Parsed coordsB: {len(coordsB)} atoms")
+
+    # Try to parse .itp files, but don't fail if they don't exist
+    itpA_path = ligA_mol2.replace(".mol2", ".itp")
+    itpB_path = ligB_mol2.replace(".mol2", ".itp")
+    print(f"[DEBUG] Trying to parse itpA: {itpA_path}")
+    print(f"[DEBUG] Trying to parse itpB: {itpB_path}")
+
+    dfA = None
+    dfB = None
+
+    try:
+        if os.path.exists(itpA_path):
+            dfA = parse_itp_atoms_full(itpA_path)
+            print(f"[DEBUG] Successfully parsed itpA: {len(dfA)} atoms")
+        else:
+            print(f"[DEBUG] itpA file not found: {itpA_path}")
+    except Exception as e:
+        print(f"[DEBUG] Error parsing itpA: {e}")
+
+    try:
+        if os.path.exists(itpB_path):
+            dfB = parse_itp_atoms_full(itpB_path)
+            print(f"[DEBUG] Successfully parsed itpB: {len(dfB)} atoms")
+        else:
+            print(f"[DEBUG] itpB file not found: {itpB_path}")
+    except Exception as e:
+        print(f"[DEBUG] Error parsing itpB: {e}")
+
     if dfA is None:
         dfA = pd.DataFrame(
             [{"index": idx, "atom_name": namesA[idx]} for idx in sorted(coordsA.keys())]
         )
+        print(f"[DEBUG] Created dfA from mol2: {len(dfA)} atoms")
     if dfB is None:
         dfB = pd.DataFrame(
             [{"index": idx, "atom_name": namesB[idx]} for idx in sorted(coordsB.keys())]
         )
+        print(f"[DEBUG] Created dfB from mol2: {len(dfB)} atoms")
+
     mapping = load_atom_map(atom_map_txt)
+    print(f"[DEBUG] Loaded mapping: {len(mapping)} entries")
 
     # Get lambda-specific atom list to match the topology
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
@@ -977,8 +1009,10 @@ def hybridize_coords_from_itp_interpolated(
     else:
         centroid = (0.0, 0.0, 0.0)
 
-        pdb_lines = []
+    print(f"[DEBUG] Initializing pdb_lines and atom_counter")
+    pdb_lines = []
     atom_counter = 0
+    print(f"[DEBUG] pdb_lines initialized, atom_counter = {atom_counter}")
 
     # Check if we have any atoms to process
     if not atom_list:
@@ -987,6 +1021,7 @@ def hybridize_coords_from_itp_interpolated(
             f.write("END\n")
         return
 
+    print(f"[DEBUG] Processing {len(atom_list)} atoms")
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
         atom_counter += 1
         # Determine atom type based on lambda and atom type
@@ -1045,13 +1080,16 @@ def hybridize_coords_from_itp_interpolated(
             coord = (centroid[0] + dx, centroid[1] + dy, centroid[2] + dz)
             atom_type_pdb = "DUM"
 
+        print(f"[DEBUG] Appending atom {atom_counter}: {atom_type_pdb} at {coord}")
         pdb_lines.append(
             f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
+    print(f"[DEBUG] Writing {len(pdb_lines)} lines to {out_pdb}")
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
             f.write(line)
         f.write("END\n")
+    print(f"[DEBUG] Successfully wrote {out_pdb}")
 
 
 def create_hybrid_topology_for_lambda(
