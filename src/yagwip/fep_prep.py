@@ -615,7 +615,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                     chargeA=rowA["charge"],
                     chargeB=0.0,
                     massA=rowA["mass"],
-                    massB=0.0,
+                    massB=0.1,
                     mapped=False,
                 )
             )
@@ -640,7 +640,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                     typeB=rowB["type"],
                     chargeA=0.0,
                     chargeB=rowB["charge"],
-                    massA=0.0,
+                    massA=0.1,
                     massB=rowB["mass"],
                     mapped=False,
                 )
@@ -940,16 +940,18 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             massA = rowA["mass"]
             typeA = rowA["type"]
             chargeB = 0.0
-            massB = 0.0  # Dummy gets zero mass in decoupled state
+            massB = 0.1  # Dummy gets zero mass in decoupled state
             typeB = "DUM"
+            atom_name = "DUM"  # Use DUM for dummy atoms in topology
         elif atom_type == "uniqueB":
             rowB = dfB[dfB["index"] == origB_idx].iloc[0]
             chargeA = 0.0
-            massA = 0.0  # Dummy gets zero mass in decoupled state
+            massA = 0.1  # Dummy gets zero mass in decoupled state
             typeA = "DUM"
             chargeB = rowB["charge"]
             massB = rowB["mass"]
             typeB = rowB["type"]
+            atom_name = "DUM"  # Use DUM for dummy atoms in topology
         hybrid_atoms.append(
             HybridAtom(
                 index=new_idx,
