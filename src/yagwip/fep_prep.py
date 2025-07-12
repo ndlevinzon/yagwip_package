@@ -656,14 +656,35 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Add position restraints for dummy atoms
-        dummy_atoms = [atom for atom in sorted_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
-        if dummy_atoms:
-            f.write("[ position_restraints ]\n")
-            f.write("; atom  type      fx      fy      fz\n")
-            for atom in dummy_atoms:
-                f.write(f"{atom.index:5d}     1    1000    1000    1000\n")
-            f.write("\n")
+        # Add conditional include for position restraints
+        f.write("#ifdef POSRES\n")
+        f.write('#include "posre_ligand.itp"\n')
+        f.write("#endif\n\n")
+
+
+def write_position_restraints_file(filename, hybrid_atoms):
+    """
+    Create a separate position restraints file for dummy atoms.
+
+    Args:
+        filename (str): Path to the position restraints file to create
+        hybrid_atoms (list): List of HybridAtom objects
+    """
+    # Sort hybrid atoms by their index to ensure correct order
+    sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
+
+    # Find dummy atoms
+    dummy_atoms = [atom for atom in sorted_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
+
+    if not dummy_atoms:
+        return  # No dummy atoms, no need to create restraints file
+
+    with open(filename, "w") as f:
+        f.write("[ position_restraints ]\n")
+        f.write("; atom  type      fx      fy      fz\n")
+        for atom in dummy_atoms:
+            f.write(f"{atom.index:5d}     1    1000    1000    1000\n")
+        f.write("\n")
 
 
 def filter_topology_sections(df, present_indices):
@@ -1159,7 +1180,14 @@ def main():
                 molecule_name="LIG",
                 nmols=1,
             )
+
+            # Create position restraints file for this lambda
+            posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
+            write_position_restraints_file(posre_filename, hybrid_atoms)
+
             print(f"Wrote {outfilename}")
+            if os.path.exists(posre_filename):
+                print(f"Wrote {posre_filename}")
     elif cmd == "hybrid_coords":
         if len(sys.argv) != 5:
             print(

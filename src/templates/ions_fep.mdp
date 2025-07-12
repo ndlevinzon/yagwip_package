@@ -14,6 +14,8 @@ rcoulomb        = 1.0       ; Short-range electrostatic cut-off
 rvdw            = 1.0       ; Short-range Van der Waals cut-off
 pbc             = xyz       ; Periodic Boundary Conditions in all 3 dimensions to minimize edge effects in a finite system
 
+define = -DPOSRES
+
 ; ===== Free Energy Settings =====
 free-energy              = yes
 ; init_lambda_state        0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15   16   17   18   19   20
