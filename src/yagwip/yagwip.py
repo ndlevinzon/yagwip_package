@@ -491,9 +491,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run the complete FEP preparation workflow using fep_prep.py CLI.
         This will:
-        1) Run MCS to generate atom_map.txt
-        2) Generate hybrid topologies for all lambda windows
-        3) Generate hybrid coordinates for all lambda windows
+        1) Align ligand B to ligand A using Kabsch algorithm
+        2) Run MCS to generate atom_map.txt using aligned coordinates
+        3) Generate hybrid topologies for all lambda windows
+        4) Generate hybrid coordinates for all lambda windows
         """
         ligandA_mol2 = "ligandA.mol2"
         ligandB_mol2 = "ligandB.mol2"
@@ -503,17 +504,38 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         fep_utils_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
         python_exe = sys.executable
 
+        # Check if required files exist
+        if not os.path.exists(ligandA_mol2):
+            self._log_error(f"Ligand A file not found: {ligandA_mol2}")
+            return
+        if not os.path.exists(ligandB_mol2):
+            self._log_error(f"Ligand B file not found: {ligandB_mol2}")
+            return
+
+        # Step 1: Align ligand B to ligand A
+        aligned_ligandB_mol2 = "ligandB_aligned.mol2"
         cmds = [
+            (
+                [
+                    python_exe,
+                    fep_utils_path,
+                    "align",
+                    ligandA_mol2,
+                    ligandB_mol2,
+                    aligned_ligandB_mol2,
+                ],
+                "Align ligand B to ligand A using Kabsch algorithm",
+            ),
             (
                 [
                     python_exe,
                     fep_utils_path,
                     "mcs",
                     ligandA_mol2,
-                    ligandB_mol2,
+                    aligned_ligandB_mol2,
                     atom_map,
                 ],
-                "Run MCS to generate atom_map.txt",
+                "Run MCS to generate atom_map.txt using aligned coordinates",
             ),
             (
                 [
@@ -532,12 +554,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     fep_utils_path,
                     "hybrid_coords",
                     ligandA_mol2,
-                    ligandB_mol2,
+                    aligned_ligandB_mol2,
                     atom_map,
                 ],
-                "Generate hybrid coordinates for all lambda windows",
+                "Generate hybrid coordinates for all lambda windows using aligned coordinates",
             ),
         ]
+
         for cmd, desc in cmds:
             command_str = " ".join(cmd)
             success = self._execute_command(command_str, description=desc)
@@ -546,6 +569,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 break
         else:
             self._log_success("FEP preparation complete.")
+            self._log_info("Aligned ligand B coordinates saved to ligandB_aligned.mol2")
+            self._log_info("All lambda windows generated with aligned coordinates")
 
     def do_pdb2gmx(self, arg):
         """
