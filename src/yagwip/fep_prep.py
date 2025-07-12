@@ -55,7 +55,7 @@ def kabsch_align(coords_A, coords_B):
 
 def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
     """
-    Align ligand B to ligand A and save the aligned coordinates.
+    Align ligand B to ligand A using MCS-based alignment and save the aligned coordinates.
 
     Args:
         ligandA_mol2: Path to ligand A mol2 file (reference)
@@ -66,11 +66,38 @@ def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
     coordsA, namesA = parse_mol2_coords(ligandA_mol2)
     coordsB, namesB = parse_mol2_coords(ligandB_mol2)
 
-    # Convert to numpy arrays
-    coords_A = np.array([coordsA[i] for i in sorted(coordsA.keys())])
-    coords_B = np.array([coordsB[i] for i in sorted(coordsB.keys())])
+    # Find MCS to get atom mapping
+    g1 = MolGraph.from_mol2(ligandA_mol2)
+    g2 = MolGraph.from_mol2(ligandB_mol2)
+    size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
 
-    # Align coordinates
+    if mapping is None or size == 0:
+        print("No common substructure found. Cannot align ligands.")
+        return None
+
+    print(f"MCS size: {size}")
+    print(f"Mapping (ligandA -> ligandB): {mapping}")
+
+    # Extract coordinates for mapped atoms only
+    mapped_coords_A = []
+    mapped_coords_B = []
+
+    for idxA, idxB in mapping.items():
+        if idxA in coordsA and idxB in coordsB:
+            mapped_coords_A.append(coordsA[idxA])
+            mapped_coords_B.append(coordsB[idxB])
+
+    if len(mapped_coords_A) < 3:
+        print("Not enough mapped atoms (need at least 3) for alignment.")
+        return None
+
+    # Convert to numpy arrays
+    coords_A = np.array(mapped_coords_A)
+    coords_B = np.array(mapped_coords_B)
+
+    print(f"Aligning {len(coords_A)} mapped atoms")
+
+    # Align coordinates using Kabsch algorithm
     aligned_coords_B, rotation_matrix, translation = kabsch_align(coords_A, coords_B)
 
     # Read original mol2 file to preserve all sections
@@ -95,13 +122,24 @@ def align_ligands(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2):
             # Update atom coordinates
             parts = line.split()
             if len(parts) >= 6:
-                x, y, z = aligned_coords_B[atom_idx]
+                atom_id = int(parts[0])
+                if atom_id in mapping:
+                    # This atom is part of the MCS, use aligned coordinates
+                    mcs_idx = list(mapping.keys()).index(atom_id)
+                    x, y, z = aligned_coords_B[mcs_idx]
+                else:
+                    # This atom is not part of MCS, apply rotation and translation to original coordinates
+                    orig_coord = coordsB[atom_id]
+                    centered_coord = np.array(orig_coord) - np.mean(coords_B, axis=0)
+                    rotated_coord = centered_coord @ rotation_matrix
+                    final_coord = rotated_coord + np.mean(coords_A, axis=0)
+                    x, y, z = final_coord
+
                 new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
                 if len(parts) > 6:
                     new_line += f" {parts[6]}"
                 new_line += "\n"
                 new_lines.append(new_line)
-                atom_idx += 1
             else:
                 new_lines.append(line)
         else:
@@ -1371,7 +1409,7 @@ def main():
         for lam in lambdas:
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
-            import os
+            # import os  # Removed redundant import
 
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
@@ -1431,7 +1469,7 @@ def main():
         for lam in lambdas:
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
-            import os
+            # import os  # Removed redundant import
 
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
@@ -1494,7 +1532,7 @@ def main():
         for lam in lambdas:
             lam_str = f"{lam:.2f}"
             lam_dir = f"lambda_{lam_str}"
-            import os
+            # import os  # Removed redundant import
 
             if not os.path.exists(lam_dir):
                 os.makedirs(lam_dir)
