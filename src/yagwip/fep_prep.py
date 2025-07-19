@@ -3,6 +3,7 @@ import sys
 import os
 from collections import defaultdict
 import logging
+import random
 
 # === Third-Party Imports ===
 import pandas as pd
@@ -578,80 +579,7 @@ def parse_itp_atoms_full(filename):
     return pd.DataFrame(atoms)
 
 
-def build_hybrid_atoms(dfA, dfB, mapping):
-    hybrid_atoms = []
-    all_indices = set(dfA["index"]).union(dfB["index"])
-    for idx in sorted(all_indices):
-        inA = idx in dfA["index"].values
-        inB = idx in mapping and mapping[idx] in dfB["index"].values
-        if inA and inB:
-            rowA = dfA[dfA["index"] == idx].iloc[0]
-            idxB = mapping[idx]
-            rowB = dfB[dfB["index"] == idxB].iloc[0]
-            hybrid_atoms.append(
-                HybridAtom(
-                    index=idx,
-                    atom_name=rowA["atom_name"],
-                    typeA=rowA["type"],
-                    typeB=rowB["type"],
-                    chargeA=rowA["charge"],
-                    chargeB=rowB["charge"],
-                    massA=rowA["mass"],
-                    massB=rowB["mass"],
-                    mapped=True,
-                )
-            )
-        elif inA:
-            rowA = dfA[dfA["index"] == idx].iloc[0]
-            logger.warning(
-                f"Dummy atom in state B: index {idx}, type {rowA['type']}, mass {rowA['mass']}"
-            )
-            hybrid_atoms.append(
-                HybridAtom(
-                    index=idx,
-                    atom_name=rowA["atom_name"],
-                    typeA=rowA["type"],
-                    typeB="DUM",
-                    chargeA=rowA["charge"],
-                    chargeB=0.0,
-                    massA=rowA["mass"],
-                    massB=0.001,
-                    mapped=False,
-                )
-            )
-        else:
-            idxB = None
-            for k, v in mapping.items():
-                if v == idx:
-                    idxB = v
-                    break
-            if idxB is not None:
-                rowB = dfB[dfB["index"] == idxB].iloc[0]
-            else:
-                rowB = dfB[dfB["index"] == idx].iloc[0]
-            logger.warning(
-                f"Dummy atom in state A: index {idx}, type {rowB['type']}, mass {rowB['mass']}"
-            )
-            hybrid_atoms.append(
-                HybridAtom(
-                    index=idx,
-                    atom_name=rowB["atom_name"],
-                    typeA="DUM",
-                    typeB=rowB["type"],
-                    chargeA=0.0,
-                    chargeB=rowB["charge"],
-                    massA=0.001,
-                    massB=rowB["mass"],
-                    mapped=False,
-                )
-            )
-    # Validation: check for mapped atoms with zero mass
-    for atom in hybrid_atoms:
-        if atom.mapped and (atom.massA == 0.0 or atom.massB == 0.0):
-            logger.error(
-                f"Mapped atom {atom.index} has zero mass! massA={atom.massA}, massB={atom.massB}"
-            )
-    return hybrid_atoms
+# Removed redundant build_hybrid_atoms function - use build_hybrid_atoms_interpolated instead
 
 
 def write_hybrid_topology(
@@ -790,7 +718,7 @@ def write_hybrid_topology(
 
         # Add conditional include for position restraints
         f.write("#ifdef POSRES\n")
-        f.write('#include "./posre_ligand.itp"\n')
+        f.write('#include "posre_ligand.itp"\n')
         f.write("#endif\n\n")
 
 
@@ -870,9 +798,6 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
     At lambda=1: mapped + uniqueB (B order)
     0 < lambda < 1: mapped (A order) + uniqueA (A order) + uniqueB (B order)
     """
-    print(f"[DEBUG] build_lambda_atom_list: dfA has {len(dfA)} rows, dfB has {len(dfB)} rows")
-    print(f"[DEBUG] build_lambda_atom_list: mapping has {len(mapping)} entries")
-
     mapped_atoms = []
     uniqueA_atoms = []
     uniqueB_atoms = []
@@ -892,21 +817,12 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
         if idxB not in usedB:
             uniqueB_atoms.append((idxB, rowB["atom_name"], None, idxB, "uniqueB"))
 
-    print(
-        f"[DEBUG] build_lambda_atom_list: mapped={len(mapped_atoms)}, uniqueA={len(uniqueA_atoms)}, uniqueB={len(uniqueB_atoms)}")
-
     if lam == 0:
-        result = mapped_atoms + uniqueA_atoms
-        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
-        return result
+        return mapped_atoms + uniqueA_atoms
     elif lam == 1:
-        result = mapped_atoms + uniqueB_atoms
-        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
-        return result
+        return mapped_atoms + uniqueB_atoms
     else:
-        result = mapped_atoms + uniqueA_atoms + uniqueB_atoms
-        print(f"[DEBUG] build_lambda_atom_list: lambda={lam}, returning {len(result)} atoms")
-        return result
+        return mapped_atoms + uniqueA_atoms + uniqueB_atoms
 
 
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
@@ -1037,33 +953,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     return hybrid_atoms
 
 
-def get_canonical_hybrid_atom_list(dfA, dfB, mapping):
-    """
-    Returns a canonical hybrid atom list:
-    - mapped_atoms: list of (hybrid_index, atom_name, origA_idx, origB_idx, 'mapped')
-    - uniqueA_atoms: list of (hybrid_index, atom_name, origA_idx, None, 'uniqueA')
-    - uniqueB_atoms: list of (hybrid_index, atom_name, None, origB_idx, 'uniqueB')
-    Order: mapped (A order), uniqueA (A order), uniqueB (B order)
-    """
-    mapped_atoms = []
-    uniqueA_atoms = []
-    uniqueB_atoms = []
-    usedB = set()
-    # Mapped and uniqueA atoms (A's order)
-    for _, rowA in dfA.iterrows():
-        idxA = int(rowA["index"])
-        if idxA in mapping:
-            idxB = mapping[idxA]
-            mapped_atoms.append((idxA, rowA["atom_name"], idxA, idxB, "mapped"))
-            usedB.add(idxB)
-        else:
-            uniqueA_atoms.append((idxA, rowA["atom_name"], idxA, None, "uniqueA"))
-    # UniqueB atoms (B's order)
-    for _, rowB in dfB.iterrows():
-        idxB = int(rowB["index"])
-        if idxB not in usedB:
-            uniqueB_atoms.append((idxB, rowB["atom_name"], None, idxB, "uniqueB"))
-    return mapped_atoms + uniqueA_atoms + uniqueB_atoms
+# Removed redundant get_canonical_hybrid_atom_list function - use build_lambda_atom_list instead
 
 
 def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
@@ -1170,26 +1060,15 @@ def hybridize_coords_from_itp_interpolated(
     Dummy atoms are placed at the closest real atom position to minimize
     non-bonded interaction errors.
     """
-    import random
-    import os
-
     print(f"[DEBUG] Starting enhanced hybridize_coords_from_itp_interpolated for lambda {lam}")
-    print(f"[DEBUG] ligA_mol2: {ligA_mol2}")
-    print(f"[DEBUG] ligB_mol2: {ligB_mol2}")
-    print(f"[DEBUG] hybrid_itp: {hybrid_itp}")
-    print(f"[DEBUG] atom_map_txt: {atom_map_txt}")
-    print(f"[DEBUG] out_pdb: {out_pdb}")
 
     coordsA, namesA = parse_mol2_coords(ligA_mol2)
     coordsB, namesB = parse_mol2_coords(ligB_mol2)
-    print(f"[DEBUG] Parsed coordsA: {len(coordsA)} atoms")
-    print(f"[DEBUG] Parsed coordsB: {len(coordsB)} atoms")
+    print(f"[DEBUG] Parsed coordsA: {len(coordsA)} atoms, coordsB: {len(coordsB)} atoms")
 
     # Try to parse .itp files, but don't fail if they don't exist
     itpA_path = ligA_mol2.replace(".mol2", ".itp")
     itpB_path = ligB_mol2.replace(".mol2", ".itp")
-    print(f"[DEBUG] Trying to parse itpA: {itpA_path}")
-    print(f"[DEBUG] Trying to parse itpB: {itpB_path}")
 
     dfA = None
     dfB = None
@@ -1197,7 +1076,6 @@ def hybridize_coords_from_itp_interpolated(
     try:
         if os.path.exists(itpA_path):
             dfA = parse_itp_atoms_full(itpA_path)
-            print(f"[DEBUG] Successfully parsed itpA: {len(dfA)} atoms")
         else:
             print(f"[DEBUG] itpA file not found: {itpA_path}")
     except Exception as e:
@@ -1206,7 +1084,6 @@ def hybridize_coords_from_itp_interpolated(
     try:
         if os.path.exists(itpB_path):
             dfB = parse_itp_atoms_full(itpB_path)
-            print(f"[DEBUG] Successfully parsed itpB: {len(dfB)} atoms")
         else:
             print(f"[DEBUG] itpB file not found: {itpB_path}")
     except Exception as e:
@@ -1216,12 +1093,10 @@ def hybridize_coords_from_itp_interpolated(
         dfA = pd.DataFrame(
             [{"index": idx, "atom_name": namesA[idx]} for idx in sorted(coordsA.keys())]
         )
-        print(f"[DEBUG] Created dfA from mol2: {len(dfA)} atoms")
     if dfB is None:
         dfB = pd.DataFrame(
             [{"index": idx, "atom_name": namesB[idx]} for idx in sorted(coordsB.keys())]
         )
-        print(f"[DEBUG] Created dfB from mol2: {len(dfB)} atoms")
 
     mapping = load_atom_map(atom_map_txt)
     print(f"[DEBUG] Loaded mapping: {len(mapping)} entries")
@@ -1229,10 +1104,12 @@ def hybridize_coords_from_itp_interpolated(
     # Get lambda-specific atom list to match the topology
     atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
     print(f"[DEBUG] Lambda {lam}: Found {len(atom_list)} atoms in atom_list")
+
     if len(atom_list) == 0:
-        print(f"[DEBUG] Lambda {lam}: atom_list is empty!")
-        print(f"[DEBUG] dfA has {len(dfA)} atoms, dfB has {len(dfB)} atoms")
-        print(f"[DEBUG] mapping has {len(mapping)} entries")
+        print(f"[WARNING] No atoms found for lambda {lam}")
+        with open(out_pdb, "w") as f:
+            f.write("END\n")
+        return
 
     # Compute centroid of mapped atoms (core ligand)
     mapped_coords = []
@@ -1248,17 +1125,8 @@ def hybridize_coords_from_itp_interpolated(
     else:
         centroid = (0.0, 0.0, 0.0)
 
-    print(f"[DEBUG] Initializing pdb_lines and atom_counter")
     pdb_lines = []
     atom_counter = 0
-    print(f"[DEBUG] pdb_lines initialized, atom_counter = {atom_counter}")
-
-    # Check if we have any atoms to process
-    if not atom_list:
-        print(f"[WARNING] No atoms found for lambda {lam}")
-        with open(out_pdb, "w") as f:
-            f.write("END\n")
-        return
 
     print(f"[DEBUG] Processing {len(atom_list)} atoms")
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
@@ -1275,7 +1143,6 @@ def hybridize_coords_from_itp_interpolated(
             # Unique A atoms: real coordinates, but may become dummies
             coord = coordsA.get(origA_idx, None)
             if coord is None:
-                # Fallback: place near centroid
                 coord = find_closest_atom_coord(centroid, coordsA)
 
             # Determine atom type based on lambda
@@ -1294,7 +1161,6 @@ def hybridize_coords_from_itp_interpolated(
             # Unique B atoms: real coordinates, but may become dummies
             coord = coordsB.get(origB_idx, None)
             if coord is None:
-                # Fallback: place near centroid
                 coord = find_closest_atom_coord(centroid, coordsB)
 
             # Determine atom type based on lambda
@@ -1313,11 +1179,10 @@ def hybridize_coords_from_itp_interpolated(
             coord = find_closest_atom_coord(centroid, coordsA)
             atom_type_pdb = "DUM"
 
-        print(f"[DEBUG] Appending atom {atom_counter}: {atom_type_pdb} at {coord}")
         pdb_lines.append(
             f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
-    print(f"[DEBUG] Writing {len(pdb_lines)} lines to {out_pdb}")
+
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
             f.write(line)
@@ -1348,64 +1213,90 @@ def create_hybrid_topology_for_lambda(
     dihedB_filtered = filter_topology_sections(dihedB, present_indices)
 
     # Create dummy parameters for missing terms
-    dummy_bond_params = {"r": "0.0", "k": "0.0"}
-    dummy_angle_params = {"r": "0.0", "k": "0.0"}
-    dummy_dihedral_params = {"r": "0.0", "k": "0.0"}
+    dummy_params = {"r": "0.0", "k": "0.0"}
 
     # Convert to hybrid terms using filtered sections for both A and B
     hybrid_bonds = build_hybrid_terms(
-        bondsA_filtered,
-        bondsB_filtered,
-        mapping,
-        ["ai", "aj"],
-        HybridBond,
-        dummy_bond_params,
-        dummy_bond_params,
-        ["r", "k"],
-        ["r", "k"],
+        bondsA_filtered, bondsB_filtered, mapping, ["ai", "aj"], HybridBond,
+        dummy_params, dummy_params, ["r", "k"], ["r", "k"]
     )
     hybrid_angles = build_hybrid_terms(
-        anglesA_filtered,
-        anglesB_filtered,
-        mapping,
-        ["ai", "aj", "ak"],
-        HybridAngle,
-        dummy_angle_params,
-        dummy_angle_params,
-        ["r", "k"],
-        ["r", "k"],
+        anglesA_filtered, anglesB_filtered, mapping, ["ai", "aj", "ak"], HybridAngle,
+        dummy_params, dummy_params, ["r", "k"], ["r", "k"]
     )
     hybrid_dihedrals = build_hybrid_terms(
-        dihedA_filtered,
-        dihedB_filtered,
-        mapping,
-        ["ai", "aj", "ak", "al"],
-        HybridDihedral,
-        dummy_dihedral_params,
-        dummy_dihedral_params,
-        ["r", "k"],
-        ["r", "k"],
+        dihedA_filtered, dihedB_filtered, mapping, ["ai", "aj", "ak", "al"], HybridDihedral,
+        dummy_params, dummy_params, ["r", "k"], ["r", "k"]
     )
 
     # Filter out any remaining invalid terms from hybrid terms
     hybrid_bonds = [bond for bond in hybrid_bonds if bond.ai != bond.aj]
     hybrid_angles = [
-        angle
-        for angle in hybrid_angles
+        angle for angle in hybrid_angles
         if angle.ai != angle.aj and angle.aj != angle.ak and angle.ai != angle.ak
     ]
     hybrid_dihedrals = [
-        dih
-        for dih in hybrid_dihedrals
-        if dih.ai != dih.aj
-           and dih.ai != dih.ak
-           and dih.ai != dih.al
-           and dih.aj != dih.ak
-           and dih.aj != dih.al
-           and dih.ak != dih.al
+        dih for dih in hybrid_dihedrals
+        if dih.ai != dih.aj and dih.ai != dih.ak and dih.ai != dih.al
+           and dih.aj != dih.ak and dih.aj != dih.al and dih.ak != dih.al
     ]
 
     return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
+
+
+def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
+                           ligA_mol2=None, ligB_mol2=None, atom_map_txt=None):
+    """
+    Process all lambda windows to generate hybrid topologies and coordinates.
+    This consolidates the redundant lambda processing code from main().
+    """
+    lambdas = np.arange(0, 1.05, 0.05)
+
+    for lam in lambdas:
+        lam_str = f"{lam:.2f}"
+        lam_dir = f"lambda_{lam_str}"
+
+        if not os.path.exists(lam_dir):
+            os.makedirs(lam_dir)
+
+        # Generate hybrid topology
+        outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = (
+            create_hybrid_topology_for_lambda(
+                dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+            )
+        )
+
+        write_hybrid_topology(
+            outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
+            hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
+            system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
+        )
+
+        # Create position restraints file
+        posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
+        write_position_restraints_file(posre_filename, hybrid_atoms)
+
+        print(f"Wrote {outfilename}")
+        if os.path.exists(posre_filename):
+            print(f"Wrote {posre_filename}")
+
+        # Generate coordinates if mol2 files are provided
+        if ligA_mol2 and ligB_mol2 and atom_map_txt:
+            hybrid_itp = outfilename
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+
+            if not os.path.exists(hybrid_itp):
+                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
+                continue
+
+            hybridize_coords_from_itp_interpolated(
+                ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+            )
+            print(f"Wrote {out_pdb}")
+
+            # Verify synchronization
+            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
 
 
 # =====================
@@ -1538,62 +1429,13 @@ def main():
         mapping = load_atom_map(mapfile)
         bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
         bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        anglesA = parse_itp_section(
-            itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
-        )
-        anglesB = parse_itp_section(
-            itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
-        )
-        dihedA = parse_itp_section(
-            itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
-        )
-        dihedB = parse_itp_section(
-            itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
-        )
-        lambdas = np.arange(0, 1.05, 0.05)
-        for lam in lambdas:
-            lam_str = f"{lam:.2f}"
-            lam_dir = f"lambda_{lam_str}"
-            # import os  # Removed redundant import
+        anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+        anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+        dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+        dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
 
-            if not os.path.exists(lam_dir):
-                os.makedirs(lam_dir)
-            outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+        process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping)
 
-            # Create hybrid topology for this lambda
-            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = (
-                create_hybrid_topology_for_lambda(
-                    dfA,
-                    dfB,
-                    bondsA,
-                    bondsB,
-                    anglesA,
-                    anglesB,
-                    dihedA,
-                    dihedB,
-                    mapping,
-                    lam,
-                )
-            )
-
-            write_hybrid_topology(
-                outfilename,
-                hybrid_atoms,
-                hybrid_bonds=hybrid_bonds,
-                hybrid_angles=hybrid_angles,
-                hybrid_dihedrals=hybrid_dihedrals,
-                system_name="LigandA to LigandB Hybrid",
-                molecule_name="LIG",
-                nmols=1,
-            )
-
-            # Create position restraints file for this lambda
-            posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
-            write_position_restraints_file(posre_filename, hybrid_atoms)
-
-            print(f"Wrote {outfilename}")
-            if os.path.exists(posre_filename):
-                print(f"Wrote {posre_filename}")
     elif cmd == "hybrid_coords":
         if len(sys.argv) != 5:
             print(
@@ -1610,29 +1452,44 @@ def main():
         else:
             print(f"Using original ligand B: {ligB_mol2}")
 
-        lambdas = np.arange(0, 1.05, 0.05)
-        for lam in lambdas:
-            lam_str = f"{lam:.2f}"
-            lam_dir = f"lambda_{lam_str}"
-            # import os  # Removed redundant import
+        # Parse topology files for coordinate generation
+        itpA = ligA_mol2.replace(".mol2", ".itp")
+        itpB = ligB_mol2.replace(".mol2", ".itp")
 
-            if not os.path.exists(lam_dir):
-                os.makedirs(lam_dir)
-            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
-            print(f"[DEBUG] Processing lambda {lam_str}")
-            print(f"[DEBUG] hybrid_itp path: {hybrid_itp}")
-            print(f"[DEBUG] hybrid_itp exists: {os.path.exists(hybrid_itp)}")
-            if not os.path.exists(hybrid_itp):
-                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
-                continue
-            hybridize_coords_from_itp_interpolated(
-                ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
-            )
-            print(f"Wrote {out_pdb}")
+        if os.path.exists(itpA) and os.path.exists(itpB):
+            dfA = parse_itp_atoms_full(itpA)
+            dfB = parse_itp_atoms_full(itpB)
+            bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+            bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+            anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+            anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+            dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+            dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+            mapping = load_atom_map(atom_map_txt)
 
-            # Verify synchronization
-            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
+            process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
+                                   ligA_mol2, ligB_mol2, atom_map_txt)
+        else:
+            print("Warning: ITP files not found, coordinate generation may be limited")
+            # Fallback: just generate coordinates without topology
+            lambdas = np.arange(0, 1.05, 0.05)
+            for lam in lambdas:
+                lam_str = f"{lam:.2f}"
+                lam_dir = f"lambda_{lam_str}"
+                if not os.path.exists(lam_dir):
+                    os.makedirs(lam_dir)
+                hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+                out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+
+                if not os.path.exists(hybrid_itp):
+                    print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
+                    continue
+
+                hybridize_coords_from_itp_interpolated(
+                    ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+                )
+                print(f"Wrote {out_pdb}")
+                verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
@@ -1666,62 +1523,13 @@ def main():
         mapping = load_atom_map(outmap)
         bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
         bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        anglesA = parse_itp_section(
-            itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
-        )
-        anglesB = parse_itp_section(
-            itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"]
-        )
-        dihedA = parse_itp_section(
-            itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
-        )
-        dihedB = parse_itp_section(
-            itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"]
-        )
-        lambdas = np.arange(0, 1.05, 0.05)
-        for lam in lambdas:
-            lam_str = f"{lam:.2f}"
-            lam_dir = f"lambda_{lam_str}"
-            # import os  # Removed redundant import
+        anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+        anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+        dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+        dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
 
-            if not os.path.exists(lam_dir):
-                os.makedirs(lam_dir)
-            outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-
-            # Create hybrid topology for this lambda
-            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = (
-                create_hybrid_topology_for_lambda(
-                    dfA,
-                    dfB,
-                    bondsA,
-                    bondsB,
-                    anglesA,
-                    anglesB,
-                    dihedA,
-                    dihedB,
-                    mapping,
-                    lam,
-                )
-            )
-
-            write_hybrid_topology(
-                outfilename,
-                hybrid_atoms,
-                hybrid_bonds=hybrid_bonds,
-                hybrid_angles=hybrid_angles,
-                hybrid_dihedrals=hybrid_dihedrals,
-                system_name="LigandA to LigandB Hybrid",
-                molecule_name="LIG",
-                nmols=1,
-            )
-
-            # Create position restraints file for this lambda
-            posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
-            write_position_restraints_file(posre_filename, hybrid_atoms)
-
-            print(f"Wrote {outfilename}")
-            if os.path.exists(posre_filename):
-                print(f"Wrote {posre_filename}")
+        process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
+                               ligA_mol2, aligned_ligandB_mol2, outmap)
     else:
         print_help()
         sys.exit(1)
@@ -1766,7 +1574,7 @@ def test_enhanced_dual_topology():
         print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
               f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
 
-    print("\n✓ Enhanced dual topology test completed")
+    print("\nEnhanced dual topology test completed")
 
 
 if __name__ == "__main__":
