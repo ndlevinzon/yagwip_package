@@ -876,7 +876,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 # At lambda 1, uniqueA atoms should not be present
                 # This should not happen due to build_lambda_atom_list filtering
                 chargeB = 0.0
-                massB = 0.0
+                massB = 0.001
                 typeB = "DUM"
             else:
                 # At intermediate lambda, gradually transition
@@ -888,7 +888,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Becoming dummy
                     chargeB = 0.0
-                    massB = 0.0
+                    massB = 0.001
                     typeB = "DUM"
 
         elif atom_type == "uniqueB":
@@ -903,7 +903,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 # At lambda 0, uniqueB atoms should not be present
                 # This should not happen due to build_lambda_atom_list filtering
                 chargeA = 0.0
-                massA = 0.0
+                massA = 0.001
                 typeA = "DUM"
             elif lam == 1:
                 # At lambda 1, B atoms are fully real - no A properties needed
@@ -920,7 +920,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Still dummy
                     chargeA = 0.0
-                    massA = 0.0
+                    massA = 0.001
                     typeA = "DUM"
 
         hybrid_atoms.append(
