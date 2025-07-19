@@ -615,7 +615,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                     chargeA=rowA["charge"],
                     chargeB=0.0,
                     massA=rowA["mass"],
-                    massB=0.1,
+                    massB=0.0,
                     mapped=False,
                 )
             )
@@ -640,7 +640,7 @@ def build_hybrid_atoms(dfA, dfB, mapping):
                     typeB=rowB["type"],
                     chargeA=0.0,
                     chargeB=rowB["charge"],
-                    massA=0.1,
+                    massA=0.0,
                     massB=rowB["mass"],
                     mapped=False,
                 )
@@ -953,7 +953,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             elif lam == 1:
                 # At lambda 1, A atoms are fully dummy
                 chargeB = 0.0
-                massB = 0.1
+                massB = 0.0
                 typeB = "DUM"
             else:
                 # At intermediate lambda, gradually transition
@@ -965,7 +965,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Becoming dummy
                     chargeB = 0.0
-                    massB = 0.1
+                    massB = 0.0
                     typeB = "DUM"
 
         elif atom_type == "uniqueB":
@@ -979,7 +979,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             if lam == 0:
                 # At lambda 0, B atoms are fully dummy
                 chargeA = 0.0
-                massA = 0.1
+                massA = 0.0
                 typeA = "DUM"
             elif lam == 1:
                 # At lambda 1, B atoms are fully real
@@ -996,7 +996,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Still dummy
                     chargeA = 0.0
-                    massA = 0.1
+                    massA = 0.0
                     typeA = "DUM"
 
         # Determine the atom name based on which state is more "real"
