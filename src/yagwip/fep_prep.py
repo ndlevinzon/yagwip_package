@@ -828,9 +828,9 @@ def build_lambda_atom_list(dfA, dfB, mapping, lam):
 def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
     """
     Enhanced dual topology atom building with growing procedure:
-    - Lambda 0: Pure molecule A (all A atoms real, B atoms dummies)
+    - Lambda 0: Pure molecule A (only A atoms present with real properties)
     - Lambda 0.5: Hybrid structure with interpolated properties
-    - Lambda 1: Pure molecule B (all B atoms real, A atoms dummies)
+    - Lambda 1: Pure molecule B (only B atoms present with real properties)
     - Intermediate values: Gradual transition with realistic dummy properties
 
     The growing procedure ensures smooth transitions between states.
@@ -853,23 +853,30 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             typeA = rowA["type"]
             typeB = rowB["type"]
 
+            # For mapped atoms, use A name if lambda <= 0.5, B name otherwise
+            if lam <= 0.5:
+                atom_name = rowA["atom_name"]
+            else:
+                atom_name = rowB["atom_name"]
+
         elif atom_type == "uniqueA":
-            # Unique A atoms: real A properties, dummy B properties
+            # Unique A atoms: only present at lambda <= 0.5
             rowA = dfA[dfA["index"] == origA_idx].iloc[0]
             chargeA = rowA["charge"]
             massA = rowA["mass"]
             typeA = rowA["type"]
+            atom_name = rowA["atom_name"]
 
-            # Determine B properties based on lambda
             if lam == 0:
-                # At lambda 0, A atoms are fully real
-                chargeB = chargeA  # Same as A
-                massB = massA  # Same as A
-                typeB = typeA  # Same as A
+                # At lambda 0, A atoms are fully real - no B properties needed
+                chargeB = chargeA
+                massB = massA
+                typeB = typeA
             elif lam == 1:
-                # At lambda 1, A atoms are fully dummy
+                # At lambda 1, uniqueA atoms should not be present
+                # This should not happen due to build_lambda_atom_list filtering
                 chargeB = 0.0
-                massB = 0.001
+                massB = 0.0
                 typeB = "DUM"
             else:
                 # At intermediate lambda, gradually transition
@@ -881,27 +888,28 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Becoming dummy
                     chargeB = 0.0
-                    massB = 0.001
+                    massB = 0.0
                     typeB = "DUM"
 
         elif atom_type == "uniqueB":
-            # Unique B atoms: real B properties, dummy A properties
+            # Unique B atoms: only present at lambda >= 0.5
             rowB = dfB[dfB["index"] == origB_idx].iloc[0]
             chargeB = rowB["charge"]
             massB = rowB["mass"]
             typeB = rowB["type"]
+            atom_name = rowB["atom_name"]
 
-            # Determine A properties based on lambda
             if lam == 0:
-                # At lambda 0, B atoms are fully dummy
+                # At lambda 0, uniqueB atoms should not be present
+                # This should not happen due to build_lambda_atom_list filtering
                 chargeA = 0.0
-                massA = 0.001
+                massA = 0.0
                 typeA = "DUM"
             elif lam == 1:
-                # At lambda 1, B atoms are fully real
-                chargeA = chargeB  # Same as B
-                massA = massB  # Same as B
-                typeA = typeB  # Same as B
+                # At lambda 1, B atoms are fully real - no A properties needed
+                chargeA = chargeB
+                massA = massB
+                typeA = typeB
             else:
                 # At intermediate lambda, gradually transition
                 if lam > 0.5:
@@ -912,28 +920,8 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
                 else:
                     # Still dummy
                     chargeA = 0.0
-                    massA = 0.001
+                    massA = 0.0
                     typeA = "DUM"
-
-        # Determine the atom name based on which state is more "real"
-        if atom_type == "mapped":
-            # For mapped atoms, use A name if lambda <= 0.5, B name otherwise
-            if lam <= 0.5:
-                atom_name = rowA["atom_name"]
-            else:
-                atom_name = rowB["atom_name"]
-        elif atom_type == "uniqueA":
-            # For unique A atoms, use A name if lambda <= 0.5, DUM otherwise
-            if lam <= 0.5:
-                atom_name = rowA["atom_name"]
-            else:
-                atom_name = "DUM"
-        elif atom_type == "uniqueB":
-            # For unique B atoms, use DUM if lambda <= 0.5, B name otherwise
-            if lam <= 0.5:
-                atom_name = "DUM"
-            else:
-                atom_name = rowB["atom_name"]
 
         hybrid_atoms.append(
             HybridAtom(
@@ -1140,16 +1128,17 @@ def hybridize_coords_from_itp_interpolated(
             atom_type_pdb = atom_name  # Always real atom type for mapped atoms
 
         elif atom_type == "uniqueA":
-            # Unique A atoms: real coordinates, but may become dummies
+            # Unique A atoms: only present at lambda <= 0.5
             coord = coordsA.get(origA_idx, None)
             if coord is None:
                 coord = find_closest_atom_coord(centroid, coordsA)
 
-            # Determine atom type based on lambda
+            # At lambda 0, uniqueA atoms are real; at lambda 1, they shouldn't be present
             if lam == 0:
                 atom_type_pdb = atom_name  # Real atom type at lambda 0
             elif lam == 1:
-                atom_type_pdb = "DUM"  # Dummy at lambda 1
+                # This should not happen due to build_lambda_atom_list filtering
+                atom_type_pdb = "DUM"  # Fallback
             else:
                 # At intermediate lambda, gradually transition
                 if lam < 0.5:
@@ -1158,14 +1147,15 @@ def hybridize_coords_from_itp_interpolated(
                     atom_type_pdb = "DUM"  # Become dummy
 
         elif atom_type == "uniqueB":
-            # Unique B atoms: real coordinates, but may become dummies
+            # Unique B atoms: only present at lambda >= 0.5
             coord = coordsB.get(origB_idx, None)
             if coord is None:
                 coord = find_closest_atom_coord(centroid, coordsB)
 
-            # Determine atom type based on lambda
+            # At lambda 1, uniqueB atoms are real; at lambda 0, they shouldn't be present
             if lam == 0:
-                atom_type_pdb = "DUM"  # Dummy at lambda 0
+                # This should not happen due to build_lambda_atom_list filtering
+                atom_type_pdb = "DUM"  # Fallback
             elif lam == 1:
                 atom_type_pdb = atom_name  # Real atom type at lambda 1
             else:
@@ -1314,32 +1304,36 @@ dummy atom placement and smooth transitions between states:
 
 Lambda Values and Behavior:
 - Lambda = 0.0: Pure molecule A
-  * All A atoms are real with full properties
-  * B atoms are dummies placed at closest A atom positions
-  * Minimizes non-bonded interaction errors
+  * Only mapped atoms + unique A atoms are present
+  * All atoms have real A properties
+  * No B-specific atoms in topology or coordinates
+  * Clean, minimal topology for pure A state
 
 - Lambda = 0.5: Hybrid structure
+  * All atoms present: mapped + uniqueA + uniqueB
   * Mapped atoms: interpolated coordinates and properties
   * Unique A atoms: still real (gradually becoming dummies)
   * Unique B atoms: still dummies (gradually becoming real)
   * Bond distances are half-way between A and B states
 
 - Lambda = 1.0: Pure molecule B
-  * All B atoms are real with full properties
-  * A atoms are dummies placed at closest B atom positions
-  * Minimizes non-bonded interaction errors
+  * Only mapped atoms + unique B atoms are present
+  * All atoms have real B properties
+  * No A-specific atoms in topology or coordinates
+  * Clean, minimal topology for pure B state
 
 - Intermediate values (0 < lambda < 1):
-  * Smooth transitions between states
+  * All atoms present for smooth transitions
   * Dummy atoms placed at closest real atom positions
   * Gradual property interpolation for mapped atoms
 
 Key Improvements:
-1. Dummy atoms placed at closest real atom positions (not random)
-2. Smooth growing/degrowing of unique atoms
-3. Realistic bond distance interpolation at lambda = 0.5
-4. Minimized non-bonded interaction errors
-5. Continuous structure guarantee in MCS algorithm
+1. Clean pure states: lambda 0 and 1 only include relevant atoms
+2. Dummy atoms placed at closest real atom positions (not random)
+3. Smooth growing/degrowing of unique atoms
+4. Realistic bond distance interpolation at lambda = 0.5
+5. Minimized non-bonded interaction errors
+6. Continuous structure guarantee in MCS algorithm
 """)
 
 
@@ -1558,23 +1552,36 @@ def test_enhanced_dual_topology():
 
     print("Testing lambda = 0.0 (pure A):")
     atoms_0 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.0)
+    print(f"  Found {len(atoms_0)} atoms")
     for atom in atoms_0:
         print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
               f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
 
     print("\nTesting lambda = 0.5 (hybrid):")
     atoms_05 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.5)
+    print(f"  Found {len(atoms_05)} atoms")
     for atom in atoms_05:
         print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
               f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
 
     print("\nTesting lambda = 1.0 (pure B):")
     atoms_1 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 1.0)
+    print(f"  Found {len(atoms_1)} atoms")
     for atom in atoms_1:
         print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
               f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
 
-    print("\nEnhanced dual topology test completed")
+    # Test atom list filtering
+    print("\nTesting atom list filtering:")
+    atom_list_0 = build_lambda_atom_list(dfA, dfB, mapping, 0.0)
+    atom_list_1 = build_lambda_atom_list(dfA, dfB, mapping, 1.0)
+    atom_list_05 = build_lambda_atom_list(dfA, dfB, mapping, 0.5)
+
+    print(f"  Lambda 0.0: {len(atom_list_0)} atoms")
+    print(f"  Lambda 0.5: {len(atom_list_05)} atoms")
+    print(f"  Lambda 1.0: {len(atom_list_1)} atoms")
+
+    print("\n✓ Enhanced dual topology test completed")
 
 
 if __name__ == "__main__":
