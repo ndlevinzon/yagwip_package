@@ -853,7 +853,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             typeA = rowA["type"]
             typeB = rowB["type"]
 
-            # For mapped atoms, use A name if lambda <= 0.5, B name otherwise
+            # MCS atoms always have real atom names (never DUM)
             if lam <= 0.5:
                 atom_name = rowA["atom_name"]
             else:
@@ -865,21 +865,24 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             chargeA = rowA["charge"]
             massA = rowA["mass"]
             typeA = rowA["type"]
-            atom_name = rowA["atom_name"]
 
+            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                # At lambda 0, A atoms are fully real - no B properties needed
+                # At lambda 0, A atoms are fully real - use real name
+                atom_name = rowA["atom_name"]
                 chargeB = chargeA
                 massB = massA
                 typeB = typeA
             elif lam == 1:
                 # At lambda 1, uniqueA atoms should not be present
                 # This should not happen due to build_lambda_atom_list filtering
+                atom_name = "DUM"
                 chargeB = 0.0
                 massB = 0.001
                 typeB = "DUM"
             else:
-                # At intermediate lambda, gradually transition
+                # At intermediate lambda, use DUM name
+                atom_name = "DUM"
                 if lam < 0.5:
                     # Still mostly real
                     chargeB = chargeA
@@ -897,21 +900,24 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             chargeB = rowB["charge"]
             massB = rowB["mass"]
             typeB = rowB["type"]
-            atom_name = rowB["atom_name"]
 
+            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
                 # At lambda 0, uniqueB atoms should not be present
                 # This should not happen due to build_lambda_atom_list filtering
+                atom_name = "DUM"
                 chargeA = 0.0
                 massA = 0.001
                 typeA = "DUM"
             elif lam == 1:
-                # At lambda 1, B atoms are fully real - no A properties needed
+                # At lambda 1, B atoms are fully real - use real name
+                atom_name = rowB["atom_name"]
                 chargeA = chargeB
                 massA = massB
                 typeA = typeB
             else:
-                # At intermediate lambda, gradually transition
+                # At intermediate lambda, use DUM name
+                atom_name = "DUM"
                 if lam > 0.5:
                     # Becoming real
                     chargeA = chargeB
@@ -989,7 +995,10 @@ def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
     for i, (topo_idx, topo_name) in enumerate(topo_atoms):
         if i < len(pdb_atoms):
             pdb_name = pdb_atoms[i]
-            # In dual topology, some atoms should be "DUM" at intermediate lambdas
+            # New naming convention:
+            # - MCS atoms: always real names (never DUM)
+            # - Pure states (λ=0, λ=1): unique atoms have real names
+            # - Intermediate states (0<λ<1): unique atoms use "DUM"
             # Only flag as error if both names are non-dummy and different
             if (topo_name.strip() != "DUM" and pdb_name.strip() != "DUM" and
                     topo_name.strip() != pdb_name.strip()):
@@ -1129,7 +1138,8 @@ def hybridize_coords_from_itp_interpolated(
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
-            atom_type_pdb = atom_name  # Always real atom type for mapped atoms
+            # MCS atoms always have real atom names (never DUM)
+            atom_type_pdb = atom_name
 
         elif atom_type == "uniqueA":
             # Unique A atoms: interpolate from A position to closest MCS position
@@ -1151,18 +1161,15 @@ def hybridize_coords_from_itp_interpolated(
                 # At lambda > 0.5, uniqueA atoms should not be present
                 coord = closest_mcs_coord
 
-            # Determine atom type based on lambda
+            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                atom_type_pdb = atom_name  # Real atom type at lambda 0
+                atom_type_pdb = atom_name  # Real atom name at lambda 0
             elif lam == 1:
                 # This should not happen due to build_lambda_atom_list filtering
                 atom_type_pdb = "DUM"  # Fallback
             else:
-                # At intermediate lambda, gradually transition
-                if lam < 0.5:
-                    atom_type_pdb = atom_name  # Still real
-                else:
-                    atom_type_pdb = "DUM"  # Become dummy
+                # At intermediate lambda, use DUM name
+                atom_type_pdb = "DUM"
 
         elif atom_type == "uniqueB":
             # Unique B atoms: interpolate from closest MCS position to B position
@@ -1184,18 +1191,15 @@ def hybridize_coords_from_itp_interpolated(
                 # At lambda < 0.5, uniqueB atoms should not be present
                 coord = closest_mcs_coord
 
-            # Determine atom type based on lambda
+            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
                 # This should not happen due to build_lambda_atom_list filtering
                 atom_type_pdb = "DUM"  # Fallback
             elif lam == 1:
-                atom_type_pdb = atom_name  # Real atom type at lambda 1
+                atom_type_pdb = atom_name  # Real atom name at lambda 1
             else:
-                # At intermediate lambda, gradually transition
-                if lam > 0.5:
-                    atom_type_pdb = atom_name  # Become real
-                else:
-                    atom_type_pdb = "DUM"  # Still dummy
+                # At intermediate lambda, use DUM name
+                atom_type_pdb = "DUM"
         else:
             # Should not occur, but fallback
             coord = find_closest_atom_coord(centroid, coordsA)
@@ -1362,11 +1366,12 @@ Lambda Values and Behavior:
 
 Key Improvements:
 1. Clean pure states: lambda 0 and 1 only include relevant atoms
-2. Dummy atoms placed at closest real atom positions (not random)
-3. Smooth growing/degrowing of unique atoms
-4. Realistic bond distance interpolation at lambda = 0.5
-5. Minimized non-bonded interaction errors
-6. Continuous structure guarantee in MCS algorithm
+2. Consistent naming convention: MCS atoms always real, unique atoms DUM at intermediate λ
+3. Dummy atoms placed at closest real atom positions (not random)
+4. Smooth growing/degrowing of unique atoms
+5. Realistic bond distance interpolation at lambda = 0.5
+6. Minimized non-bonded interaction errors
+7. Continuous structure guarantee in MCS algorithm
 """)
 
 
@@ -1619,6 +1624,13 @@ def test_enhanced_dual_topology():
     print("  Unique A atoms (lambda 0 -> 0.5): A position -> MCS position")
     print("  Unique B atoms (lambda 0.5 -> 1): MCS position -> B position")
     print("  Mapped atoms (lambda 0 -> 1): A position -> B position")
+
+    # Test naming convention
+    print("\nTesting naming convention:")
+    print("  MCS atoms: always real names (never DUM)")
+    print("  Lambda 0: unique A atoms have real names")
+    print("  Lambda 1: unique B atoms have real names")
+    print("  Intermediate λ: unique atoms use DUM names")
 
     print("\n✓ Enhanced dual topology test completed")
 
