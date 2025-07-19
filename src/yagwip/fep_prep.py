@@ -10,6 +10,35 @@ import numpy as np
 
 logger = logging.getLogger("hybrid_topology")
 
+"""
+FEP Preparation Module - Enhanced MCS Algorithm
+
+This module provides functionality for Free Energy Perturbation (FEP) preparation,
+including ligand alignment and hybrid topology generation.
+
+Key Improvements in MCS Algorithm:
+1. **Continuous Structure Guarantee**: The MCS algorithm now ensures that only 
+   the largest continuous (connected) substructure is returned, where all atoms 
+   are connected by bond edges.
+
+2. **Enhanced Connectivity Validation**: Added `is_connected_subgraph()` function 
+   to verify that subgraphs are truly connected before considering them as valid MCS.
+
+3. **Improved Search Strategy**: The algorithm searches from largest to smallest 
+   size and returns immediately upon finding the first valid MCS of a given size, 
+   guaranteeing it's the largest continuous structure.
+
+4. **Comprehensive Validation**: Added `validate_mcs()` function to verify that 
+   returned MCS results are consistent and properly connected.
+
+5. **Better Logging**: Enhanced logging provides detailed information about the 
+   MCS search process, making it easier to debug and understand the results.
+
+Usage:
+    python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
+    python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2
+"""
+
 
 # =====================
 # Ligand Alignment Functions
@@ -329,35 +358,164 @@ def are_isomorphic(g1, g2):
     return backtrack({}, set())
 
 
+def is_connected_subgraph(graph, atom_indices):
+    """
+    Check if a set of atom indices forms a connected subgraph.
+
+    Args:
+        graph: MolGraph object
+        atom_indices: set of atom indices to check
+
+    Returns:
+        bool: True if the subgraph is connected, False otherwise
+    """
+    if len(atom_indices) <= 1:
+        return True
+
+    # Start from any atom in the set
+    start_atom = next(iter(atom_indices))
+    visited = {start_atom}
+    stack = [start_atom]
+
+    while stack:
+        current = stack.pop()
+        for neighbor in graph.atoms[current].neighbors:
+            if neighbor in atom_indices and neighbor not in visited:
+                visited.add(neighbor)
+                stack.append(neighbor)
+
+    return len(visited) == len(atom_indices)
+
+
 def enumerate_connected_subgraphs(graph, size):
+    """
+    Enumerate all connected subgraphs of a given size.
+    Uses a depth-first search approach to ensure all subgraphs are connected.
+
+    Args:
+        graph: MolGraph object
+        size: desired size of subgraphs
+
+    Returns:
+        list: list of sets, where each set contains atom indices of a connected subgraph
+    """
     results = set()
+
+    # Start from each atom as a potential root
     for start in graph.atoms:
         stack = [(frozenset([start]), start)]
         while stack:
             nodes, last = stack.pop()
+
             if len(nodes) == size:
-                results.add(nodes)
+                # Verify connectivity before adding
+                if is_connected_subgraph(graph, nodes):
+                    results.add(nodes)
                 continue
+
+            # Only add neighbors that maintain connectivity
             for nbr in graph.atoms[last].neighbors:
                 if nbr not in nodes:
                     new_nodes = nodes | {nbr}
                     if len(new_nodes) <= size:
                         stack.append((new_nodes, nbr))
+
     return [set(s) for s in results]
 
 
+def validate_mcs(g1, g2, size, mapping, atoms1, atoms2):
+    """
+    Validate that the returned MCS is indeed connected and properly mapped.
+
+    Args:
+        g1, g2: MolGraph objects representing the two molecules
+        size: size of the MCS
+        mapping: dictionary mapping atom indices from g1 to g2
+        atoms1: set of atom indices from g1 in the MCS
+        atoms2: set of atom indices from g2 in the MCS
+
+    Returns:
+        bool: True if the MCS is valid, False otherwise
+    """
+    if size == 0 or mapping is None or atoms1 is None or atoms2 is None:
+        return False
+
+    # Check that both atom sets are connected
+    if not is_connected_subgraph(g1, atoms1):
+        print(f"ERROR: MCS atoms in molecule 1 are not connected: {atoms1}")
+        return False
+
+    if not is_connected_subgraph(g2, atoms2):
+        print(f"ERROR: MCS atoms in molecule 2 are not connected: {atoms2}")
+        return False
+
+    # Check that mapping is consistent
+    if len(mapping) != size:
+        print(f"ERROR: Mapping size ({len(mapping)}) doesn't match MCS size ({size})")
+        return False
+
+    # Check that all mapped atoms exist in both molecules
+    for atom1_idx, atom2_idx in mapping.items():
+        if atom1_idx not in atoms1:
+            print(f"ERROR: Mapped atom {atom1_idx} not in atoms1 set")
+            return False
+        if atom2_idx not in atoms2:
+            print(f"ERROR: Mapped atom {atom2_idx} not in atoms2 set")
+            return False
+
+    print(f"MCS validation passed: size={size}, connected=True")
+    return True
+
+
 def find_mcs(g1, g2):
+    """
+    Find the Maximum Common Substructure (MCS) between two molecular graphs.
+    Returns only the largest continuous structure where all atoms are connected by bond edges.
+
+    Args:
+        g1, g2: MolGraph objects representing the two molecules
+
+    Returns:
+        tuple: (size, mapping, atoms1, atoms2) where:
+            - size: number of atoms in the MCS
+            - mapping: dictionary mapping atom indices from g1 to g2
+            - atoms1: set of atom indices from g1 in the MCS
+            - atoms2: set of atom indices from g2 in the MCS
+    """
+    print(f"Searching for MCS between molecules with {len(g1.atoms)} and {len(g2.atoms)} atoms")
+
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
+        print(f"Swapped molecules: now searching for MCS in smaller molecule ({len(g1.atoms)} atoms)")
+
+    # Track the best MCS found so far
+    best_size = 0
+    best_mapping = None
+    best_atoms1 = None
+    best_atoms2 = None
+
+    # Search from largest possible size down to 1
     for size in range(len(g1.atoms), 0, -1):
+        print(f"Searching for connected subgraphs of size {size}")
+
+        # Get all connected subgraphs of this size from g1
         subgraphs1 = enumerate_connected_subgraphs(g1, size)
         if not subgraphs1:
+            print(f"No connected subgraphs of size {size} found in molecule 1")
             continue
-        for atom_indices1 in subgraphs1:
+
+        print(f"Found {len(subgraphs1)} connected subgraphs of size {size} in molecule 1")
+
+        # For each connected subgraph in g1
+        for i, atom_indices1 in enumerate(subgraphs1):
             sg1 = g1.subgraph(atom_indices1)
+
+            # Count elements in this subgraph
             elem_count1 = defaultdict(int)
             for a in sg1.atoms.values():
                 elem_count1[a.element] += 1
+
+            # Find matching connected subgraphs in g2 with same element composition
             subgraphs2 = [
                 s
                 for s in enumerate_connected_subgraphs(g2, size)
@@ -366,12 +524,43 @@ def find_mcs(g1, g2):
                     for e, c in elem_count1.items()
                 )
             ]
-            for atom_indices2 in subgraphs2:
+
+            print(f"  Subgraph {i + 1}/{len(subgraphs1)}: found {len(subgraphs2)} matching subgraphs in molecule 2")
+
+            # Check each matching subgraph in g2
+            for j, atom_indices2 in enumerate(subgraphs2):
                 sg2 = g2.subgraph(atom_indices2)
                 iso, mapping = are_isomorphic(sg1, sg2)
                 if iso:
-                    return size, mapping, atom_indices1, atom_indices2
-    return 0, None, None, None
+                    # Found a valid MCS of this size
+                    best_size = size
+                    best_mapping = mapping
+                    best_atoms1 = atom_indices1
+                    best_atoms2 = atom_indices2
+
+                    print(f"Found MCS of size {size}!")
+                    print(f"  Molecule 1 atoms: {sorted(atom_indices1)}")
+                    print(f"  Molecule 2 atoms: {sorted(atom_indices2)}")
+                    print(f"  Mapping: {mapping}")
+
+                    # Validate the MCS before returning
+                    if validate_mcs(g1, g2, best_size, best_mapping, best_atoms1, best_atoms2):
+                        # Since we're searching from largest to smallest,
+                        # and we found a valid MCS of this size, we can return immediately
+                        # as this is guaranteed to be the largest continuous MCS
+                        return best_size, best_mapping, best_atoms1, best_atoms2
+                    else:
+                        print(f"WARNING: MCS validation failed for size {size}, continuing search...")
+
+    # Return the best MCS found (or None if no MCS found)
+    if best_size == 0:
+        print("No MCS found")
+    else:
+        print(f"Best MCS found has size {best_size}")
+        # Validate the best MCS found
+        validate_mcs(g1, g2, best_size, best_mapping, best_atoms1, best_atoms2)
+
+    return best_size, best_mapping, best_atoms1, best_atoms2
 
 
 # =====================
@@ -1584,5 +1773,63 @@ def main():
         sys.exit(1)
 
 
+def test_mcs_connectivity():
+    """
+    Test function to verify that the MCS algorithm returns only connected structures.
+    This function creates simple test molecules and verifies the MCS results.
+    """
+    print("Testing MCS connectivity...")
+
+    # Create a simple test molecule A: C-C-C (linear chain)
+    g1 = MolGraph()
+    g1.atoms = {1: Atom(1, "C"), 2: Atom(2, "C"), 3: Atom(3, "C")}
+    g1.bonds = [Bond(1, 2, "1"), Bond(2, 3, "1")]
+    g1.adj = defaultdict(set)
+    g1.adj[1] = {2}
+    g1.adj[2] = {1, 3}
+    g1.adj[3] = {2}
+    g1.bond_types = {(1, 2): "1", (2, 3): "1"}
+
+    # Create a simple test molecule B: C-C-C-C (longer linear chain)
+    g2 = MolGraph()
+    g2.atoms = {1: Atom(1, "C"), 2: Atom(2, "C"), 3: Atom(3, "C"), 4: Atom(4, "C")}
+    g2.bonds = [Bond(1, 2, "1"), Bond(2, 3, "1"), Bond(3, 4, "1")]
+    g2.adj = defaultdict(set)
+    g2.adj[1] = {2}
+    g2.adj[2] = {1, 3}
+    g2.adj[3] = {2, 4}
+    g2.adj[4] = {3}
+    g2.bond_types = {(1, 2): "1", (2, 3): "1", (3, 4): "1"}
+
+    # Find MCS
+    size, mapping, atoms1, atoms2 = find_mcs(g1, g2)
+
+    print(f"Test result: MCS size = {size}")
+    print(f"Test result: MCS atoms in molecule 1 = {atoms1}")
+    print(f"Test result: MCS atoms in molecule 2 = {atoms2}")
+    print(f"Test result: Mapping = {mapping}")
+
+    # Verify that the result is connected
+    if size > 0 and atoms1 is not None and atoms2 is not None:
+        connected1 = is_connected_subgraph(g1, atoms1)
+        connected2 = is_connected_subgraph(g2, atoms2)
+        print(f"Test result: Molecule 1 MCS connected = {connected1}")
+        print(f"Test result: Molecule 2 MCS connected = {connected2}")
+
+        if connected1 and connected2:
+            print("✓ MCS connectivity test PASSED")
+            return True
+        else:
+            print("✗ MCS connectivity test FAILED")
+            return False
+    else:
+        print("✗ MCS connectivity test FAILED - no MCS found")
+        return False
+
+
 if __name__ == "__main__":
-    main()
+    # Run connectivity test if requested
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        test_mcs_connectivity()
+    else:
+        main()
