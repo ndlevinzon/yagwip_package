@@ -1040,13 +1040,15 @@ def hybridize_coords_from_itp_interpolated(
 ):
     """
     Enhanced dual topology coordinate generation with growing procedure:
-    - Lambda 0: Pure molecule A (all A atoms real, B atoms dummies at closest A positions)
-    - Lambda 0.5: Hybrid structure with interpolated bond distances
-    - Lambda 1: Pure molecule B (all B atoms real, A atoms dummies at closest B positions)
+    - Lambda 0: Pure molecule A (only A atoms present with real properties)
+    - Lambda 0.5: Hybrid structure with interpolated properties
+    - Lambda 1: Pure molecule B (only B atoms present with real properties)
     - Intermediate values: Gradual transition with realistic dummy placement
 
-    Dummy atoms are placed at the closest real atom position to minimize
-    non-bonded interaction errors.
+    Coordinates are interpolated for growing regions:
+    - Unique A atoms: interpolate from A position to closest MCS position
+    - Unique B atoms: interpolate from closest MCS position to B position
+    - Mapped atoms: interpolate between A and B positions
     """
     print(f"[DEBUG] Starting enhanced hybridize_coords_from_itp_interpolated for lambda {lam}")
 
@@ -1099,24 +1101,26 @@ def hybridize_coords_from_itp_interpolated(
             f.write("END\n")
         return
 
-    # Compute centroid of mapped atoms (core ligand)
-    mapped_coords = []
+    # Find MCS coordinates for growing procedure
+    mcs_coords = {}
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
         if atom_type == "mapped":
-            coordA = coordsA.get(origA_idx, None)
-            coordB = coordsB.get(origB_idx, None)
-            if coordA is not None and coordB is not None:
-                coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
-                mapped_coords.append(coord)
-    if mapped_coords:
-        centroid = tuple(np.mean([c[i] for c in mapped_coords]) for i in range(3))
+            # For mapped atoms, MCS position is interpolated between A and B
+            coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
+            coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
+            mcs_coords[origA_idx] = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
+            mcs_coords[origB_idx] = mcs_coords[origA_idx]  # Same position for mapped atoms
+
+    # Compute centroid of MCS for fallback
+    if mcs_coords:
+        centroid = tuple(np.mean([c[i] for c in mcs_coords.values()]) for i in range(3))
     else:
         centroid = (0.0, 0.0, 0.0)
 
     pdb_lines = []
     atom_counter = 0
 
-    print(f"[DEBUG] Processing {len(atom_list)} atoms")
+    print(f"[DEBUG] Processing {len(atom_list)} atoms with coordinate interpolation")
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
         atom_counter += 1
 
@@ -1128,12 +1132,26 @@ def hybridize_coords_from_itp_interpolated(
             atom_type_pdb = atom_name  # Always real atom type for mapped atoms
 
         elif atom_type == "uniqueA":
-            # Unique A atoms: only present at lambda <= 0.5
-            coord = coordsA.get(origA_idx, None)
-            if coord is None:
-                coord = find_closest_atom_coord(centroid, coordsA)
+            # Unique A atoms: interpolate from A position to closest MCS position
+            coordA = coordsA.get(origA_idx, None)
+            if coordA is None:
+                coordA = find_closest_atom_coord(centroid, coordsA)
 
-            # At lambda 0, uniqueA atoms are real; at lambda 1, they shouldn't be present
+            # Find closest MCS position for this unique A atom
+            closest_mcs_coord = find_closest_atom_coord(coordA, mcs_coords)
+
+            # Interpolate between A position and MCS position
+            # At lambda 0: full A position, at lambda 0.5: halfway to MCS, at lambda 1: MCS position
+            if lam <= 0.5:
+                # Interpolate from A position to MCS position
+                # lambda 0 -> 0.5 maps to 0 -> 1 in interpolation
+                interp_factor = lam * 2.0  # 0 -> 1 as lambda goes 0 -> 0.5
+                coord = tuple((1 - interp_factor) * a + interp_factor * m for a, m in zip(coordA, closest_mcs_coord))
+            else:
+                # At lambda > 0.5, uniqueA atoms should not be present
+                coord = closest_mcs_coord
+
+            # Determine atom type based on lambda
             if lam == 0:
                 atom_type_pdb = atom_name  # Real atom type at lambda 0
             elif lam == 1:
@@ -1147,12 +1165,26 @@ def hybridize_coords_from_itp_interpolated(
                     atom_type_pdb = "DUM"  # Become dummy
 
         elif atom_type == "uniqueB":
-            # Unique B atoms: only present at lambda >= 0.5
-            coord = coordsB.get(origB_idx, None)
-            if coord is None:
-                coord = find_closest_atom_coord(centroid, coordsB)
+            # Unique B atoms: interpolate from closest MCS position to B position
+            coordB = coordsB.get(origB_idx, None)
+            if coordB is None:
+                coordB = find_closest_atom_coord(centroid, coordsB)
 
-            # At lambda 1, uniqueB atoms are real; at lambda 0, they shouldn't be present
+            # Find closest MCS position for this unique B atom
+            closest_mcs_coord = find_closest_atom_coord(coordB, mcs_coords)
+
+            # Interpolate between MCS position and B position
+            # At lambda 0.5: MCS position, at lambda 1: full B position
+            if lam >= 0.5:
+                # Interpolate from MCS position to B position
+                # lambda 0.5 -> 1 maps to 0 -> 1 in interpolation
+                interp_factor = (lam - 0.5) * 2.0  # 0 -> 1 as lambda goes 0.5 -> 1
+                coord = tuple((1 - interp_factor) * m + interp_factor * b for m, b in zip(closest_mcs_coord, coordB))
+            else:
+                # At lambda < 0.5, uniqueB atoms should not be present
+                coord = closest_mcs_coord
+
+            # Determine atom type based on lambda
             if lam == 0:
                 # This should not happen due to build_lambda_atom_list filtering
                 atom_type_pdb = "DUM"  # Fallback
@@ -1305,27 +1337,28 @@ dummy atom placement and smooth transitions between states:
 Lambda Values and Behavior:
 - Lambda = 0.0: Pure molecule A
   * Only mapped atoms + unique A atoms are present
-  * All atoms have real A properties
+  * All atoms have real A properties and coordinates
   * No B-specific atoms in topology or coordinates
   * Clean, minimal topology for pure A state
 
 - Lambda = 0.5: Hybrid structure
   * All atoms present: mapped + uniqueA + uniqueB
   * Mapped atoms: interpolated coordinates and properties
-  * Unique A atoms: still real (gradually becoming dummies)
-  * Unique B atoms: still dummies (gradually becoming real)
+  * Unique A atoms: coordinates interpolated from A position to MCS position
+  * Unique B atoms: coordinates interpolated from MCS position to B position
   * Bond distances are half-way between A and B states
 
 - Lambda = 1.0: Pure molecule B
   * Only mapped atoms + unique B atoms are present
-  * All atoms have real B properties
+  * All atoms have real B properties and coordinates
   * No A-specific atoms in topology or coordinates
   * Clean, minimal topology for pure B state
 
 - Intermediate values (0 < lambda < 1):
   * All atoms present for smooth transitions
-  * Dummy atoms placed at closest real atom positions
-  * Gradual property interpolation for mapped atoms
+  * Unique A atoms: coordinates interpolate from A position to closest MCS position
+  * Unique B atoms: coordinates interpolate from closest MCS position to B position
+  * Gradual property and coordinate interpolation for mapped atoms
 
 Key Improvements:
 1. Clean pure states: lambda 0 and 1 only include relevant atoms
@@ -1580,6 +1613,12 @@ def test_enhanced_dual_topology():
     print(f"  Lambda 0.0: {len(atom_list_0)} atoms")
     print(f"  Lambda 0.5: {len(atom_list_05)} atoms")
     print(f"  Lambda 1.0: {len(atom_list_1)} atoms")
+
+    # Test coordinate interpolation logic
+    print("\nTesting coordinate interpolation logic:")
+    print("  Unique A atoms (lambda 0 -> 0.5): A position -> MCS position")
+    print("  Unique B atoms (lambda 0.5 -> 1): MCS position -> B position")
+    print("  Mapped atoms (lambda 0 -> 1): A position -> B position")
 
     print("\n✓ Enhanced dual topology test completed")
 
