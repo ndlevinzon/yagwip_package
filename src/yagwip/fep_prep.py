@@ -1879,8 +1879,5 @@ def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
 
 
 if __name__ == "__main__":
-    # Run tests if requested
-    if len(sys.argv) > 1 and sys.argv[1] == "test_dual_topology":
-        test_enhanced_dual_topology()
-    else:
-        main()
+
+    main()
