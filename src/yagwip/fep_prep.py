@@ -122,25 +122,26 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
                 final_coord = rotated_coord + np.mean(coords_A, axis=0)
                 x, y, z = final_coord
 
-                new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
-                if len(parts) > 6:
-                    new_line += f" {parts[6]}"
-                new_line += "\n"
-                new_lines.append(new_line)
-            else:
-                new_lines.append(line)
+            new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
+            if len(parts) > 6:
+                new_line += f" {parts[6]}"
+            new_line += "\n"
+            new_lines.append(new_line)
         else:
             new_lines.append(line)
+    else:
+        new_lines.append(line)
 
-    # Write aligned mol2 file
-    with open(aligned_ligandB_mol2, 'w') as f:
-        f.writelines(new_lines)
 
-    print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
-    print(f"Rotation matrix:\n{rotation_matrix}")
-    print(f"Translation vector: {translation}")
+# Write aligned mol2 file
+with open(aligned_ligandB_mol2, 'w') as f:
+    f.writelines(new_lines)
 
-    return aligned_ligandB_mol2
+print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
+print(f"Rotation matrix:\n{rotation_matrix}")
+print(f"Translation vector: {translation}")
+
+return aligned_ligandB_mol2
 
 
 # =====================
@@ -589,6 +590,7 @@ def write_hybrid_topology(
         hybrid_pairs=None,
         hybrid_angles=None,
         hybrid_dihedrals=None,
+        hybrid_exclusions=None,
         system_name="Hybrid System",
         molecule_name="LIG",
         nmols=1,
@@ -714,6 +716,17 @@ def write_hybrid_topology(
                 f.write(
                     f"{int(ai):5d} {int(aj):5d} {int(ak):5d} {int(al):5d}     2 {parA_str} {parB_str}\n"
                 )
+            f.write("\n")
+        if hybrid_exclusions is not None:
+            f.write("[ exclusions ]\n")
+            f.write(";  ai    aj funct\n")
+            for exclusion in hybrid_exclusions:
+                ai = getattr(exclusion, "ai", exclusion["ai"])
+                aj = getattr(exclusion, "aj", exclusion["aj"])
+                funct = getattr(exclusion, "funct", exclusion["funct"])
+                if ai is None or aj is None or funct is None:
+                    continue
+                f.write(f"{int(ai):5d} {int(aj):5d} {int(funct):5d}\n")
             f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
@@ -1269,7 +1282,134 @@ def create_hybrid_topology_for_lambda(
            and dih.aj != dih.ak and dih.aj != dih.al and dih.ak != dih.al
     ]
 
-    return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals
+    # Generate filtered pairs to avoid cut-off issues
+    hybrid_pairs = generate_filtered_pairs(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, lam)
+
+    # Generate exclusions between A and B atoms to prevent pair-list cut-off errors
+    hybrid_exclusions = generate_exclusions(hybrid_atoms, lam)
+
+    return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions
+
+
+def generate_filtered_pairs(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, lam):
+    """
+    Generate filtered 1-4 pair interactions to avoid cut-off issues in dual topology.
+
+    This function creates pairs only for atoms that are:
+    1. Present in the current lambda window
+    2. Connected through valid bond paths (1-4 interactions)
+    3. Not dummy atoms at both ends (to avoid long-distance interactions)
+    4. Within reasonable distance limits to avoid cut-off issues
+
+    Args:
+        hybrid_atoms: List of HybridAtom objects for current lambda
+        hybrid_bonds: List of HybridBond objects
+        hybrid_angles: List of HybridAngle objects
+        hybrid_dihedrals: List of HybridDihedral objects
+
+    Returns:
+        List of pair dictionaries with ai, aj, funct
+    """
+    pairs = []
+
+    # Create adjacency list for bond connectivity
+    adjacency = {}
+    for atom in hybrid_atoms:
+        adjacency[atom.index] = []
+
+    for bond in hybrid_bonds:
+        if hasattr(bond, 'ai') and hasattr(bond, 'aj'):
+            adjacency[bond.ai].append(bond.aj)
+            adjacency[bond.aj].append(bond.ai)
+
+    # Find all 1-4 interactions (atoms connected through 3 bonds)
+    for atom_i in hybrid_atoms:
+        # Skip pure dummy atoms to avoid long-distance interactions
+        if atom_i.typeA == "DUM" and atom_i.typeB == "DUM":
+            continue
+
+        for atom_j in hybrid_atoms:
+            if atom_j.index <= atom_i.index:
+                continue  # Avoid duplicates
+            # Skip pure dummy atoms to avoid long-distance interactions
+            if atom_j.typeA == "DUM" and atom_j.typeB == "DUM":
+                continue
+
+            # Check if atoms are 1-4 connected (3 bonds apart)
+            if is_1_4_connected(atom_i.index, atom_j.index, adjacency):
+                # Additional safety check: ensure at least one atom is real
+                # This prevents dummy-dummy pairs that could cause cut-off issues
+                if (atom_i.typeA != "DUM" or atom_i.typeB != "DUM") and \
+                        (atom_j.typeA != "DUM" or atom_j.typeB != "DUM"):
+
+                    # Additional filtering: avoid pairs where both atoms are dummy in one state
+                    # This can happen in intermediate lambda values
+                    if lam == 0.0:
+                        # At lambda 0, only include pairs where atom_i is not dummy in A state
+                        if atom_i.typeA != "DUM":
+                            pairs.append({
+                                "ai": atom_i.index,
+                                "aj": atom_j.index,
+                                "funct": 1  # Standard 1-4 interaction
+                            })
+                    elif lam == 1.0:
+                        # At lambda 1, only include pairs where atom_j is not dummy in B state
+                        if atom_j.typeB != "DUM":
+                            pairs.append({
+                                "ai": atom_i.index,
+                                "aj": atom_j.index,
+                                "funct": 1  # Standard 1-4 interaction
+                            })
+                    else:
+                        # At intermediate lambda, be more conservative
+                        # Only include if both atoms have some real character
+                        if (atom_i.typeA != "DUM" or atom_i.typeB != "DUM") and \
+                                (atom_j.typeA != "DUM" or atom_j.typeB != "DUM"):
+                            pairs.append({
+                                "ai": atom_i.index,
+                                "aj": atom_j.index,
+                                "funct": 1  # Standard 1-4 interaction
+                            })
+
+    return pairs
+
+
+def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
+    """
+    Check if two atoms are connected through exactly 3 bonds (1-4 interaction).
+
+    Args:
+        atom_i: First atom index
+        atom_j: Second atom index
+        adjacency: Adjacency list representation of bonds
+        max_depth: Maximum search depth (3 for 1-4 interactions)
+
+    Returns:
+        bool: True if atoms are 1-4 connected
+    """
+    if atom_i == atom_j:
+        return False
+
+    # Use BFS to find shortest path
+    visited = set()
+    queue = [(atom_i, 0)]  # (atom, distance)
+
+    while queue:
+        current_atom, distance = queue.pop(0)
+
+        if current_atom == atom_j:
+            return distance == 3  # Exactly 3 bonds apart
+
+        if current_atom in visited or distance >= max_depth:
+            continue
+
+        visited.add(current_atom)
+
+        for neighbor in adjacency.get(current_atom, []):
+            if neighbor not in visited:
+                queue.append((neighbor, distance + 1))
+
+    return False
 
 
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
@@ -1289,7 +1429,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
 
         # Generate hybrid topology
         outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals = (
+        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
             create_hybrid_topology_for_lambda(
                 dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
             )
@@ -1298,6 +1438,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         write_hybrid_topology(
             outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
             hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
+            hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
             system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
         )
 
@@ -1506,24 +1647,24 @@ def main():
         else:
             print("Warning: ITP files not found, coordinate generation may be limited")
             # Fallback: just generate coordinates without topology
-            lambdas = np.arange(0, 1.05, 0.05)
-            for lam in lambdas:
-                lam_str = f"{lam:.2f}"
-                lam_dir = f"lambda_{lam_str}"
-                if not os.path.exists(lam_dir):
-                    os.makedirs(lam_dir)
-                hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-                out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
 
-                if not os.path.exists(hybrid_itp):
-                    print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
-                    continue
+            if not os.path.exists(hybrid_itp):
+                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
+                continue
 
-                hybridize_coords_from_itp_interpolated(
-                    ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
-                )
-                print(f"Wrote {out_pdb}")
-                verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
+            hybridize_coords_from_itp_interpolated(
+                ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+            )
+            print(f"Wrote {out_pdb}")
+            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
@@ -1635,6 +1776,52 @@ def test_enhanced_dual_topology():
     print("  Intermediate λ: unique atoms use DUM names")
 
     print("\n✓ Enhanced dual topology test completed")
+
+
+def generate_exclusions(hybrid_atoms, lam):
+    """
+    Generate exclusions between A and B atoms to prevent pair-list cut-off errors.
+    This follows the principle from prepare_dual_topologies.py.
+
+    Args:
+        hybrid_atoms: List of HybridAtom objects for current lambda
+        lam: Lambda value
+
+    Returns:
+        List of exclusion dictionaries
+    """
+    exclusions = []
+
+    # Classify atoms by their origin
+    atoms_a = []  # Atoms from molecule A (including mapped)
+    atoms_b = []  # Atoms from molecule B (including mapped)
+
+    for atom in hybrid_atoms:
+        if atom.origA_idx is not None:
+            atoms_a.append(atom.index)
+        if atom.origB_idx is not None:
+            atoms_b.append(atom.index)
+
+    # For lambda = 0, only A atoms are present
+    if lam == 0.0:
+        return []
+
+    # For lambda = 1, only B atoms are present
+    if lam == 1.0:
+        return []
+
+    # For intermediate lambda values, exclude interactions between A and B atoms
+    # This prevents long-distance interactions that cause cut-off errors
+    for atom_a in atoms_a:
+        for atom_b in atoms_b:
+            if atom_a != atom_b:  # Don't exclude self-interactions
+                exclusions.append({
+                    "ai": atom_a,
+                    "aj": atom_b,
+                    "funct": 1  # Standard exclusion
+                })
+
+    return exclusions
 
 
 if __name__ == "__main__":
