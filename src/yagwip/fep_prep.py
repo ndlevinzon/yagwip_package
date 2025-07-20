@@ -1362,50 +1362,47 @@ def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb
     coordsB, namesB = parse_mol2_coords(ligB_mol2)
     mapping = load_atom_map(atom_map_txt)
 
-    # Get atom list for this lambda
-    # We need to create a minimal atom list based on the mapping
-    atom_list = []
-    hybrid_idx = 1
+    # Create DataFrames from MOL2 coordinates to use the same logic as build_lambda_atom_list
+    # This ensures consistency between topology and coordinate generation
+    dfA_data = []
+    dfB_data = []
 
-    # Add mapped atoms
-    for idxA, idxB in mapping.items():
-        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", idxA, idxB, "mapped"))
-        hybrid_idx += 1
+    for idx, coord in coordsA.items():
+        dfA_data.append({
+            "index": idx,
+            "atom_name": namesA.get(idx, f"ATOM{idx}"),
+            "type": "C",  # Default type, will be overridden by topology
+            "resnr": 1,
+            "residue": "LIG",
+            "cgnr": 1,
+            "charge": 0.0,  # Default charge, will be overridden by topology
+            "mass": 12.0,  # Default mass, will be overridden by topology
+        })
 
-    # Add unique A atoms (not in mapping)
-    all_A_atoms = set(coordsA.keys())
-    mapped_A_atoms = set(mapping.keys())
-    unique_A_atoms = all_A_atoms - mapped_A_atoms
+    for idx, coord in coordsB.items():
+        dfB_data.append({
+            "index": idx,
+            "atom_name": namesB.get(idx, f"ATOM{idx}"),
+            "type": "C",  # Default type, will be overridden by topology
+            "resnr": 1,
+            "residue": "LIG",
+            "cgnr": 1,
+            "charge": 0.0,  # Default charge, will be overridden by topology
+            "mass": 12.0,  # Default mass, will be overridden by topology
+        })
 
-    for idxA in unique_A_atoms:
-        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", idxA, None, "uniqueA"))
-        hybrid_idx += 1
+    dfA = pd.DataFrame(dfA_data)
+    dfB = pd.DataFrame(dfB_data)
 
-    # Add unique B atoms (not in mapping)
-    all_B_atoms = set(coordsB.keys())
-    mapped_B_atoms = set(mapping.values())
-    unique_B_atoms = all_B_atoms - mapped_B_atoms
-
-    for idxB in unique_B_atoms:
-        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", None, idxB, "uniqueB"))
-        hybrid_idx += 1
-
-    # Filter atom list based on lambda value
-    filtered_atom_list = []
-    for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
-        if atom_type == "mapped":
-            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
-        elif atom_type == "uniqueA" and lam <= 0.5:
-            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
-        elif atom_type == "uniqueB" and lam >= 0.5:
-            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
+    # Use the same atom list logic as build_lambda_atom_list for consistency
+    atom_list = build_lambda_atom_list(dfA, dfB, mapping, lam)
 
     # Generate coordinates
     pdb_lines = []
     coord_dict = {}
     atom_counter = 0
 
-    for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in filtered_atom_list:
+    for hybrid_idx, (old_idx, atom_name, origA_idx, origB_idx, atom_type) in enumerate(atom_list, 1):
         atom_counter += 1
 
         if atom_type == "mapped":
@@ -1486,25 +1483,11 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
             out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
 
             # Generate coordinates directly from MOL2 files
+            # Note: We don't regenerate the topology here to maintain consistent atom counts
             coord_dict = hybridize_coords_from_mol2_files(
                 ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
-
-            # Regenerate topology with proper coordinates for exclusions
-            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
-                create_hybrid_topology_for_lambda(
-                    dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
-                )
-            )
-
-            # Rewrite topology with updated exclusions
-            write_hybrid_topology(
-                outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
-                hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
-                hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
-                system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
-            )
         else:
             # Fallback if mol2 files are not provided
             print(f"Warning: mol2 files not provided for lambda {lam_str}, skipping coordinate generation.")
