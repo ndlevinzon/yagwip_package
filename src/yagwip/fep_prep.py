@@ -717,11 +717,11 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Write conditional [ exclusions ] blocks
+        # Write [ exclusions ] block at the top of the exclusion section
         if hybrid_exclusions is not None and ("STATEA" in hybrid_exclusions or "STATEB" in hybrid_exclusions):
             from collections import defaultdict
             for state in ["STATEA", "STATEB"]:
-                if state in hybrid_exclusions and len(hybrid_exclusions[state]) > 0:
+                if state in hybrid_exclusions:
                     f.write(f"#ifdef {state}\n")
                     f.write("[ exclusions ]\n")
                     f.write(";  ai    aj ...\n")
@@ -733,7 +733,9 @@ def write_hybrid_topology(
                         f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
                     f.write("#endif\n\n")
         else:
-            # Fallback: write a single exclusions block if not conditional
+            # Always print [ exclusions ] header, even if no exclusions
+            f.write("[ exclusions ]\n")
+            f.write(";  ai    aj ...\n")
             if hybrid_exclusions is not None and len(hybrid_exclusions) > 0:
                 from collections import defaultdict
                 exclusion_dict = defaultdict(list)
@@ -742,7 +744,7 @@ def write_hybrid_topology(
                 for ai in sorted(exclusion_dict.keys()):
                     aj_list = sorted(set(exclusion_dict[ai]))
                     f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
-                f.write("\n")
+            f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
         dummy_atoms = [atom for atom in hybrid_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
