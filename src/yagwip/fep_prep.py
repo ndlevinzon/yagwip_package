@@ -1584,6 +1584,24 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
     return result
 
 
+# --- Minimal, robust exclusion generator for dual topology FEP ---
+def generate_dual_topology_exclusions(hybrid_atoms, lam):
+    """
+    For intermediate lambdas (0 < lambda < 1), exclude all uniqueA from all uniqueB atoms (and vice versa).
+    For lambda=0 or 1, no uniqueA-uniqueB exclusions are needed.
+    """
+    # Identify uniqueA and uniqueB atom indices
+    uniqueA = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origA_idx is not None and atom.origB_idx is None]
+    uniqueB = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origB_idx is not None and atom.origA_idx is None]
+    exclusions = []
+    if 0 < lam < 1:
+        for a in uniqueA:
+            for b in uniqueB:
+                exclusions.append({"ai": a, "aj": b, "funct": 1})
+                exclusions.append({"ai": b, "aj": a, "funct": 1})
+    return exclusions
+
+
 # --- Refactor process_lambda_windows to use refined exclusions and robust dummy capping ---
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                            ligA_mol2=None, ligB_mol2=None, atom_map_txt=None):
@@ -1611,26 +1629,12 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
             if not os.path.exists(hybrid_itp):
                 print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
                 continue
-            # Generate coordinates and get atom_coords
             hybridize_coords_from_itp_interpolated(
                 ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
-            # Parse coordinates for exclusions
-            atom_coords = {}
-            with open(out_pdb) as f:
-                for line in f:
-                    if line.startswith("HETATM"):
-                        idx = int(line[6:11])
-                        x = float(line[30:38])
-                        y = float(line[38:46])
-                        z = float(line[46:54])
-                        atom_coords[idx] = (x, y, z)
-        else:
-            # Fallback: use centroid for all dummies
-            atom_coords = {atom.index: (0.0, 0.0, 0.0) for atom in hybrid_atoms}
-        # Generate exclusions using refined logic
-        lambda_exclusions = generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, atom_coords)
+        # Minimal robust exclusions for dual topology
+        lambda_exclusions = generate_dual_topology_exclusions(hybrid_atoms, lam)
         write_hybrid_topology(
             outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
             hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
@@ -1645,6 +1649,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
             print(f"Wrote {posre_filename}")
         # Verify synchronization
         if ligA_mol2 and ligB_mol2 and atom_map_txt:
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
             verify_hybrid_synchronization(outfilename, out_pdb, lam_str)
 
 
