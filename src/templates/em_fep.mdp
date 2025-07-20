@@ -7,12 +7,12 @@ nsteps      = 50000         ; Max number of minimization steps
 
 ; Neighbor searching and interactions
 nstlist         = 1
-rlist           = 2.0
+rlist           = 1.4
 cutoff-scheme   = Verlet
 ns_type         = grid
 coulombtype     = PME
-rcoulomb        = 2.0
-rvdw            = 2.0
+rcoulomb        = 1.4
+rvdw            = 1.4
 pbc             = xyz
 
 define = -DPOSRES
