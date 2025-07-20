@@ -716,10 +716,12 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Add conditional include for position restraints
-        f.write("#ifdef POSRES\n")
-        f.write('#include "posre_ligand.itp"\n')
-        f.write("#endif\n\n")
+        # Add conditional include for position restraints only if there are dummy atoms
+        dummy_atoms = [atom for atom in hybrid_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
+        if dummy_atoms:
+            f.write("#ifdef POSRES\n")
+            f.write('#include "posre_ligand.itp"\n')
+            f.write("#endif\n\n")
 
 
 def write_position_restraints_file(filename, hybrid_atoms):
