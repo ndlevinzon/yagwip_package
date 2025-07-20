@@ -717,19 +717,32 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Always write [ exclusions ] block for consistent topology structure
-        f.write("[ exclusions ]\n")
-        f.write(";  ai    aj ...\n")
-        if hybrid_exclusions is not None and len(hybrid_exclusions) > 0:
-            # Group exclusions by the first atom index
+        # Write conditional [ exclusions ] blocks
+        if hybrid_exclusions is not None and ("STATEA" in hybrid_exclusions or "STATEB" in hybrid_exclusions):
             from collections import defaultdict
-            exclusion_dict = defaultdict(list)
-            for excl in hybrid_exclusions:
-                exclusion_dict[excl["ai"]].append(excl["aj"])
-            for ai in sorted(exclusion_dict.keys()):
-                aj_list = sorted(set(exclusion_dict[ai]))
-                f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
-        f.write("\n")
+            for state in ["STATEA", "STATEB"]:
+                if state in hybrid_exclusions and len(hybrid_exclusions[state]) > 0:
+                    f.write(f"#ifdef {state}\n")
+                    f.write("[ exclusions ]\n")
+                    f.write(";  ai    aj ...\n")
+                    exclusion_dict = defaultdict(list)
+                    for excl in hybrid_exclusions[state]:
+                        exclusion_dict[excl["ai"]].append(excl["aj"])
+                    for ai in sorted(exclusion_dict.keys()):
+                        aj_list = sorted(set(exclusion_dict[ai]))
+                        f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
+                    f.write("#endif\n\n")
+        else:
+            # Fallback: write a single exclusions block if not conditional
+            if hybrid_exclusions is not None and len(hybrid_exclusions) > 0:
+                from collections import defaultdict
+                exclusion_dict = defaultdict(list)
+                for excl in hybrid_exclusions:
+                    exclusion_dict[excl["ai"]].append(excl["aj"])
+                for ai in sorted(exclusion_dict.keys()):
+                    aj_list = sorted(set(exclusion_dict[ai]))
+                    f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
+                f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
         dummy_atoms = [atom for atom in hybrid_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
@@ -1046,7 +1059,8 @@ def find_closest_atom_coord(target_coord, reference_coords):
 
 
 def hybridize_coords_from_itp_interpolated(
-        ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+        ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam,
+        cap_long_dummies=True, distance_threshold=1.2
 ):
     """
     Enhanced dual topology coordinate generation with growing procedure:
@@ -1059,6 +1073,7 @@ def hybridize_coords_from_itp_interpolated(
     - Unique A atoms: interpolate from A position to closest MCS position
     - Unique B atoms: interpolate from closest MCS position to B position
     - Mapped atoms: interpolate between A and B positions
+    - Dummy atoms that are far from any real atom are capped at the centroid or nearest real atom.
     """
     print(f"[DEBUG] Starting enhanced hybridize_coords_from_itp_interpolated for lambda {lam}")
 
@@ -1129,6 +1144,7 @@ def hybridize_coords_from_itp_interpolated(
 
     pdb_lines = []
     atom_counter = 0
+    atom_coords = {}  # index -> coord
 
     print(f"[DEBUG] Processing {len(atom_list)} atoms with coordinate interpolation")
     for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
@@ -1139,76 +1155,64 @@ def hybridize_coords_from_itp_interpolated(
             coordA = coordsA.get(origA_idx, (0.0, 0.0, 0.0))
             coordB = coordsB.get(origB_idx, (0.0, 0.0, 0.0))
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
-            # MCS atoms always have real atom names (never DUM)
             atom_type_pdb = atom_name
-
         elif atom_type == "uniqueA":
-            # Unique A atoms: interpolate from A position to closest MCS position
             coordA = coordsA.get(origA_idx, None)
             if coordA is None:
                 coordA = find_closest_atom_coord(centroid, coordsA)
-
-            # Find closest MCS position for this unique A atom
             closest_mcs_coord = find_closest_atom_coord(coordA, mcs_coords)
-
-            # Interpolate between A position and MCS position
-            # At lambda 0: full A position, at lambda 0.5: halfway to MCS, at lambda 1: MCS position
             if lam <= 0.5:
-                # Interpolate from A position to MCS position
-                # lambda 0 -> 0.5 maps to 0 -> 1 in interpolation
-                interp_factor = lam * 2.0  # 0 -> 1 as lambda goes 0 -> 0.5
+                interp_factor = lam * 2.0
                 coord = tuple((1 - interp_factor) * a + interp_factor * m for a, m in zip(coordA, closest_mcs_coord))
             else:
-                # At lambda > 0.5, uniqueA atoms should not be present
                 coord = closest_mcs_coord
-
-            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                atom_type_pdb = atom_name  # Real atom name at lambda 0
+                atom_type_pdb = atom_name
             elif lam == 1:
-                # This should not happen due to build_lambda_atom_list filtering
-                atom_type_pdb = "DUM"  # Fallback
-            else:
-                # At intermediate lambda, use DUM name
                 atom_type_pdb = "DUM"
-
+            else:
+                atom_type_pdb = "DUM"
         elif atom_type == "uniqueB":
-            # Unique B atoms: interpolate from closest MCS position to B position
             coordB = coordsB.get(origB_idx, None)
             if coordB is None:
                 coordB = find_closest_atom_coord(centroid, coordsB)
-
-            # Find closest MCS position for this unique B atom
             closest_mcs_coord = find_closest_atom_coord(coordB, mcs_coords)
-
-            # Interpolate between MCS position and B position
-            # At lambda 0.5: MCS position, at lambda 1: full B position
             if lam >= 0.5:
-                # Interpolate from MCS position to B position
-                # lambda 0.5 -> 1 maps to 0 -> 1 in interpolation
-                interp_factor = (lam - 0.5) * 2.0  # 0 -> 1 as lambda goes 0.5 -> 1
+                interp_factor = (lam - 0.5) * 2.0
                 coord = tuple((1 - interp_factor) * m + interp_factor * b for m, b in zip(closest_mcs_coord, coordB))
             else:
-                # At lambda < 0.5, uniqueB atoms should not be present
                 coord = closest_mcs_coord
-
-            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                # This should not happen due to build_lambda_atom_list filtering
-                atom_type_pdb = "DUM"  # Fallback
+                atom_type_pdb = "DUM"
             elif lam == 1:
-                atom_type_pdb = atom_name  # Real atom name at lambda 1
+                atom_type_pdb = atom_name
             else:
-                # At intermediate lambda, use DUM name
                 atom_type_pdb = "DUM"
         else:
-            # Should not occur, but fallback
             coord = find_closest_atom_coord(centroid, coordsA)
             atom_type_pdb = "DUM"
-
+        atom_coords[hybrid_idx] = coord
         pdb_lines.append(
             f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
+
+    # Cap long dummy tails if requested
+    if cap_long_dummies:
+        # Find all real atom indices
+        real_atoms = [i for i, (idx, name, a, b, t) in enumerate(atom_list, 1) if
+                      t == "mapped" or t == "uniqueA" or t == "uniqueB"]
+        for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
+            if atom_type_pdb == "DUM":
+                dists = [np.linalg.norm(np.array(atom_coords[hybrid_idx]) - np.array(atom_coords[j])) for j in
+                         real_atoms if j in atom_coords]
+                if dists and min(dists) > distance_threshold:
+                    # Cap this dummy at the centroid
+                    print(
+                        f"[WARNING] Dummy atom {hybrid_idx} is {min(dists):.2f} nm from nearest real atom. Capping at centroid.")
+                    atom_coords[hybrid_idx] = centroid
+                    # Update pdb_lines
+                    pdb_lines[
+                        hybrid_idx - 1] = f"HETATM{hybrid_idx:5d}  {atom_type_pdb:<4s}LIG     1    {centroid[0]:8.3f}{centroid[1]:8.3f}{centroid[2]:8.3f}  1.00  0.00\n"
 
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
@@ -1454,22 +1458,39 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
     return False
 
 
-def generate_lambda_exclusions(hybrid_atoms):
+def generate_lambda_exclusions_conditional(hybrid_atoms, distance_threshold=1.2, coords=None):
     """
-    For a given lambda, exclude all unique A atoms from all unique B atoms (and vice versa).
-    Do not exclude any pairs involving MCS atoms.
+    For a given lambda, generate exclusions for STATEA and STATEB separately.
+    - Exclude uniqueA from uniqueB and vice versa, but only in the state where the dummy exists.
+    - Returns: {"STATEA": [...], "STATEB": [...]} exclusion dicts.
+    Optionally, if coords are provided, also return a list of dummy atoms that are far from any real atom.
     """
-    # Identify unique A and unique B atoms
     uniqueA = [atom.index for atom in hybrid_atoms if
                not atom.mapped and atom.origA_idx is not None and atom.origB_idx is None]
     uniqueB = [atom.index for atom in hybrid_atoms if
                not atom.mapped and atom.origB_idx is not None and atom.origA_idx is None]
-    exclusions = []
+    exclusions_statea = []
+    exclusions_stateb = []
     for a in uniqueA:
         for b in uniqueB:
-            exclusions.append({"ai": a, "aj": b, "funct": 1})
-            exclusions.append({"ai": b, "aj": a, "funct": 1})
-    return exclusions
+            # Exclude uniqueA from uniqueB in STATEA (uniqueA is real, uniqueB is dummy)
+            exclusions_statea.append({"ai": a, "aj": b, "funct": 1})
+            # Exclude uniqueB from uniqueA in STATEB (uniqueB is real, uniqueA is dummy)
+            exclusions_stateb.append({"ai": b, "aj": a, "funct": 1})
+    # Optionally, detect long dummy tails if coords are provided
+    long_dummies = []
+    if coords is not None:
+        # Find all real atom indices
+        real_atoms = [atom.index for atom in hybrid_atoms if atom.typeA != "DUM" or atom.typeB != "DUM"]
+        for atom in hybrid_atoms:
+            if atom.typeA == "DUM" and atom.typeB == "DUM":
+                idx = atom.index
+                if idx in coords:
+                    dists = [np.linalg.norm(np.array(coords[idx]) - np.array(coords[j])) for j in real_atoms if
+                             j in coords]
+                    if dists and min(dists) > distance_threshold:
+                        long_dummies.append((idx, min(dists)))
+    return {"STATEA": exclusions_statea, "STATEB": exclusions_stateb, "long_dummies": long_dummies}
 
 
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
@@ -1495,8 +1516,8 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
             )
         )
 
-        # Generate per-lambda exclusions
-        lambda_exclusions = generate_lambda_exclusions(hybrid_atoms)
+        # Generate per-lambda exclusions (conditional)
+        lambda_exclusions = generate_lambda_exclusions_conditional(hybrid_atoms)
 
         write_hybrid_topology(
             outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
