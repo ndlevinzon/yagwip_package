@@ -1500,6 +1500,22 @@ def generate_comprehensive_exclusions(dfA, dfB, mapping):
     return exclusions
 
 
+def generate_lambda_exclusions(hybrid_atoms):
+    """
+    For a given lambda, exclude all unique A atoms from all unique B atoms (and vice versa).
+    Do not exclude any pairs involving MCS atoms.
+    """
+    # Identify unique A and unique B atoms
+    uniqueA = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origA_idx is not None and atom.origB_idx is None]
+    uniqueB = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origB_idx is not None and atom.origA_idx is None]
+    exclusions = []
+    for a in uniqueA:
+        for b in uniqueB:
+            exclusions.append({"ai": a, "aj": b, "funct": 1})
+            exclusions.append({"ai": b, "aj": a, "funct": 1})
+    return exclusions
+
+
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                            ligA_mol2=None, ligB_mol2=None, atom_map_txt=None):
     """
@@ -1507,9 +1523,6 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
     This consolidates the redundant lambda processing code from main().
     """
     lambdas = np.arange(0, 1.05, 0.05)
-
-    # Generate the comprehensive exclusion list ONCE
-    comprehensive_exclusions = generate_comprehensive_exclusions(dfA, dfB, mapping)
 
     for lam in lambdas:
         lam_str = f"{lam:.2f}"
@@ -1526,10 +1539,13 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
             )
         )
 
+        # Generate per-lambda exclusions
+        lambda_exclusions = generate_lambda_exclusions(hybrid_atoms)
+
         write_hybrid_topology(
             outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
             hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
-            hybrid_pairs=hybrid_pairs, hybrid_exclusions=comprehensive_exclusions,
+            hybrid_pairs=hybrid_pairs, hybrid_exclusions=lambda_exclusions,
             system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
         )
 
