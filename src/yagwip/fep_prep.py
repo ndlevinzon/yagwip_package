@@ -720,7 +720,9 @@ def write_hybrid_topology(
         # Always write [ exclusions ] block for consistent topology structure
         f.write("[ exclusions ]\n")
         f.write(";  ai    aj funct\n")
+        print(f"[DEBUG] Writing exclusions block. hybrid_exclusions type: {type(hybrid_exclusions)}, value: {hybrid_exclusions}")
         if hybrid_exclusions is not None:
+            print(f"[DEBUG] Found {len(hybrid_exclusions)} exclusions to write")
             for exclusion in hybrid_exclusions:
                 ai = getattr(exclusion, "ai", exclusion["ai"])
                 aj = getattr(exclusion, "aj", exclusion["aj"])
@@ -728,6 +730,8 @@ def write_hybrid_topology(
                 if ai is None or aj is None or funct is None:
                     continue
                 f.write(f"{int(ai):5d} {int(aj):5d} {int(funct):5d}\n")
+        else:
+            print(f"[DEBUG] hybrid_exclusions is None, writing empty exclusions block")
         f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
@@ -1820,6 +1824,7 @@ def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
     # For lambda = 0 or 1, return empty list but still include [ exclusions ] block
     if lam == 0.0 or lam == 1.0:
         print(f"[DEBUG] Lambda {lam}: No exclusions needed (pure state), but [ exclusions ] block will be included")
+        print(f"[DEBUG] Lambda {lam}: Returning empty list: []")
         return []
 
     # If we have the full molecule data, generate exclusions for ALL possible A-B pairs
