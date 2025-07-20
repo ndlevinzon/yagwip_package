@@ -1520,7 +1520,7 @@ def atom_distance(idx1, idx2, atom_coords):
 
 
 # --- New: Generate exclusions only for 1-4 pairs and spatially close atoms ---
-def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, atom_coords, rlist=1.2):
+def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, atom_coords, rlist=1.2, mcs_indices=None):
     """
     Generate exclusions for 1-4 pairs and spatially close atoms only.
     - Exclude 1-4 pairs (atoms connected through 3 bonds)
@@ -1528,7 +1528,13 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
     - Do NOT exclude all uniqueA-uniqueB pairs
     - Never include exclusions for pairs where both atoms are dummies
     - Remove any exclusion where the distance between atoms is greater than rlist
+    - Only include exclusions for pairs where both atoms are in the same connected component as the core
     """
+    # Find all atoms connected to the core
+    if mcs_indices is not None:
+        connected = get_connected_atoms_to_core(hybrid_atoms, hybrid_bonds, mcs_indices)
+    else:
+        connected = set(atom.index for atom in hybrid_atoms)
     exclusions = set()
     # Build adjacency for 1-4 detection
     adjacency = {atom.index: [] for atom in hybrid_atoms}
@@ -1543,6 +1549,9 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
             # Filter out dummy-dummy pairs
             if (atom_i.typeA == "DUM" and atom_i.typeB == "DUM") and (atom_j.typeA == "DUM" and atom_j.typeB == "DUM"):
                 continue
+            # Only include if both atoms are connected to the core
+            if atom_i.index not in connected or atom_j.index not in connected:
+                continue
             if is_1_4_connected(atom_i.index, atom_j.index, adjacency):
                 d = atom_distance(atom_i.index, atom_j.index, atom_coords)
                 if d <= rlist:
@@ -1555,6 +1564,9 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
                 continue
             # Filter out dummy-dummy pairs
             if (atom_i.typeA == "DUM" and atom_i.typeB == "DUM") and (atom_j.typeA == "DUM" and atom_j.typeB == "DUM"):
+                continue
+            # Only include if both atoms are connected to the core
+            if atom_i.index not in connected or atom_j.index not in connected:
                 continue
             d = atom_distance(atom_i.index, atom_j.index, atom_coords)
             if d < rlist:
@@ -1876,6 +1888,25 @@ def main():
     else:
         print_help()
         sys.exit(1)
+
+
+# --- Utility: Find all atoms connected to the mapped core (MCS) via bonds ---
+def get_connected_atoms_to_core(hybrid_atoms, hybrid_bonds, mcs_indices):
+    # Build adjacency list
+    adjacency = {atom.index: set() for atom in hybrid_atoms}
+    for bond in hybrid_bonds:
+        adjacency[bond.ai].add(bond.aj)
+        adjacency[bond.aj].add(bond.ai)
+    # BFS from all MCS indices
+    connected = set(mcs_indices)
+    queue = list(mcs_indices)
+    while queue:
+        idx = queue.pop(0)
+        for neighbor in adjacency[idx]:
+            if neighbor not in connected:
+                connected.add(neighbor)
+                queue.append(neighbor)
+    return connected
 
 
 if __name__ == "__main__":
