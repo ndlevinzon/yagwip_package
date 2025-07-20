@@ -600,7 +600,7 @@ def write_hybrid_topology(
         f.write(f"; Include force field parameters\n")
         f.write("[ moleculetype ]\n")
         f.write("; Name            nrexcl\n")
-        f.write(f"{molecule_name:<18}3\n\n")
+        f.write(f"{molecule_name:<18}5\n\n")  # Set nrexcl to 5 for robust exclusions
         f.write("[ atoms ]\n")
         f.write(
             "; nr type resnr residue atom cgnr  chargeA    massA  typeB chargeB  massB\n"
