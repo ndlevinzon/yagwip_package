@@ -1344,11 +1344,8 @@ def create_hybrid_topology_for_lambda(
     # Generate filtered pairs to avoid cut-off issues
     hybrid_pairs = generate_filtered_pairs(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, lam)
 
-    # Generate exclusions between ALL A and B atoms to prevent pair-list cut-off errors
-    # Pass full molecule data to generate exclusions for all possible A-B pairs
-    hybrid_exclusions = generate_exclusions(hybrid_atoms, lam, dfA, dfB, mapping)
-
-    return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions
+    # Exclusions are now handled per-lambda in process_lambda_windows
+    return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, None
 
 
 def generate_filtered_pairs(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, lam):
@@ -1470,34 +1467,6 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
                 queue.append((neighbor, distance + 1))
 
     return False
-
-
-def generate_comprehensive_exclusions(dfA, dfB, mapping):
-    """
-    Generate a comprehensive exclusion list so that unique atoms from ligand A
-    never interact with any atoms from ligand B, and vice versa.
-    This list is used for all lambda windows.
-    """
-    all_atoms_A = set(dfA['index'].astype(int))
-    all_atoms_B = set(dfB['index'].astype(int))
-    mapped_A = set(mapping.keys())
-    mapped_B = set(mapping.values())
-    unique_A = all_atoms_A - mapped_A
-    unique_B = all_atoms_B - mapped_B
-
-    exclusions = []
-
-    # Exclude unique A atoms from all B atoms
-    for a in unique_A:
-        for b in all_atoms_B:
-            exclusions.append({"ai": a, "aj": b, "funct": 1})
-
-    # Exclude unique B atoms from all A atoms
-    for b in unique_B:
-        for a in all_atoms_A:
-            exclusions.append({"ai": b, "aj": a, "funct": 1})
-
-    return exclusions
 
 
 def generate_lambda_exclusions(hybrid_atoms):
