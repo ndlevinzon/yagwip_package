@@ -717,17 +717,18 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Always write [ exclusions ] block for consistent topology structure
+        # Write [ exclusions ] block in GROMACS-compliant format
         f.write("[ exclusions ]\n")
-        f.write(";  ai    aj funct\n")
-        if hybrid_exclusions is not None:
-            for exclusion in hybrid_exclusions:
-                ai = getattr(exclusion, "ai", exclusion["ai"])
-                aj = getattr(exclusion, "aj", exclusion["aj"])
-                funct = getattr(exclusion, "funct", exclusion["funct"])
-                if ai is None or aj is None or funct is None:
-                    continue
-                f.write(f"{int(ai):5d} {int(aj):5d} {int(funct):5d}\n")
+        f.write(";  ai    aj ...\n")
+        if hybrid_exclusions is not None and len(hybrid_exclusions) > 0:
+            # Group exclusions by the first atom index
+            from collections import defaultdict
+            excl_dict = defaultdict(list)
+            for excl in hybrid_exclusions:
+                excl_dict[excl["ai"]].append(excl["aj"])
+            for ai in sorted(excl_dict.keys()):
+                aj_list = " ".join(str(aj) for aj in sorted(set(excl_dict[ai])))
+                f.write(f"{ai} {aj_list}\n")
         f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
