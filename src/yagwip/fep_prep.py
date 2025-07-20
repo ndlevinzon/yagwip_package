@@ -720,9 +720,7 @@ def write_hybrid_topology(
         # Always write [ exclusions ] block for consistent topology structure
         f.write("[ exclusions ]\n")
         f.write(";  ai    aj funct\n")
-        print(f"[DEBUG] Writing exclusions block. hybrid_exclusions type: {type(hybrid_exclusions)}, value: {hybrid_exclusions}")
         if hybrid_exclusions is not None:
-            print(f"[DEBUG] Found {len(hybrid_exclusions)} exclusions to write")
             for exclusion in hybrid_exclusions:
                 ai = getattr(exclusion, "ai", exclusion["ai"])
                 aj = getattr(exclusion, "aj", exclusion["aj"])
@@ -730,8 +728,6 @@ def write_hybrid_topology(
                 if ai is None or aj is None or funct is None:
                     continue
                 f.write(f"{int(ai):5d} {int(aj):5d} {int(funct):5d}\n")
-        else:
-            print(f"[DEBUG] hybrid_exclusions is None, writing empty exclusions block")
         f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
@@ -1774,9 +1770,9 @@ def test_enhanced_dual_topology():
     exclusions_05 = generate_exclusions(atoms_05, 0.5, dfA, dfB, mapping)
     exclusions_1 = generate_exclusions(atoms_1, 1.0, dfA, dfB, mapping)
 
-    print(f"  Lambda 0.0: {len(exclusions_0)} exclusions (should be 0, but [ exclusions ] block will be present)")
+    print(f"  Lambda 0.0: {len(exclusions_0)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
     print(f"  Lambda 0.5: {len(exclusions_05)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
-    print(f"  Lambda 1.0: {len(exclusions_1)} exclusions (should be 0, but [ exclusions ] block will be present)")
+    print(f"  Lambda 1.0: {len(exclusions_1)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
 
     if exclusions_05:
         print("  Sample exclusions for lambda 0.5:")
@@ -1785,7 +1781,7 @@ def test_enhanced_dual_topology():
         if len(exclusions_05) > 3:
             print(f"    ... and {len(exclusions_05) - 3} more")
 
-    print("  ✓ [ exclusions ] block will be present in ALL topology files for consistent structure")
+    print("  ✓ [ exclusions ] block will contain the same exclusions in ALL topology files")
 
     # Test coordinate interpolation logic
     print("\nTesting coordinate interpolation logic:")
@@ -1806,8 +1802,7 @@ def test_enhanced_dual_topology():
 def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
     """
     Generate exclusions between ALL A and B atoms to prevent pair-list cut-off errors.
-    This generates exclusions for all possible A-B pairs, not just those present in current lambda.
-    Always returns a list (even if empty) to ensure [ exclusions ] block is written to all topologies.
+    This generates exclusions for all possible A-B pairs for ALL lambda values.
 
     Args:
         hybrid_atoms: List of HybridAtom objects for current lambda
@@ -1817,17 +1812,12 @@ def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
         mapping: Atom mapping dictionary
 
     Returns:
-        List of exclusion dictionaries (empty list for lambda = 0 and lambda = 1)
+        List of exclusion dictionaries (same exclusions for all lambda values)
     """
     exclusions = []
 
-    # For lambda = 0 or 1, return empty list but still include [ exclusions ] block
-    if lam == 0.0 or lam == 1.0:
-        print(f"[DEBUG] Lambda {lam}: No exclusions needed (pure state), but [ exclusions ] block will be included")
-        print(f"[DEBUG] Lambda {lam}: Returning empty list: []")
-        return []
-
     # If we have the full molecule data, generate exclusions for ALL possible A-B pairs
+    # This ensures ALL topology files have the same exclusion content
     if dfA is not None and dfB is not None and mapping is not None:
         # Get all atom indices from both molecules
         all_atoms_a = set(dfA['index'].astype(int).tolist())
@@ -1849,7 +1839,8 @@ def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
                     "funct": 1  # Standard exclusion
                 })
 
-        print(f"[DEBUG] Lambda {lam}: Generated {len(exclusions)} exclusions for all A-B atom pairs")
+        print(
+            f"[DEBUG] Lambda {lam}: Generated {len(exclusions)} exclusions for all A-B atom pairs (same for all lambda)")
         return exclusions
 
     # Fallback: use only atoms present in current lambda window
@@ -1879,5 +1870,4 @@ def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
 
 
 if __name__ == "__main__":
-
     main()
