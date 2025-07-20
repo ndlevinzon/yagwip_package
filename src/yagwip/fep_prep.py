@@ -1232,6 +1232,64 @@ def hybridize_coords_from_itp_interpolated(
     print(f"[DEBUG] Successfully wrote {out_pdb}")
 
 
+def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
+    """
+    Generate exclusions between A and B atoms that are present in the current lambda window.
+    This generates exclusions only for atoms that exist in the current hybrid topology.
+
+    Args:
+        hybrid_atoms: List of HybridAtom objects for current lambda
+        lam: Lambda value
+        dfA: DataFrame of molecule A atoms (for reference)
+        dfB: DataFrame of molecule B atoms (for reference)
+        mapping: Atom mapping dictionary
+
+    Returns:
+        List of exclusion dictionaries (only for atoms present in current lambda)
+    """
+    exclusions = []
+
+    # Get the set of atom indices that are actually present in this lambda window
+    present_atom_indices = set(atom.index for atom in hybrid_atoms)
+
+    # Classify present atoms by their origin
+    atoms_a = []  # Atoms from molecule A (including mapped) that are present
+    atoms_b = []  # Atoms from molecule B (including mapped) that are present
+
+    for atom in hybrid_atoms:
+        if atom.origA_idx is not None:
+            atoms_a.append(atom.index)
+        if atom.origB_idx is not None:
+            atoms_b.append(atom.index)
+
+    # Create exclusions between present A atoms and present B atoms
+    for atom_a in atoms_a:
+        for atom_b in atoms_b:
+            # Don't exclude self-interactions
+            if atom_a == atom_b:
+                continue
+            # Don't exclude mapped atoms with themselves (if they're the same atom)
+            if atom_a in present_atom_indices and atom_b in present_atom_indices:
+                # Check if these are mapped atoms (same atom in A and B)
+                atom_a_obj = next((a for a in hybrid_atoms if a.index == atom_a), None)
+                atom_b_obj = next((a for a in hybrid_atoms if a.index == atom_b), None)
+                if (atom_a_obj is not None and atom_b_obj is not None and
+                        atom_a_obj.origA_idx is not None and atom_b_obj.origB_idx is not None and
+                        mapping is not None and atom_a_obj.origA_idx in mapping and mapping[
+                            atom_a_obj.origA_idx] == atom_b_obj.origB_idx):
+                    continue
+
+                exclusions.append({
+                    "ai": atom_a,
+                    "aj": atom_b,
+                    "funct": 1  # Standard exclusion
+                })
+
+    print(
+        f"[DEBUG] Lambda {lam}: Generated {len(exclusions)} exclusions for present atoms (A: {len(atoms_a)}, B: {len(atoms_b)})")
+    return exclusions
+
+
 def create_hybrid_topology_for_lambda(
         dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
 ):
@@ -1412,6 +1470,8 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
                 queue.append((neighbor, distance + 1))
 
     return False
+
+
 
 
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
@@ -1712,161 +1772,7 @@ def main():
         sys.exit(1)
 
 
-def test_enhanced_dual_topology():
-    """
-    Test function to verify the enhanced dual topology approach.
-    """
-    print("Testing enhanced dual topology approach...")
 
-    # Create simple test data
-    dfA = pd.DataFrame([
-        {"index": 1, "atom_name": "C1", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 2, "atom_name": "C2", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 3, "atom_name": "O1", "type": "O", "charge": -0.5, "mass": 16.0},
-    ])
-
-    dfB = pd.DataFrame([
-        {"index": 1, "atom_name": "C1", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 2, "atom_name": "C2", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 4, "atom_name": "N1", "type": "N", "charge": -0.3, "mass": 14.0},
-    ])
-
-    mapping = {1: 1, 2: 2}  # C1 and C2 are mapped
-
-    print("Testing lambda = 0.0 (pure A):")
-    atoms_0 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.0)
-    print(f"  Found {len(atoms_0)} atoms")
-    for atom in atoms_0:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    print("\nTesting lambda = 0.5 (hybrid):")
-    atoms_05 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.5)
-    print(f"  Found {len(atoms_05)} atoms")
-    for atom in atoms_05:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    print("\nTesting lambda = 1.0 (pure B):")
-    atoms_1 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 1.0)
-    print(f"  Found {len(atoms_1)} atoms")
-    for atom in atoms_1:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    # Test atom list filtering
-    print("\nTesting atom list filtering:")
-    atom_list_0 = build_lambda_atom_list(dfA, dfB, mapping, 0.0)
-    atom_list_1 = build_lambda_atom_list(dfA, dfB, mapping, 1.0)
-    atom_list_05 = build_lambda_atom_list(dfA, dfB, mapping, 0.5)
-
-    print(f"  Lambda 0.0: {len(atom_list_0)} atoms")
-    print(f"  Lambda 0.5: {len(atom_list_05)} atoms")
-    print(f"  Lambda 1.0: {len(atom_list_1)} atoms")
-
-    # Test exclusion generation
-    print("\nTesting exclusion generation:")
-    exclusions_0 = generate_exclusions(atoms_0, 0.0, dfA, dfB, mapping)
-    exclusions_05 = generate_exclusions(atoms_05, 0.5, dfA, dfB, mapping)
-    exclusions_1 = generate_exclusions(atoms_1, 1.0, dfA, dfB, mapping)
-
-    print(f"  Lambda 0.0: {len(exclusions_0)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
-    print(f"  Lambda 0.5: {len(exclusions_05)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
-    print(f"  Lambda 1.0: {len(exclusions_1)} exclusions (should be 6: 3×3 - 2 mapped - 1 self)")
-
-    if exclusions_05:
-        print("  Sample exclusions for lambda 0.5:")
-        for i, excl in enumerate(exclusions_05[:3]):  # Show first 3
-            print(f"    {excl['ai']} - {excl['aj']}")
-        if len(exclusions_05) > 3:
-            print(f"    ... and {len(exclusions_05) - 3} more")
-
-    print("  ✓ [ exclusions ] block will contain the same exclusions in ALL topology files")
-
-    # Test coordinate interpolation logic
-    print("\nTesting coordinate interpolation logic:")
-    print("  Unique A atoms (lambda 0 -> 0.5): A position -> MCS position")
-    print("  Unique B atoms (lambda 0.5 -> 1): MCS position -> B position")
-    print("  Mapped atoms (lambda 0 -> 1): A position -> B position")
-
-    # Test naming convention
-    print("\nTesting naming convention:")
-    print("  MCS atoms: always real names (never DUM)")
-    print("  Lambda 0: unique A atoms have real names")
-    print("  Lambda 1: unique B atoms have real names")
-    print("  Intermediate λ: unique atoms use DUM names")
-
-    print("\n✓ Enhanced dual topology test completed")
-
-
-def generate_exclusions(hybrid_atoms, lam, dfA=None, dfB=None, mapping=None):
-    """
-    Generate exclusions between ALL A and B atoms to prevent pair-list cut-off errors.
-    This generates exclusions for all possible A-B pairs for ALL lambda values.
-
-    Args:
-        hybrid_atoms: List of HybridAtom objects for current lambda
-        lam: Lambda value
-        dfA: DataFrame of molecule A atoms (for generating all possible exclusions)
-        dfB: DataFrame of molecule B atoms (for generating all possible exclusions)
-        mapping: Atom mapping dictionary
-
-    Returns:
-        List of exclusion dictionaries (same exclusions for all lambda values)
-    """
-    exclusions = []
-
-    # If we have the full molecule data, generate exclusions for ALL possible A-B pairs
-    # This ensures ALL topology files have the same exclusion content
-    if dfA is not None and dfB is not None and mapping is not None:
-        # Get all atom indices from both molecules
-        all_atoms_a = set(dfA['index'].astype(int).tolist())
-        all_atoms_b = set(dfB['index'].astype(int).tolist())
-
-        # Create exclusions between ALL A atoms and ALL B atoms
-        for atom_a in all_atoms_a:
-            for atom_b in all_atoms_b:
-                # Don't exclude mapped atoms with themselves
-                if atom_a in mapping and mapping[atom_a] == atom_b:
-                    continue
-                # Don't exclude self-interactions
-                if atom_a == atom_b:
-                    continue
-
-                exclusions.append({
-                    "ai": atom_a,
-                    "aj": atom_b,
-                    "funct": 1  # Standard exclusion
-                })
-
-        print(
-            f"[DEBUG] Lambda {lam}: Generated {len(exclusions)} exclusions for all A-B atom pairs (same for all lambda)")
-        return exclusions
-
-    # Fallback: use only atoms present in current lambda window
-    else:
-        # Classify atoms by their origin
-        atoms_a = []  # Atoms from molecule A (including mapped)
-        atoms_b = []  # Atoms from molecule B (including mapped)
-
-        for atom in hybrid_atoms:
-            if atom.origA_idx is not None:
-                atoms_a.append(atom.index)
-            if atom.origB_idx is not None:
-                atoms_b.append(atom.index)
-
-        # For intermediate lambda values, exclude interactions between A and B atoms
-        for atom_a in atoms_a:
-            for atom_b in atoms_b:
-                if atom_a != atom_b:  # Don't exclude self-interactions
-                    exclusions.append({
-                        "ai": atom_a,
-                        "aj": atom_b,
-                        "funct": 1  # Standard exclusion
-                    })
-
-        print(f"[DEBUG] Lambda {lam}: Generated {len(exclusions)} exclusions for current lambda window")
-        return exclusions
 
 
 if __name__ == "__main__":
