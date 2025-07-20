@@ -133,15 +133,15 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
         new_lines.append(line)
 
 
-# Write aligned mol2 file
-with open(aligned_ligandB_mol2, 'w') as f:
-    f.writelines(new_lines)
+    # Write aligned mol2 file
+    with open(aligned_ligandB_mol2, 'w') as f:
+        f.writelines(new_lines)
 
-print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
-print(f"Rotation matrix:\n{rotation_matrix}")
-print(f"Translation vector: {translation}")
+    print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
+    print(f"Rotation matrix:\n{rotation_matrix}")
+    print(f"Translation vector: {translation}")
 
-return aligned_ligandB_mol2
+    return aligned_ligandB_mol2
 
 
 # =====================
