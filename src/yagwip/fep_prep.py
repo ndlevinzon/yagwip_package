@@ -1060,6 +1060,18 @@ def find_closest_atom_coord(target_coord, reference_coords):
     return closest_coord
 
 
+# --- Utility: Find the nearest mapped (MCS) atom index for a given coordinate ---
+def find_nearest_mcs_atom(coord, mcs_coords):
+    min_dist = float('inf')
+    nearest_idx = None
+    for idx, mcs_coord in mcs_coords.items():
+        d = np.linalg.norm(np.array(coord) - np.array(mcs_coord))
+        if d < min_dist:
+            min_dist = d
+            nearest_idx = idx
+    return nearest_idx
+
+
 def hybridize_coords_from_itp_interpolated(
         ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam,
         cap_long_dummies=True, distance_threshold=1.2
@@ -1198,23 +1210,28 @@ def hybridize_coords_from_itp_interpolated(
             f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
 
-    # Cap long dummy tails if requested
+    # Strict dummy capping: cap dummies at nearest mapped (MCS) atom
     if cap_long_dummies:
-        # Find all real atom indices
-        real_atoms = [i for i, (idx, name, a, b, t) in enumerate(atom_list, 1) if
-                      t == "mapped" or t == "uniqueA" or t == "uniqueB"]
+        real_atoms = [i for i, (idx, name, a, b, t) in enumerate(atom_list, 1) if t == "mapped" or t == "uniqueA" or t == "uniqueB"]
         for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
             if atom_type_pdb == "DUM":
-                dists = [np.linalg.norm(np.array(atom_coords[hybrid_idx]) - np.array(atom_coords[j])) for j in
-                         real_atoms if j in atom_coords]
-                if dists and min(dists) > distance_threshold:
-                    # Cap this dummy at the centroid
-                    print(
-                        f"[WARNING] Dummy atom {hybrid_idx} is {min(dists):.2f} nm from nearest real atom. Capping at centroid.")
-                    atom_coords[hybrid_idx] = centroid
-                    # Update pdb_lines
-                    pdb_lines[
-                        hybrid_idx - 1] = f"HETATM{hybrid_idx:5d}  {atom_type_pdb:<4s}LIG     1    {centroid[0]:8.3f}{centroid[1]:8.3f}{centroid[2]:8.3f}  1.00  0.00\n"
+                # Find nearest mapped atom
+                if mcs_coords:
+                    nearest_idx = find_nearest_mcs_atom(atom_coords[hybrid_idx], mcs_coords)
+                    if nearest_idx is not None:
+                        cap_coord = mcs_coords[nearest_idx]
+                        d = np.linalg.norm(np.array(atom_coords[hybrid_idx]) - np.array(cap_coord))
+                        if d > distance_threshold:
+                            print(f"[WARNING] Dummy atom {hybrid_idx} is {d:.2f} nm from nearest mapped atom. Capping at mapped atom.")
+                            atom_coords[hybrid_idx] = cap_coord
+                            pdb_lines[hybrid_idx - 1] = f"HETATM{hybrid_idx:5d}  {atom_type_pdb:<4s}LIG     1    {cap_coord[0]:8.3f}{cap_coord[1]:8.3f}{cap_coord[2]:8.3f}  1.00  0.00\n"
+                    else:
+                        # Fallback: cap at centroid
+                        d = np.linalg.norm(np.array(atom_coords[hybrid_idx]) - np.array(centroid))
+                        if d > distance_threshold:
+                            print(f"[WARNING] Dummy atom {hybrid_idx} is {d:.2f} nm from centroid. Capping at centroid.")
+                            atom_coords[hybrid_idx] = centroid
+                            pdb_lines[hybrid_idx - 1] = f"HETATM{hybrid_idx:5d}  {atom_type_pdb:<4s}LIG     1    {centroid[0]:8.3f}{centroid[1]:8.3f}{centroid[2]:8.3f}  1.00  0.00\n"
 
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
@@ -1509,6 +1526,8 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
     - Exclude 1-4 pairs (atoms connected through 3 bonds)
     - Exclude any pair of atoms (dummy or real) that are both present and closer than rlist
     - Do NOT exclude all uniqueA-uniqueB pairs
+    - Never include exclusions for pairs where both atoms are dummies
+    - Remove any exclusion where the distance between atoms is greater than rlist
     """
     exclusions = set()
     # Build adjacency for 1-4 detection
@@ -1521,13 +1540,21 @@ def generate_lambda_exclusions_refined(hybrid_atoms, hybrid_bonds, hybrid_angles
         for atom_j in hybrid_atoms:
             if atom_j.index <= atom_i.index:
                 continue
+            # Filter out dummy-dummy pairs
+            if (atom_i.typeA == "DUM" and atom_i.typeB == "DUM") and (atom_j.typeA == "DUM" and atom_j.typeB == "DUM"):
+                continue
             if is_1_4_connected(atom_i.index, atom_j.index, adjacency):
-                exclusions.add((atom_i.index, atom_j.index))
-                exclusions.add((atom_j.index, atom_i.index))
+                d = atom_distance(atom_i.index, atom_j.index, atom_coords)
+                if d <= rlist:
+                    exclusions.add((atom_i.index, atom_j.index))
+                    exclusions.add((atom_j.index, atom_i.index))
     # Spatially close pairs (within rlist, but not bonded)
     for atom_i in hybrid_atoms:
         for atom_j in hybrid_atoms:
             if atom_j.index <= atom_i.index:
+                continue
+            # Filter out dummy-dummy pairs
+            if (atom_i.typeA == "DUM" and atom_i.typeB == "DUM") and (atom_j.typeA == "DUM" and atom_j.typeB == "DUM"):
                 continue
             d = atom_distance(atom_i.index, atom_j.index, atom_coords)
             if d < rlist:
