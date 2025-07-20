@@ -122,15 +122,15 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
                 final_coord = rotated_coord + np.mean(coords_A, axis=0)
                 x, y, z = final_coord
 
-            new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
-            if len(parts) > 6:
-                new_line += f" {parts[6]}"
-            new_line += "\n"
-            new_lines.append(new_line)
+                new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
+                if len(parts) > 6:
+                    new_line += f" {parts[6]}"
+                new_line += "\n"
+                new_lines.append(new_line)
+            else:
+                new_lines.append(line)
         else:
             new_lines.append(line)
-    else:
-        new_lines.append(line)
 
     # Write aligned mol2 file
     with open(aligned_ligandB_mol2, 'w') as f:
@@ -717,18 +717,18 @@ def write_hybrid_topology(
                 )
             f.write("\n")
 
-        # Write [ exclusions ] block in GROMACS-compliant format
+        # Always write [ exclusions ] block for consistent topology structure
         f.write("[ exclusions ]\n")
         f.write(";  ai    aj ...\n")
         if hybrid_exclusions is not None and len(hybrid_exclusions) > 0:
             # Group exclusions by the first atom index
             from collections import defaultdict
-            excl_dict = defaultdict(list)
+            exclusion_dict = defaultdict(list)
             for excl in hybrid_exclusions:
-                excl_dict[excl["ai"]].append(excl["aj"])
-            for ai in sorted(excl_dict.keys()):
-                aj_list = " ".join(str(aj) for aj in sorted(set(excl_dict[ai])))
-                f.write(f"{ai} {aj_list}\n")
+                exclusion_dict[excl["ai"]].append(excl["aj"])
+            for ai in sorted(exclusion_dict.keys()):
+                aj_list = sorted(set(exclusion_dict[ai]))
+                f.write(f"{ai:5d} " + " ".join(f"{aj:5d}" for aj in aj_list) + "\n")
         f.write("\n")
 
         # Add conditional include for position restraints only if there are dummy atoms
@@ -882,31 +882,23 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             chargeA = rowA["charge"]
             massA = rowA["mass"]
             typeA = rowA["type"]
-
-            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                # At lambda 0, A atoms are fully real - use real name
                 atom_name = rowA["atom_name"]
                 chargeB = chargeA
                 massB = massA
                 typeB = typeA
             elif lam == 1:
-                # At lambda 1, uniqueA atoms should not be present
-                # This should not happen due to build_lambda_atom_list filtering
                 atom_name = "DUM"
                 chargeB = 0.0
                 massB = 0.001
                 typeB = "DUM"
             else:
-                # At intermediate lambda, use DUM name
                 atom_name = "DUM"
                 if lam < 0.5:
-                    # Still mostly real
                     chargeB = chargeA
                     massB = massA
                     typeB = typeA
                 else:
-                    # Becoming dummy
                     chargeB = 0.0
                     massB = 0.001
                     typeB = "DUM"
@@ -917,31 +909,23 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             chargeB = rowB["charge"]
             massB = rowB["mass"]
             typeB = rowB["type"]
-
-            # Naming convention: real names at pure states, DUM at intermediate
             if lam == 0:
-                # At lambda 0, uniqueB atoms should not be present
-                # This should not happen due to build_lambda_atom_list filtering
                 atom_name = "DUM"
                 chargeA = 0.0
                 massA = 0.001
                 typeA = "DUM"
             elif lam == 1:
-                # At lambda 1, B atoms are fully real - use real name
                 atom_name = rowB["atom_name"]
                 chargeA = chargeB
                 massA = massB
                 typeA = typeB
             else:
-                # At intermediate lambda, use DUM name
                 atom_name = "DUM"
                 if lam > 0.5:
-                    # Becoming real
                     chargeA = chargeB
                     massA = massB
                     typeA = typeB
                 else:
-                    # Still dummy
                     chargeA = 0.0
                     massA = 0.001
                     typeA = "DUM"
@@ -1476,8 +1460,10 @@ def generate_lambda_exclusions(hybrid_atoms):
     Do not exclude any pairs involving MCS atoms.
     """
     # Identify unique A and unique B atoms
-    uniqueA = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origA_idx is not None and atom.origB_idx is None]
-    uniqueB = [atom.index for atom in hybrid_atoms if not atom.mapped and atom.origB_idx is not None and atom.origA_idx is None]
+    uniqueA = [atom.index for atom in hybrid_atoms if
+               not atom.mapped and atom.origA_idx is not None and atom.origB_idx is None]
+    uniqueB = [atom.index for atom in hybrid_atoms if
+               not atom.mapped and atom.origB_idx is not None and atom.origA_idx is None]
     exclusions = []
     for a in uniqueA:
         for b in uniqueB:
