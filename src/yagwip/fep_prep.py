@@ -1349,6 +1349,94 @@ def generate_exclusions(hybrid_atoms, lam, coord_dict, rlist_nm=1.2):
     return exclusions
 
 
+def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam):
+    """
+    Generate hybrid coordinates directly from MOL2 files without requiring ITP files.
+    This function creates interpolated coordinates for each lambda window.
+    """
+    # Load coordinates from MOL2 files
+    coordsA, namesA = parse_mol2_coords(ligA_mol2)
+    coordsB, namesB = parse_mol2_coords(ligB_mol2)
+    mapping = load_atom_map(atom_map_txt)
+
+    # Get atom list for this lambda
+    # We need to create a minimal atom list based on the mapping
+    atom_list = []
+    hybrid_idx = 1
+
+    # Add mapped atoms
+    for idxA, idxB in mapping.items():
+        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", idxA, idxB, "mapped"))
+        hybrid_idx += 1
+
+    # Add unique A atoms (not in mapping)
+    all_A_atoms = set(coordsA.keys())
+    mapped_A_atoms = set(mapping.keys())
+    unique_A_atoms = all_A_atoms - mapped_A_atoms
+
+    for idxA in unique_A_atoms:
+        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", idxA, None, "uniqueA"))
+        hybrid_idx += 1
+
+    # Add unique B atoms (not in mapping)
+    all_B_atoms = set(coordsB.keys())
+    mapped_B_atoms = set(mapping.values())
+    unique_B_atoms = all_B_atoms - mapped_B_atoms
+
+    for idxB in unique_B_atoms:
+        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", None, idxB, "uniqueB"))
+        hybrid_idx += 1
+
+    # Filter atom list based on lambda value
+    filtered_atom_list = []
+    for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in atom_list:
+        if atom_type == "mapped":
+            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
+        elif atom_type == "uniqueA" and lam <= 0.5:
+            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
+        elif atom_type == "uniqueB" and lam >= 0.5:
+            filtered_atom_list.append((hybrid_idx, atom_name, origA_idx, origB_idx, atom_type))
+
+    # Generate coordinates
+    pdb_lines = []
+    coord_dict = {}
+    atom_counter = 0
+
+    for hybrid_idx, atom_name, origA_idx, origB_idx, atom_type in filtered_atom_list:
+        atom_counter += 1
+
+        if atom_type == "mapped":
+            # Interpolate between A and B coordinates
+            coordA = coordsA[origA_idx]
+            coordB = coordsB[origB_idx]
+            coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
+            atom_type_pdb = atom_name
+        elif atom_type == "uniqueA":
+            # Use A coordinates
+            coord = coordsA[origA_idx]
+            atom_type_pdb = atom_name if lam == 0 else "DUM"
+        elif atom_type == "uniqueB":
+            # Use B coordinates
+            coord = coordsB[origB_idx]
+            atom_type_pdb = atom_name if lam == 1 else "DUM"
+        else:
+            # Fallback
+            coord = (0.0, 0.0, 0.0)
+            atom_type_pdb = "DUM"
+
+        coord_dict[hybrid_idx] = coord
+        pdb_lines.append(
+            f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
+        )
+
+    with open(out_pdb, "w") as f:
+        for line in pdb_lines:
+            f.write(line)
+        f.write("END\n")
+
+    return coord_dict
+
+
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                            ligA_mol2=None, ligB_mol2=None, atom_map_txt=None):
     """
@@ -1389,34 +1477,31 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
 
         # Generate coordinates if mol2 files are provided
         if ligA_mol2 and ligB_mol2 and atom_map_txt:
-            hybrid_itp = outfilename
             out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
 
-            if not os.path.exists(hybrid_itp):
-                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
-                continue
-
-            coord_dict = hybridize_coords_from_itp_interpolated(
-                ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
+            # Generate coordinates directly from MOL2 files
+            coord_dict = hybridize_coords_from_mol2_files(
+                ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
 
+            # Regenerate topology with proper coordinates for exclusions
             hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
                 create_hybrid_topology_for_lambda(
                     dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
                 )
             )
 
-        else:
-            # Fallback if mol2 files are not provided
-            print(f"Warning: mol2 files not provided for lambda {lam_str}, skipping coordinate generation.")
-            # Still write the topology file even without coordinates
+            # Rewrite topology with updated exclusions
             write_hybrid_topology(
                 outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
                 hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
                 hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
                 system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
             )
+        else:
+            # Fallback if mol2 files are not provided
+            print(f"Warning: mol2 files not provided for lambda {lam_str}, skipping coordinate generation.")
 
 
 # =====================
@@ -1571,20 +1656,27 @@ def main():
         else:
             print(f"Using original ligand B: {ligB_mol2}")
 
-        # Parse topology files for coordinate generation
-        itpA = ligA_mol2.replace(".mol2", ".itp")
-        itpB = ligB_mol2.replace(".mol2", ".itp")
+        # Load atom mapping
+        mapping = load_atom_map(atom_map_txt)
 
-        if os.path.exists(itpA) and os.path.exists(itpB):
-            dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB = parse_topology_files(itpA, itpB)
-            mapping = load_atom_map(atom_map_txt)
+        # Generate coordinates directly from MOL2 files without requiring ITP files
+        print(f"Generating hybrid coordinates from MOL2 files: {ligA_mol2}, {ligB_mol2}")
 
-            process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
-                                   ligA_mol2, ligB_mol2, atom_map_txt)
-        else:
-            print("Error: ITP files not found. Cannot generate coordinates without topology files.")
-            print(f"Required files: {itpA}, {itpB}")
-            sys.exit(1)
+        # Generate coordinates for all lambda windows
+        lambdas = np.arange(0, 1.05, 0.05)
+        for lam in lambdas:
+            lam_str = f"{lam:.2f}"
+            lam_dir = f"lambda_{lam_str}"
+            if not os.path.exists(lam_dir):
+                os.makedirs(lam_dir)
+
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+
+            # Generate coordinates directly from MOL2 files
+            coord_dict = hybridize_coords_from_mol2_files(
+                ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam
+            )
+            print(f"Wrote {out_pdb}")
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
