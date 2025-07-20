@@ -11,6 +11,171 @@ import numpy as np
 
 logger = logging.getLogger("hybrid_topology")
 
+# =====================
+# Classes For Building Hybrid Topology
+# =====================
+
+class Atom:
+    def __init__(self, idx, element):
+        self.idx = idx
+        self.element = element
+        self.neighbors = set()
+        self.degree = 0
+
+
+class Bond:
+    def __init__(self, a1, a2, order):
+        self.a1 = a1
+        self.a2 = a2
+        self.order = order
+
+
+class MolGraph:
+    def __init__(self):
+        self.atoms = {}  # idx: Atom
+        self.bonds = []  # list of Bond
+        self.adj = defaultdict(set)  # idx: set of neighbor idxs
+        self.bond_types = {}  # (min(a1,a2), max(a1,a2)): order
+
+    @staticmethod
+    def from_mol2(filename):
+        atoms = {}
+        bonds = []
+        adj = defaultdict(set)
+        bond_types = {}
+        with open(filename) as f:
+            lines = f.readlines()
+        atom_section = False
+        bond_section = False
+        for line in lines:
+            if line.startswith("@<TRIPOS>ATOM"):
+                atom_section = True
+                bond_section = False
+                continue
+            if line.startswith("@<TRIPOS>BOND"):
+                atom_section = False
+                bond_section = True
+                continue
+            if line.startswith("@<TRIPOS>"):
+                atom_section = False
+                bond_section = False
+            if atom_section:
+                parts = line.split()
+                if len(parts) < 6:
+                    continue
+                idx = int(parts[0])
+                element = "".join(filter(str.isalpha, parts[5])).upper()
+                atoms[idx] = Atom(idx, element)
+            if bond_section:
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                a1 = int(parts[1])
+                a2 = int(parts[2])
+                order = parts[3]
+                bonds.append(Bond(a1, a2, order))
+                adj[a1].add(a2)
+                adj[a2].add(a1)
+                bond_types[(min(a1, a2), max(a1, a2))] = order
+        for idx, atom in atoms.items():
+            atom.neighbors = adj[idx]
+            atom.degree = len(adj[idx])
+        g = MolGraph()
+        g.atoms = atoms
+        g.bonds = bonds
+        g.adj = adj
+        g.bond_types = bond_types
+        return g
+
+    def subgraph(self, atom_indices):
+        sg = MolGraph()
+        for idx in atom_indices:
+            atom = self.atoms[idx]
+            sg.atoms[idx] = Atom(idx, atom.element)
+        for idx in atom_indices:
+            for nbr in self.adj[idx]:
+                if nbr in atom_indices:
+                    a, b = min(idx, nbr), max(idx, nbr)
+                    if (a, b) in sg.bond_types:
+                        continue
+                    order = self.bond_types[(a, b)]
+                    sg.bonds.append(Bond(a, b, order))
+                    sg.adj[a].add(b)
+                    sg.adj[b].add(a)
+                    sg.bond_types[(a, b)] = order
+        for idx in sg.atoms:
+            sg.atoms[idx].neighbors = sg.adj[idx]
+            sg.atoms[idx].degree = len(sg.adj[idx])
+        return sg
+
+class HybridAtom:
+    def __init__(
+            self,
+            index,
+            atom_name,
+            typeA,
+            typeB,
+            chargeA,
+            chargeB,
+            massA,
+            massB,
+            mapped,
+            origA_idx=None,
+            origB_idx=None,
+    ):
+        self.index = index
+        self.atom_name = atom_name
+        self.typeA = typeA
+        self.typeB = typeB
+        self.chargeA = chargeA
+        self.chargeB = chargeB
+        self.massA = massA
+        self.massB = massB
+        self.mapped = mapped
+        self.origA_idx = origA_idx
+        self.origB_idx = origB_idx
+
+
+class HybridBond:
+    def __init__(self, ai, aj, funct, parA, parB, mapped, fakeA=False, fakeB=False):
+        self.ai = ai
+        self.aj = aj
+        self.funct = funct
+        self.parA = parA
+        self.parB = parB
+        self.mapped = mapped
+        self.fakeA = fakeA
+        self.fakeB = fakeB
+
+
+class HybridAngle:
+    def __init__(self, ai, aj, ak, funct, parA, parB, mapped, fakeA=False, fakeB=False):
+        self.ai = ai
+        self.aj = aj
+        self.ak = ak
+        self.funct = funct
+        self.parA = parA
+        self.parB = parB
+        self.mapped = mapped
+        self.fakeA = fakeA
+        self.fakeB = fakeB
+
+
+class HybridDihedral:
+    def __init__(
+            self, ai, aj, ak, al, funct, parA, parB, mapped, fakeA=False, fakeB=False
+    ):
+        self.ai = ai
+        self.aj = aj
+        self.ak = ak
+        self.al = al
+        self.funct = funct
+        self.parA = parA
+        self.parB = parB
+        self.mapped = mapped
+        self.fakeA = fakeA
+        self.fakeB = fakeB
+
 
 # =====================
 # Ligand Alignment Functions
@@ -144,9 +309,6 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
     return aligned_ligandB_mol2
 
 
-# =====================
-# Utility Functions
-# =====================
 def parse_mol2_coords(filename):
     coords = {}
     names = {}
@@ -186,103 +348,6 @@ def write_atom_map(mapping, filename):
     with open(filename, "w") as f:
         for a, b in mapping.items():
             f.write(f"{a} {b}\n")
-
-
-# =====================
-# MCS Code
-# =====================
-class Atom:
-    def __init__(self, idx, element):
-        self.idx = idx
-        self.element = element
-        self.neighbors = set()
-        self.degree = 0
-
-
-class Bond:
-    def __init__(self, a1, a2, order):
-        self.a1 = a1
-        self.a2 = a2
-        self.order = order
-
-
-class MolGraph:
-    def __init__(self):
-        self.atoms = {}  # idx: Atom
-        self.bonds = []  # list of Bond
-        self.adj = defaultdict(set)  # idx: set of neighbor idxs
-        self.bond_types = {}  # (min(a1,a2), max(a1,a2)): order
-
-    @staticmethod
-    def from_mol2(filename):
-        atoms = {}
-        bonds = []
-        adj = defaultdict(set)
-        bond_types = {}
-        with open(filename) as f:
-            lines = f.readlines()
-        atom_section = False
-        bond_section = False
-        for line in lines:
-            if line.startswith("@<TRIPOS>ATOM"):
-                atom_section = True
-                bond_section = False
-                continue
-            if line.startswith("@<TRIPOS>BOND"):
-                atom_section = False
-                bond_section = True
-                continue
-            if line.startswith("@<TRIPOS>"):
-                atom_section = False
-                bond_section = False
-            if atom_section:
-                parts = line.split()
-                if len(parts) < 6:
-                    continue
-                idx = int(parts[0])
-                element = "".join(filter(str.isalpha, parts[5])).upper()
-                atoms[idx] = Atom(idx, element)
-            if bond_section:
-                parts = line.split()
-                if len(parts) < 4:
-                    continue
-                a1 = int(parts[1])
-                a2 = int(parts[2])
-                order = parts[3]
-                bonds.append(Bond(a1, a2, order))
-                adj[a1].add(a2)
-                adj[a2].add(a1)
-                bond_types[(min(a1, a2), max(a1, a2))] = order
-        for idx, atom in atoms.items():
-            atom.neighbors = adj[idx]
-            atom.degree = len(adj[idx])
-        g = MolGraph()
-        g.atoms = atoms
-        g.bonds = bonds
-        g.adj = adj
-        g.bond_types = bond_types
-        return g
-
-    def subgraph(self, atom_indices):
-        sg = MolGraph()
-        for idx in atom_indices:
-            atom = self.atoms[idx]
-            sg.atoms[idx] = Atom(idx, atom.element)
-        for idx in atom_indices:
-            for nbr in self.adj[idx]:
-                if nbr in atom_indices:
-                    a, b = min(idx, nbr), max(idx, nbr)
-                    if (a, b) in sg.bond_types:
-                        continue
-                    order = self.bond_types[(a, b)]
-                    sg.bonds.append(Bond(a, b, order))
-                    sg.adj[a].add(b)
-                    sg.adj[b].add(a)
-                    sg.bond_types[(a, b)] = order
-        for idx in sg.atoms:
-            sg.atoms[idx].neighbors = sg.adj[idx]
-            sg.atoms[idx].degree = len(sg.adj[idx])
-        return sg
 
 
 def are_isomorphic(g1, g2):
@@ -376,83 +441,6 @@ def find_mcs(g1, g2):
     return 0, None, None, None
 
 
-# =====================
-# Hybrid Topology Code
-# =====================
-
-logger = logging.getLogger("hybrid_topology")
-
-
-# --- Enhanced HybridAtom, HybridBond, HybridAngle, HybridDihedral ---
-class HybridAtom:
-    def __init__(
-            self,
-            index,
-            atom_name,
-            typeA,
-            typeB,
-            chargeA,
-            chargeB,
-            massA,
-            massB,
-            mapped,
-            origA_idx=None,
-            origB_idx=None,
-    ):
-        self.index = index
-        self.atom_name = atom_name
-        self.typeA = typeA
-        self.typeB = typeB
-        self.chargeA = chargeA
-        self.chargeB = chargeB
-        self.massA = massA
-        self.massB = massB
-        self.mapped = mapped
-        self.origA_idx = origA_idx
-        self.origB_idx = origB_idx
-
-
-class HybridBond:
-    def __init__(self, ai, aj, funct, parA, parB, mapped, fakeA=False, fakeB=False):
-        self.ai = ai
-        self.aj = aj
-        self.funct = funct
-        self.parA = parA
-        self.parB = parB
-        self.mapped = mapped
-        self.fakeA = fakeA
-        self.fakeB = fakeB
-
-
-class HybridAngle:
-    def __init__(self, ai, aj, ak, funct, parA, parB, mapped, fakeA=False, fakeB=False):
-        self.ai = ai
-        self.aj = aj
-        self.ak = ak
-        self.funct = funct
-        self.parA = parA
-        self.parB = parB
-        self.mapped = mapped
-        self.fakeA = fakeA
-        self.fakeB = fakeB
-
-
-class HybridDihedral:
-    def __init__(
-            self, ai, aj, ak, al, funct, parA, parB, mapped, fakeA=False, fakeB=False
-    ):
-        self.ai = ai
-        self.aj = aj
-        self.ak = ak
-        self.al = al
-        self.funct = funct
-        self.parA = parA
-        self.parB = parB
-        self.mapped = mapped
-        self.fakeA = fakeA
-        self.fakeB = fakeB
-
-
 # --- Robust parameter lookup and fake term creation ---
 def robust_lookup(df, keycols, key, paramcols, dummy):
     try:
@@ -471,7 +459,7 @@ def robust_lookup(df, keycols, key, paramcols, dummy):
         return [dummy.get(col, 0.0) for col in paramcols], True
 
 
-# --- pmx-style build_hybrid_terms ---
+# --- build_hybrid_terms ---
 def build_hybrid_terms(
         dfA, dfB, mapping, keycols, HybridClass, dummyA, dummyB, paramcolsA, paramcolsB
 ):
@@ -515,15 +503,6 @@ def build_hybrid_terms(
                 HybridDihedral(ai, aj, ak, al, 2, valsA, valsB, mapped, fakeA, fakeB)
             )
     return hybrid_terms
-
-
-# --- Charge/mass consistency check ---
-def print_total_charge(hybrid_atoms):
-    total_charge_A = sum(atom.chargeA for atom in hybrid_atoms)
-    total_charge_B = sum(atom.chargeB for atom in hybrid_atoms)
-    logger.info(f"Total charge state A: {total_charge_A:.4f}")
-    logger.info(f"Total charge state B: {total_charge_B:.4f}")
-
 
 # --- Modular section processing and logging ---
 def parse_itp_section(filename, section, ncols, colnames):
@@ -729,38 +708,6 @@ def write_hybrid_topology(
                 f.write(f"{int(ai):5d} {int(aj):5d} {int(funct):5d}\n")
             f.write("\n")
 
-        # Add conditional include for position restraints only if there are dummy atoms
-        dummy_atoms = [atom for atom in hybrid_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
-        if dummy_atoms:
-            f.write("#ifdef POSRES\n")
-            f.write('#include "posre_ligand.itp"\n')
-            f.write("#endif\n\n")
-
-
-def write_position_restraints_file(filename, hybrid_atoms):
-    """
-    Create a separate position restraints file for dummy atoms.
-
-    Args:
-        filename (str): Path to the position restraints file to create
-        hybrid_atoms (list): List of HybridAtom objects
-    """
-    # Sort hybrid atoms by their index to ensure correct order
-    sorted_atoms = sorted(hybrid_atoms, key=lambda atom: atom.index)
-
-    # Find dummy atoms
-    dummy_atoms = [atom for atom in sorted_atoms if atom.typeA == "DUM" or atom.typeB == "DUM"]
-
-    if not dummy_atoms:
-        return  # No dummy atoms, no need to create restraints file
-
-    with open(filename, "w") as f:
-        f.write("[ position_restraints ]\n")
-        f.write("; atom  type      fx      fy      fz\n")
-        for atom in dummy_atoms:
-            f.write(f"{atom.index:5d}     1    1000    1000    1000\n")
-        f.write("\n")
-
 
 def filter_topology_sections(df, present_indices):
     """
@@ -960,78 +907,6 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
             )
         )
     return hybrid_atoms
-
-
-# Removed redundant get_canonical_hybrid_atom_list function - use build_lambda_atom_list instead
-
-
-def verify_hybrid_synchronization(hybrid_itp, hybrid_pdb, lam):
-    """
-    Verify that hybrid topology and coordinate files are synchronized.
-    Returns True if synchronized, False otherwise.
-    """
-    # Read topology atoms
-    topo_atoms = []
-    with open(hybrid_itp, "r") as f:
-        lines = f.readlines()
-
-    in_atoms_section = False
-    for line in lines:
-        if line.strip() == "[ atoms ]":
-            in_atoms_section = True
-            continue
-        elif in_atoms_section and line.strip().startswith("["):
-            break
-        elif in_atoms_section and line.strip() and not line.strip().startswith(";"):
-            parts = line.split()
-            if len(parts) >= 4:
-                atom_index = int(parts[0])
-                atom_name = parts[4]
-                topo_atoms.append((atom_index, atom_name))
-
-    # Read PDB atoms
-    pdb_atoms = []
-    with open(hybrid_pdb, "r") as f:
-        for line in f:
-            if line.startswith(("ATOM", "HETATM")):
-                atom_name = line[13:16].strip()
-                pdb_atoms.append(atom_name)
-
-    # Check if atom counts match
-    if len(topo_atoms) != len(pdb_atoms):
-        print(
-            f"[ERROR] Lambda {lam}: Topology has {len(topo_atoms)} atoms, PDB has {len(pdb_atoms)} atoms"
-        )
-        return False
-
-    # Check if atom names match in order, accounting for dual topology logic
-    lambda_val = float(lam)
-    mismatches = []
-    for i, (topo_idx, topo_name) in enumerate(topo_atoms):
-        if i < len(pdb_atoms):
-            pdb_name = pdb_atoms[i]
-            # New naming convention:
-            # - MCS atoms: always real names (never DUM)
-            # - Pure states (λ=0, λ=1): unique atoms have real names
-            # - Intermediate states (0<λ<1): unique atoms use "DUM"
-            # Only flag as error if both names are non-dummy and different
-            if (topo_name.strip() != "DUM" and pdb_name.strip() != "DUM" and
-                    topo_name.strip() != pdb_name.strip()):
-                mismatches.append((i + 1, topo_name, pdb_name))
-
-    if mismatches:
-        print(f"[ERROR] Lambda {lam}: Found {len(mismatches)} atom name mismatches:")
-        for atom_num, topo_name, pdb_name in mismatches[:5]:  # Show first 5 mismatches
-            print(f"  Atom {atom_num}: Topology: {topo_name}, PDB: {pdb_name}")
-        if len(mismatches) > 5:
-            print(f"  ... and {len(mismatches) - 5} more mismatches")
-        return False
-
-    print(
-        f"[INFO] Lambda {lam}: Topology and PDB are synchronized ({len(topo_atoms)} atoms)"
-    )
-    return True
-
 
 def find_closest_atom_coord(target_coord, reference_coords):
     """
@@ -1411,6 +1286,51 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
 
     return False
 
+def generate_exclusions(hybrid_atoms, lam):
+    """
+    Generate exclusions between A and B atoms to prevent pair-list cut-off errors.
+    This follows the principle from prepare_dual_topologies.py.
+
+    Args:
+        hybrid_atoms: List of HybridAtom objects for current lambda
+        lam: Lambda value
+
+    Returns:
+        List of exclusion dictionaries
+    """
+    exclusions = []
+
+    # Classify atoms by their origin
+    atoms_a = []  # Atoms from molecule A (including mapped)
+    atoms_b = []  # Atoms from molecule B (including mapped)
+
+    for atom in hybrid_atoms:
+        if atom.origA_idx is not None:
+            atoms_a.append(atom.index)
+        if atom.origB_idx is not None:
+            atoms_b.append(atom.index)
+
+    # For lambda = 0, only A atoms are present
+    if lam == 0.0:
+        return []
+
+    # For lambda = 1, only B atoms are present
+    if lam == 1.0:
+        return []
+
+    # For intermediate lambda values, exclude interactions between A and B atoms
+    # This prevents long-distance interactions that cause cut-off errors
+    for atom_a in atoms_a:
+        for atom_b in atoms_b:
+            if atom_a != atom_b:  # Don't exclude self-interactions
+                exclusions.append({
+                    "ai": atom_a,
+                    "aj": atom_b,
+                    "funct": 1  # Standard exclusion
+                })
+
+    return exclusions
+
 
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                            ligA_mol2=None, ligB_mol2=None, atom_map_txt=None):
@@ -1444,7 +1364,6 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
 
         # Create position restraints file
         posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
-        write_position_restraints_file(posre_filename, hybrid_atoms)
 
         print(f"Wrote {outfilename}")
         if os.path.exists(posre_filename):
@@ -1463,9 +1382,6 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
                 ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
-
-            # Verify synchronization
-            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
 
 
 # =====================
@@ -1664,7 +1580,6 @@ def main():
                 ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
-            verify_hybrid_synchronization(hybrid_itp, out_pdb, lam_str)
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
@@ -1710,123 +1625,5 @@ def main():
         sys.exit(1)
 
 
-def test_enhanced_dual_topology():
-    """
-    Test function to verify the enhanced dual topology approach.
-    """
-    print("Testing enhanced dual topology approach...")
-
-    # Create simple test data
-    dfA = pd.DataFrame([
-        {"index": 1, "atom_name": "C1", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 2, "atom_name": "C2", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 3, "atom_name": "O1", "type": "O", "charge": -0.5, "mass": 16.0},
-    ])
-
-    dfB = pd.DataFrame([
-        {"index": 1, "atom_name": "C1", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 2, "atom_name": "C2", "type": "C", "charge": 0.0, "mass": 12.0},
-        {"index": 4, "atom_name": "N1", "type": "N", "charge": -0.3, "mass": 14.0},
-    ])
-
-    mapping = {1: 1, 2: 2}  # C1 and C2 are mapped
-
-    print("Testing lambda = 0.0 (pure A):")
-    atoms_0 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.0)
-    print(f"  Found {len(atoms_0)} atoms")
-    for atom in atoms_0:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    print("\nTesting lambda = 0.5 (hybrid):")
-    atoms_05 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 0.5)
-    print(f"  Found {len(atoms_05)} atoms")
-    for atom in atoms_05:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    print("\nTesting lambda = 1.0 (pure B):")
-    atoms_1 = build_hybrid_atoms_interpolated(dfA, dfB, mapping, 1.0)
-    print(f"  Found {len(atoms_1)} atoms")
-    for atom in atoms_1:
-        print(f"  {atom.atom_name}: A({atom.typeA}, {atom.chargeA:.2f}, {atom.massA:.1f}) "
-              f"B({atom.typeB}, {atom.chargeB:.2f}, {atom.massB:.1f})")
-
-    # Test atom list filtering
-    print("\nTesting atom list filtering:")
-    atom_list_0 = build_lambda_atom_list(dfA, dfB, mapping, 0.0)
-    atom_list_1 = build_lambda_atom_list(dfA, dfB, mapping, 1.0)
-    atom_list_05 = build_lambda_atom_list(dfA, dfB, mapping, 0.5)
-
-    print(f"  Lambda 0.0: {len(atom_list_0)} atoms")
-    print(f"  Lambda 0.5: {len(atom_list_05)} atoms")
-    print(f"  Lambda 1.0: {len(atom_list_1)} atoms")
-
-    # Test coordinate interpolation logic
-    print("\nTesting coordinate interpolation logic:")
-    print("  Unique A atoms (lambda 0 -> 0.5): A position -> MCS position")
-    print("  Unique B atoms (lambda 0.5 -> 1): MCS position -> B position")
-    print("  Mapped atoms (lambda 0 -> 1): A position -> B position")
-
-    # Test naming convention
-    print("\nTesting naming convention:")
-    print("  MCS atoms: always real names (never DUM)")
-    print("  Lambda 0: unique A atoms have real names")
-    print("  Lambda 1: unique B atoms have real names")
-    print("  Intermediate λ: unique atoms use DUM names")
-
-    print("\n✓ Enhanced dual topology test completed")
-
-
-def generate_exclusions(hybrid_atoms, lam):
-    """
-    Generate exclusions between A and B atoms to prevent pair-list cut-off errors.
-    This follows the principle from prepare_dual_topologies.py.
-
-    Args:
-        hybrid_atoms: List of HybridAtom objects for current lambda
-        lam: Lambda value
-
-    Returns:
-        List of exclusion dictionaries
-    """
-    exclusions = []
-
-    # Classify atoms by their origin
-    atoms_a = []  # Atoms from molecule A (including mapped)
-    atoms_b = []  # Atoms from molecule B (including mapped)
-
-    for atom in hybrid_atoms:
-        if atom.origA_idx is not None:
-            atoms_a.append(atom.index)
-        if atom.origB_idx is not None:
-            atoms_b.append(atom.index)
-
-    # For lambda = 0, only A atoms are present
-    if lam == 0.0:
-        return []
-
-    # For lambda = 1, only B atoms are present
-    if lam == 1.0:
-        return []
-
-    # For intermediate lambda values, exclude interactions between A and B atoms
-    # This prevents long-distance interactions that cause cut-off errors
-    for atom_a in atoms_a:
-        for atom_b in atoms_b:
-            if atom_a != atom_b:  # Don't exclude self-interactions
-                exclusions.append({
-                    "ai": atom_a,
-                    "aj": atom_b,
-                    "funct": 1  # Standard exclusion
-                })
-
-    return exclusions
-
-
 if __name__ == "__main__":
-    # Run tests if requested
-    if len(sys.argv) > 1 and sys.argv[1] == "test_dual_topology":
-        test_enhanced_dual_topology()
-    else:
-        main()
+    main()
