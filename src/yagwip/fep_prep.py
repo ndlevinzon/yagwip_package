@@ -1128,9 +1128,12 @@ def hybridize_coords_from_itp_interpolated(
             atom_type_pdb = "DUM"
 
         coord_dict[hybrid_idx] = coord
-        pdb_lines.append(
-            f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
-        )
+        # Format PDB line according to standard format:
+        # HETATMxxxxx  xxxx xxxx xxxx    xxxx.xxx xxxx.xxx xxxx.xxx  1.00  0.00
+        # 1234567890123456789012345678901234567890123456789012345678901234567890
+        #          1         2         3         4         5         6
+        pdb_line = f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
+        pdb_lines.append(pdb_line)
 
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
@@ -1366,7 +1369,7 @@ def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb
 
     # Add mapped atoms
     for idxA, idxB in mapping.items():
-        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", idxA, idxB, "mapped"))
+        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", idxA, idxB, "mapped"))
         hybrid_idx += 1
 
     # Add unique A atoms (not in mapping)
@@ -1375,7 +1378,7 @@ def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb
     unique_A_atoms = all_A_atoms - mapped_A_atoms
 
     for idxA in unique_A_atoms:
-        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", idxA, None, "uniqueA"))
+        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", idxA, None, "uniqueA"))
         hybrid_idx += 1
 
     # Add unique B atoms (not in mapping)
@@ -1384,7 +1387,7 @@ def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb
     unique_B_atoms = all_B_atoms - mapped_B_atoms
 
     for idxB in unique_B_atoms:
-        atom_list.append((hybrid_idx, f"ATOM{hybrid_idx}", None, idxB, "uniqueB"))
+        atom_list.append((hybrid_idx, f"A{hybrid_idx:03d}", None, idxB, "uniqueB"))
         hybrid_idx += 1
 
     # Filter atom list based on lambda value
@@ -1425,9 +1428,12 @@ def hybridize_coords_from_mol2_files(ligA_mol2, ligB_mol2, atom_map_txt, out_pdb
             atom_type_pdb = "DUM"
 
         coord_dict[hybrid_idx] = coord
-        pdb_lines.append(
-            f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
-        )
+        # Format PDB line according to standard format:
+        # HETATMxxxxx  xxxx xxxx xxxx    xxxx.xxx xxxx.xxx xxxx.xxx  1.00  0.00
+        # 1234567890123456789012345678901234567890123456789012345678901234567890
+        #          1         2         3         4         5         6
+        pdb_line = f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
+        pdb_lines.append(pdb_line)
 
     with open(out_pdb, "w") as f:
         for line in pdb_lines:
