@@ -11,6 +11,28 @@ import numpy as np
 
 logger = logging.getLogger("hybrid_topology")
 
+
+# =====================
+# Helper Functions
+# =====================
+
+def parse_topology_files(itpA, itpB):
+    """
+    Parse topology files for bonds, angles, and dihedrals.
+    Returns DataFrames for atoms and topology sections.
+    """
+    dfA = parse_itp_atoms_full(itpA)
+    dfB = parse_itp_atoms_full(itpB)
+    bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+    bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
+    anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+    anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
+    dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+    dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+
+    return dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB
+
+
 # =====================
 # Classes For Building Hybrid Topology
 # =====================
@@ -107,6 +129,7 @@ class MolGraph:
             sg.atoms[idx].neighbors = sg.adj[idx]
             sg.atoms[idx].degree = len(sg.adj[idx])
         return sg
+
 
 class HybridAtom:
     def __init__(
@@ -297,7 +320,6 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
     else:
         new_lines.append(line)
 
-
     # Write aligned mol2 file
     with open(aligned_ligandB_mol2, 'w') as f:
         f.writelines(new_lines)
@@ -414,6 +436,13 @@ def enumerate_connected_subgraphs(graph, size):
 
 
 def find_mcs(g1, g2):
+    """
+    Find Maximum Common Substructure (MCS) between two molecular graphs.
+
+    WARNING: This function has exponential complexity O(2^n) and may be slow
+    for molecules with more than ~15 atoms. Consider using RDKit's MCS
+    implementation for larger molecules.
+    """
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
     for size in range(len(g1.atoms), 0, -1):
@@ -444,7 +473,8 @@ def find_mcs(g1, g2):
 # --- Robust parameter lookup and fake term creation ---
 def robust_lookup(df, keycols, key, paramcols, dummy):
     try:
-        row = df
+        # Create a copy to avoid modifying the original DataFrame
+        row = df.copy()
         for col, val in zip(keycols, key):
             row = row[row[col] == val]
         if row.shape[0] == 0:
@@ -503,6 +533,7 @@ def build_hybrid_terms(
                 HybridDihedral(ai, aj, ak, al, 2, valsA, valsB, mapped, fakeA, fakeB)
             )
     return hybrid_terms
+
 
 # --- Modular section processing and logging ---
 def parse_itp_section(filename, section, ncols, colnames):
@@ -908,6 +939,7 @@ def build_hybrid_atoms_interpolated(dfA, dfB, mapping, lam):
         )
     return hybrid_atoms
 
+
 def find_closest_atom_coord(target_coord, reference_coords):
     """
     Find the closest atom coordinate to a target coordinate.
@@ -1017,6 +1049,7 @@ def hybridize_coords_from_itp_interpolated(
         centroid = (0.0, 0.0, 0.0)
 
     pdb_lines = []
+    coord_dict = {}
     atom_counter = 0
 
     print(f"[DEBUG] Processing {len(atom_list)} atoms with coordinate interpolation")
@@ -1030,7 +1063,6 @@ def hybridize_coords_from_itp_interpolated(
             coord = tuple((1 - lam) * a + lam * b for a, b in zip(coordA, coordB))
             # MCS atoms always have real atom names (never DUM)
             atom_type_pdb = atom_name
-
         elif atom_type == "uniqueA":
             # Unique A atoms: interpolate from A position to closest MCS position
             coordA = coordsA.get(origA_idx, None)
@@ -1095,6 +1127,7 @@ def hybridize_coords_from_itp_interpolated(
             coord = find_closest_atom_coord(centroid, coordsA)
             atom_type_pdb = "DUM"
 
+        coord_dict[hybrid_idx] = coord
         pdb_lines.append(
             f"HETATM{atom_counter:5d}  {atom_type_pdb:<4s}LIG     1    {coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}  1.00  0.00\n"
         )
@@ -1104,10 +1137,11 @@ def hybridize_coords_from_itp_interpolated(
             f.write(line)
         f.write("END\n")
     print(f"[DEBUG] Successfully wrote {out_pdb}")
+    return coord_dict
 
 
 def create_hybrid_topology_for_lambda(
-        dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+        dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
 ):
     """
     Create hybrid topology for a specific lambda value with proper filtering.
@@ -1161,7 +1195,7 @@ def create_hybrid_topology_for_lambda(
     hybrid_pairs = generate_filtered_pairs(hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, lam)
 
     # Generate exclusions between A and B atoms to prevent pair-list cut-off errors
-    hybrid_exclusions = generate_exclusions(hybrid_atoms, lam)
+    hybrid_exclusions = generate_exclusions(hybrid_atoms, lam, coord_dict)
 
     return hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions
 
@@ -1286,48 +1320,31 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
 
     return False
 
-def generate_exclusions(hybrid_atoms, lam):
+
+def generate_exclusions(hybrid_atoms, lam, coord_dict, rlist_nm=1.2):
     """
-    Generate exclusions between A and B atoms to prevent pair-list cut-off errors.
-    This follows the principle from prepare_dual_topologies.py.
-
-    Args:
-        hybrid_atoms: List of HybridAtom objects for current lambda
-        lam: Lambda value
-
-    Returns:
-        List of exclusion dictionaries
+    Exclude A–B atom pairs only when their distance is < rlist_nm.
+    coord_dict  : {hybrid_idx: (x,y,z)} in **nanometres**
     """
     exclusions = []
 
-    # Classify atoms by their origin
-    atoms_a = []  # Atoms from molecule A (including mapped)
-    atoms_b = []  # Atoms from molecule B (including mapped)
+    if lam in (0.0, 1.0):  # pure states – nothing to exclude
+        return exclusions
 
-    for atom in hybrid_atoms:
-        if atom.origA_idx is not None:
-            atoms_a.append(atom.index)
-        if atom.origB_idx is not None:
-            atoms_b.append(atom.index)
+    # classify atoms by origin
+    atoms_a = [atm.index for atm in hybrid_atoms if atm.origA_idx is not None]
+    atoms_b = [atm.index for atm in hybrid_atoms if atm.origB_idx is not None]
 
-    # For lambda = 0, only A atoms are present
-    if lam == 0.0:
-        return []
-
-    # For lambda = 1, only B atoms are present
-    if lam == 1.0:
-        return []
-
-    # For intermediate lambda values, exclude interactions between A and B atoms
-    # This prevents long-distance interactions that cause cut-off errors
-    for atom_a in atoms_a:
-        for atom_b in atoms_b:
-            if atom_a != atom_b:  # Don't exclude self-interactions
-                exclusions.append({
-                    "ai": atom_a,
-                    "aj": atom_b,
-                    "funct": 1  # Standard exclusion
-                })
+    for ai in atoms_a:
+        for aj in atoms_b:
+            if ai == aj:
+                continue
+            ci, cj = coord_dict.get(ai), coord_dict.get(aj)
+            if ci is None or cj is None:
+                continue  # safety
+            dist = np.linalg.norm(np.subtract(ci, cj))
+            if dist < rlist_nm:  # within neighbour list cut‑off
+                exclusions.append({"ai": ai, "aj": aj, "funct": 1})
 
     return exclusions
 
@@ -1347,11 +1364,12 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         if not os.path.exists(lam_dir):
             os.makedirs(lam_dir)
 
-        # Generate hybrid topology
+        # Generate hybrid topology (initially with empty coord_dict)
         outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
+        coord_dict = {}  # Empty by default
         hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
             create_hybrid_topology_for_lambda(
-                dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
+                dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
             )
         )
 
@@ -1378,10 +1396,27 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
                 print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
                 continue
 
-            hybridize_coords_from_itp_interpolated(
+            coord_dict = hybridize_coords_from_itp_interpolated(
                 ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
             )
             print(f"Wrote {out_pdb}")
+
+            hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
+                create_hybrid_topology_for_lambda(
+                    dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
+                )
+            )
+
+        else:
+            # Fallback if mol2 files are not provided
+            print(f"Warning: mol2 files not provided for lambda {lam_str}, skipping coordinate generation.")
+            # Still write the topology file even without coordinates
+            write_hybrid_topology(
+                outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
+                hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
+                hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
+                system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
+            )
 
 
 # =====================
@@ -1515,15 +1550,8 @@ def main():
             )
             sys.exit(1)
         itpA, itpB, mapfile = sys.argv[2:5]
-        dfA = parse_itp_atoms_full(itpA)
-        dfB = parse_itp_atoms_full(itpB)
+        dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB = parse_topology_files(itpA, itpB)
         mapping = load_atom_map(mapfile)
-        bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-        anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-        dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
-        dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
 
         process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping)
 
@@ -1548,38 +1576,15 @@ def main():
         itpB = ligB_mol2.replace(".mol2", ".itp")
 
         if os.path.exists(itpA) and os.path.exists(itpB):
-            dfA = parse_itp_atoms_full(itpA)
-            dfB = parse_itp_atoms_full(itpB)
-            bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-            bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-            anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-            anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-            dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
-            dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
+            dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB = parse_topology_files(itpA, itpB)
             mapping = load_atom_map(atom_map_txt)
 
             process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                                    ligA_mol2, ligB_mol2, atom_map_txt)
         else:
-            print("Warning: ITP files not found, coordinate generation may be limited")
-            # Fallback: just generate coordinates without topology
-        lambdas = np.arange(0, 1.05, 0.05)
-        for lam in lambdas:
-            lam_str = f"{lam:.2f}"
-            lam_dir = f"lambda_{lam_str}"
-            if not os.path.exists(lam_dir):
-                os.makedirs(lam_dir)
-            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
-
-            if not os.path.exists(hybrid_itp):
-                print(f"Warning: {hybrid_itp} not found, skipping lambda {lam_str}")
-                continue
-
-            hybridize_coords_from_itp_interpolated(
-                ligA_mol2, ligB_mol2, hybrid_itp, atom_map_txt, out_pdb, lam
-            )
-            print(f"Wrote {out_pdb}")
+            print("Error: ITP files not found. Cannot generate coordinates without topology files.")
+            print(f"Required files: {itpA}, {itpB}")
+            sys.exit(1)
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
@@ -1608,15 +1613,8 @@ def main():
 
         itpA = ligA_mol2.replace(".mol2", ".itp")
         itpB = ligB_mol2.replace(".mol2", ".itp")
-        dfA = parse_itp_atoms_full(itpA)
-        dfB = parse_itp_atoms_full(itpB)
+        dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB = parse_topology_files(itpA, itpB)
         mapping = load_atom_map(outmap)
-        bondsA = parse_itp_section(itpA, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        bondsB = parse_itp_section(itpB, "bonds", 5, ["ai", "aj", "funct", "r", "k"])
-        anglesA = parse_itp_section(itpA, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-        anglesB = parse_itp_section(itpB, "angles", 6, ["ai", "aj", "ak", "funct", "r", "k"])
-        dihedA = parse_itp_section(itpA, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
-        dihedB = parse_itp_section(itpB, "dihedrals", 7, ["ai", "aj", "ak", "al", "funct", "r", "k"])
 
         process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
                                ligA_mol2, aligned_ligandB_mol2, outmap)
