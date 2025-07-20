@@ -1472,6 +1472,32 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
     return False
 
 
+def generate_comprehensive_exclusions(dfA, dfB, mapping):
+    """
+    Generate a comprehensive exclusion list so that unique atoms from ligand A
+    never interact with any atoms from ligand B, and vice versa.
+    This list is used for all lambda windows.
+    """
+    all_atoms_A = set(dfA['index'].astype(int))
+    all_atoms_B = set(dfB['index'].astype(int))
+    mapped_A = set(mapping.keys())
+    mapped_B = set(mapping.values())
+    unique_A = all_atoms_A - mapped_A
+    unique_B = all_atoms_B - mapped_B
+
+    exclusions = []
+
+    # Exclude unique A atoms from all B atoms
+    for a in unique_A:
+        for b in all_atoms_B:
+            exclusions.append({"ai": a, "aj": b, "funct": 1})
+
+    # Exclude unique B atoms from all A atoms
+    for b in unique_B:
+        for a in all_atoms_A:
+            exclusions.append({"ai": b, "aj": a, "funct": 1})
+
+    return exclusions
 
 
 def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping,
@@ -1482,6 +1508,9 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
     """
     lambdas = np.arange(0, 1.05, 0.05)
 
+    # Generate the comprehensive exclusion list ONCE
+    comprehensive_exclusions = generate_comprehensive_exclusions(dfA, dfB, mapping)
+
     for lam in lambdas:
         lam_str = f"{lam:.2f}"
         lam_dir = f"lambda_{lam_str}"
@@ -1491,7 +1520,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
 
         # Generate hybrid topology
         outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
+        hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, _ = (
             create_hybrid_topology_for_lambda(
                 dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam
             )
@@ -1500,7 +1529,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         write_hybrid_topology(
             outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
             hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
-            hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
+            hybrid_pairs=hybrid_pairs, hybrid_exclusions=comprehensive_exclusions,
             system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
         )
 
