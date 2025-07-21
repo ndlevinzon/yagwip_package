@@ -656,19 +656,6 @@ class LigandUtils(LoggingMixin):
     def find_bonds_spatial(
             self, coords, elements, covalent_radii, bond_tolerance, logger=None
     ):
-        """
-        Find bonds using spatial partitioning for O(n) average case performance.
-
-        Args:
-            coords: numpy array of atom coordinates
-            elements: array of element symbols
-            covalent_radii: dictionary of covalent radii
-            bond_tolerance: bond distance tolerance
-
-        Returns:
-            bonds: list of bond dictionaries
-            atom_bonds: dictionary tracking bonds per atom
-        """
         # Calculate maximum bond distance
         max_radii = max(covalent_radii.values())
         max_bond_distance = 2 * max_radii + bond_tolerance
@@ -676,50 +663,36 @@ class LigandUtils(LoggingMixin):
         # Build spatial grid
         grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
 
-        bonds = []
-        atom_bonds = {i: [] for i in range(len(coords))}
-        bond_id = 1
-
-        # First pass: assign bonds as usual (to build initial graph)
-        for i in range(len(coords)):
-            coord_i = coords[i]
-            elem_i = elements[i]
-            min_coords = np.min(coords, axis=0)
-            grid_x = int((coord_i[0] - min_coords[0]) / grid_size)
-            grid_y = int((coord_i[1] - min_coords[1]) / grid_size)
-            grid_z = int((coord_i[2] - min_coords[2]) / grid_size)
-            current_cell = (grid_x, grid_y, grid_z)
-            neighbor_cells = self.get_neighbor_cells(current_cell)
-            checked_atoms = set()
-            for cell_key in neighbor_cells:
-                if cell_key not in grid:
-                    continue
-                for j in grid[cell_key]:
-                    if j <= i or j in checked_atoms:
-                        continue
-                    checked_atoms.add(j)
-                    elem_j = elements[j]
-                    coord_j = coords[j]
-                    dist = np.linalg.norm(coord_i - coord_j)
-                    r_cov_i = covalent_radii.get(elem_i, 0.77)
-                    r_cov_j = covalent_radii.get(elem_j, 0.77)
-                    max_bond = r_cov_i + r_cov_j + bond_tolerance
-                    if 0.4 < dist < max_bond:
-                        if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                            atom_bonds[i].append(j)
-                            atom_bonds[j].append(i)
-        # Detect rings up to 8 atoms
-        rings = self.find_rings(len(coords), atom_bonds, max_ring_size=8)
+        n_atoms = len(coords)
+        # --- 1. Initial strict bond graph for ring detection ---
+        strict_cutoff = 1.2  # Ångstroms, strict for covalent bonds
+        initial_atom_bonds = {i: [] for i in range(n_atoms)}
+        for i in range(n_atoms):
+            for j in range(i+1, n_atoms):
+                dist = np.linalg.norm(coords[i] - coords[j])
+                if dist < strict_cutoff:
+                    initial_atom_bonds[i].append(j)
+                    initial_atom_bonds[j].append(i)
+        # Detect rings up to 8 atoms in the initial graph
+        rings = self.find_rings(n_atoms, initial_atom_bonds, max_ring_size=8)
+        # Store all original ring bonds (as frozenset of pairs)
+        original_ring_bonds = set()
+        for ring in rings:
+            ring_list = sorted(ring)
+            for idx in range(len(ring_list)):
+                a = ring_list[idx]
+                b = ring_list[(idx+1)%len(ring_list)]  # wrap around
+                original_ring_bonds.add(frozenset((a, b)))
         # For fast lookup: for each atom, which rings is it in?
-        atom_to_rings = {i: set() for i in range(len(coords))}
+        atom_to_rings = {i: set() for i in range(n_atoms)}
         for ring in rings:
             for idx in ring:
                 atom_to_rings[idx].add(ring)
-        # Second pass: assign bonds, but skip C-C bonds between non-adjacent ring atoms
+        # --- 2. Main bond assignment with ring preservation ---
         bonds = []
-        atom_bonds = {i: [] for i in range(len(coords))}
+        atom_bonds = {i: [] for i in range(n_atoms)}
         bond_id = 1
-        for i in range(len(coords)):
+        for i in range(n_atoms):
             coord_i = coords[i]
             elem_i = elements[i]
             min_coords = np.min(coords, axis=0)
@@ -743,28 +716,15 @@ class LigandUtils(LoggingMixin):
                     r_cov_j = covalent_radii.get(elem_j, 0.77)
                     max_bond = r_cov_i + r_cov_j + bond_tolerance
                     if 0.4 < dist < max_bond:
-                        # Special case: Prevent C-C bond between non-adjacent ring atoms
-                        if elem_i == "C" and elem_j == "C":
-                            shared_rings = atom_to_rings[i] & atom_to_rings[j]
-                            if shared_rings:
-                                # Check if i and j are adjacent in any shared ring
-                                skip = False
-                                for ring in shared_rings:
-                                    ring_list = sorted(ring)
-                                    idx_i = ring_list.index(i)
-                                    idx_j = ring_list.index(j)
-                                    if abs(idx_i - idx_j) == 1 or abs(idx_i - idx_j) == len(ring_list) - 1:
-                                        # Adjacent in ring (including wrap-around)
-                                        skip = False
-                                        break
-                                    else:
-                                        skip = True
-                                if skip:
-                                    if logger:
-                                        logger.warning(
-                                            f"Skipping C-C bond between non-adjacent ring atoms {i+1} and {j+1} in a ring."
-                                        )
-                                    continue
+                        # If both atoms are in the same original ring, only allow bond if it was present in original_ring_bonds
+                        shared_rings = atom_to_rings[i] & atom_to_rings[j]
+                        if shared_rings:
+                            if frozenset((i, j)) not in original_ring_bonds:
+                                if logger:
+                                    logger.warning(
+                                        f"Skipping bond between atoms {i+1} and {j+1} to preserve original ring structure."
+                                    )
+                                continue
                         if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
                             bonds.append(
                                 {
