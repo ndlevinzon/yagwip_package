@@ -522,8 +522,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run the FEP preparation workflow using fep_prep.py CLI.
         This will:
-        1) Find ligandA.pdb, ligandA.itp, ligandB.pdb, ligandB.itp, and protein.pdb in the current directory
-        2) Align ligandB to ligandA and organize files into A/B_complex/water directories
+        1) Find ligandA.pdb, ligandA.itp, ligandB.pdb, ligandB.itp, protein.pdb, and optionally ligandA.mol2, ligandB.mol2 in the current directory
+        2) Align ligandB to ligandA using MCS from mol2 if available, and organize files into A/B_complex/water directories
         """
         cwd = os.getcwd()
         required_files = [
@@ -537,6 +537,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if missing:
             self._log_error(f"Missing required files: {', '.join(missing)}")
             return
+        # Check for mol2 files
+        ligA_mol2 = os.path.join(cwd, "ligandA.mol2")
+        ligB_mol2 = os.path.join(cwd, "ligandB.mol2")
+        use_mol2 = os.path.isfile(ligA_mol2) and os.path.isfile(ligB_mol2)
         fep_prep_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
         python_exe = sys.executable
         cmd = [
@@ -548,6 +552,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "--ligB_itp", "ligandB.itp",
             "--protein_pdb", "protein.pdb"
         ]
+        if use_mol2:
+            cmd += ["--ligA_mol2", "ligandA.mol2", "--ligB_mol2", "ligandB.mol2"]
+            self._log_info("Using mol2 files for MCS and alignment.")
+        else:
+            self._log_info("Mol2 files not found, using PDBs only for alignment.")
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)

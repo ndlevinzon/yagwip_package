@@ -27,23 +27,53 @@ class MolGraph:
         self.bond_types = {}  # (min(a1,a2), max(a1,a2)): order
 
     @staticmethod
-    def from_pdb(filename):
+    def from_mol2(filename):
         atoms = {}
+        bonds = []
         adj = defaultdict(set)
-        idx = 1
+        bond_types = {}
         with open(filename) as f:
             lines = f.readlines()
+        atom_section = False
+        bond_section = False
         for line in lines:
-            if line.startswith("ATOM") or line.startswith("HETATM"):
-                element = line[76:78].strip().upper() if len(line) >= 78 else line[12:14].strip().upper()
+            if line.startswith("@<TRIPOS>ATOM"):
+                atom_section = True
+                bond_section = False
+                continue
+            if line.startswith("@<TRIPOS>BOND"):
+                atom_section = False
+                bond_section = True
+                continue
+            if line.startswith("@<TRIPOS>"):
+                atom_section = False
+                bond_section = False
+            if atom_section:
+                parts = line.split()
+                if len(parts) < 6:
+                    continue
+                idx = int(parts[0])
+                element = ''.join(filter(str.isalpha, parts[5])).upper()
                 atoms[idx] = Atom(idx, element)
-                idx += 1
-        # No bond info in PDB, so no bonds/adjacency
+            if bond_section:
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                a1 = int(parts[1])
+                a2 = int(parts[2])
+                order = parts[3]
+                bonds.append(Bond(a1, a2, order))
+                adj[a1].add(a2)
+                adj[a2].add(a1)
+                bond_types[(min(a1, a2), max(a1, a2))] = order
+        for idx, atom in atoms.items():
+            atom.neighbors = adj[idx]
+            atom.degree = len(adj[idx])
         g = MolGraph()
         g.atoms = atoms
-        g.bonds = []
+        g.bonds = bonds
         g.adj = adj
-        g.bond_types = {}
+        g.bond_types = bond_types
         return g
 
     def subgraph(self, atom_indices):
@@ -51,9 +81,20 @@ class MolGraph:
         for idx in atom_indices:
             atom = self.atoms[idx]
             sg.atoms[idx] = Atom(idx, atom.element)
+        for idx in atom_indices:
+            for nbr in self.adj[idx]:
+                if nbr in atom_indices:
+                    a, b = min(idx, nbr), max(idx, nbr)
+                    if (a, b) in sg.bond_types:
+                        continue
+                    order = self.bond_types[(a, b)]
+                    sg.bonds.append(Bond(a, b, order))
+                    sg.adj[a].add(b)
+                    sg.adj[b].add(a)
+                    sg.bond_types[(a, b)] = order
         for idx in sg.atoms:
-            sg.atoms[idx].neighbors = set()
-            sg.atoms[idx].degree = 0
+            sg.atoms[idx].neighbors = sg.adj[idx]
+            sg.atoms[idx].degree = len(sg.adj[idx])
         return sg
 
 def are_isomorphic(g1, g2):
@@ -64,7 +105,7 @@ def are_isomorphic(g1, g2):
         candidates[idx1] = [
             idx2
             for idx2, atom2 in g2.atoms.items()
-            if atom1.element == atom2.element
+            if atom1.element == atom2.element and atom1.degree == atom2.degree
         ]
         if not candidates[idx1]:
             return False, None
@@ -86,7 +127,6 @@ def are_isomorphic(g1, g2):
     return backtrack({}, set())
 
 def enumerate_connected_subgraphs(graph, size):
-    # For PDBs, treat as all possible combinations of atom indices of given size
     from itertools import combinations
     return [set(s) for s in combinations(graph.atoms.keys(), size)]
 
@@ -117,7 +157,30 @@ def find_mcs(g1, g2):
                     return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
 
-# --- PDB parsing and writing ---
+# --- MOL2 and PDB parsing ---
+def parse_mol2_coords(filename):
+    coords = {}
+    names = {}
+    with open(filename) as f:
+        lines = f.readlines()
+    in_atoms = False
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms = True
+            continue
+        if in_atoms:
+            if line.startswith("@<TRIPOS>"):
+                break
+            parts = line.split()
+            if len(parts) < 6:
+                continue
+            idx = int(parts[0])
+            name = parts[1]
+            x, y, z = map(float, parts[2:5])
+            coords[idx] = (x, y, z)
+            names[idx] = name
+    return coords, names
+
 def parse_pdb_coords(filename):
     coords = {}
     names = {}
@@ -142,59 +205,81 @@ def write_aligned_pdb(atom_lines, coords, out_file):
             newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
             f.write(newline)
 
-# --- Kabsch alignment using MCS mapping ---
-def kabsch_align(coords_A, coords_B):
-    centroid_A = np.mean(coords_A, axis=0)
-    centroid_B = np.mean(coords_B, axis=0)
-    centered_A = coords_A - centroid_A
-    centered_B = coords_B - centroid_B
+# --- Kabsch alignment using MCS mapping from mol2, applied to pdbs ---
+def align_ligandB_to_A_mcs_mol2pdb(ligA_mol2, ligB_mol2, ligA_pdb, ligB_pdb, out_pdb):
+    # 1. Find MCS using mol2s
+    gA = MolGraph.from_mol2(ligA_mol2)
+    gB = MolGraph.from_mol2(ligB_mol2)
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
+    if mcs_size < 3 or mapping is None or atom_indicesA is None or atom_indicesB is None:
+        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
+    # 2. Parse mol2 and pdb files
+    mol2A_coords, mol2A_names = parse_mol2_coords(ligA_mol2)
+    mol2B_coords, mol2B_names = parse_mol2_coords(ligB_mol2)
+    pdbA_coords, pdbA_names, pdbA_lines, _ = parse_pdb_coords(ligA_pdb)
+    pdbB_coords, pdbB_names, pdbB_lines, _ = parse_pdb_coords(ligB_pdb)
+    # 3. Build mapping from mol2 idx to pdb idx (assume order, fallback to name)
+    def mol2_to_pdb_idx(mol2_names, pdb_names):
+        mapping = {}
+        used = set()
+        for m_idx, m_name in mol2_names.items():
+            # Try to find the first pdb idx with the same name not already used
+            for p_idx, p_name in pdb_names.items():
+                if p_name == m_name and p_idx not in used:
+                    mapping[m_idx] = p_idx
+                    used.add(p_idx)
+                    break
+            else:
+                # fallback: use same index if possible
+                if m_idx in pdb_names and m_name == pdb_names[m_idx]:
+                    mapping[m_idx] = m_idx
+        return mapping
+    mapA = mol2_to_pdb_idx(mol2A_names, pdbA_names)
+    mapB = mol2_to_pdb_idx(mol2B_names, pdbB_names)
+    # 4. Extract coordinates for mapped atoms from PDBs using MCS mapping
+    mappedA = sorted(atom_indicesA)
+    mappedB = [mapping[a] for a in mappedA]
+    pdbA_indices = [mapA[a] for a in mappedA if a in mapA]
+    pdbB_indices = [mapB[mapping[a]] for a in mappedA if a in mapA and mapping[a] in mapB]
+    if len(pdbA_indices) < 3 or len(pdbB_indices) < 3:
+        raise RuntimeError("Could not find enough mapped atoms in PDBs for alignment.")
+    coordsA = np.array([pdbA_coords[i] for i in pdbA_indices])
+    coordsB = np.array([pdbB_coords[i] for i in pdbB_indices])
+    # 5. Kabsch align
+    centroid_A = np.mean(coordsA, axis=0)
+    centroid_B = np.mean(coordsB, axis=0)
+    centered_A = coordsA - centroid_A
+    centered_B = coordsB - centroid_B
     H = centered_B.T @ centered_A
     U, S, Vt = np.linalg.svd(H)
     d = np.sign(np.linalg.det(Vt.T @ U.T))
     Vt[-1, :] *= d
     R = Vt.T @ U.T
-    aligned_coords_B = (centered_B @ R) + centroid_A
-    return aligned_coords_B, R, centroid_A - centroid_B
-
-def align_ligandB_to_A_mcs(ligA_pdb, ligB_pdb, out_pdb):
-    # Build graphs
-    gA = MolGraph.from_pdb(ligA_pdb)
-    gB = MolGraph.from_pdb(ligB_pdb)
-    # Find MCS
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
-    if mcs_size < 3 or mapping is None or atom_indicesA is None or atom_indicesB is None:
-        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
-    # Get coordinates for mapped atoms
-    coordsA_all, _, atom_linesA, _ = parse_pdb_coords(ligA_pdb)
-    coordsB_all, _, atom_linesB, linesB = parse_pdb_coords(ligB_pdb)
-    mappedA = sorted(atom_indicesA)
-    mappedB = [mapping[a] for a in mappedA]
-    coordsA = np.array([coordsA_all[a] for a in mappedA])
-    coordsB = np.array([coordsB_all[b] for b in mappedB])
-    # Kabsch align
-    aligned_coordsB, R, t = kabsch_align(coordsA, coordsB)
-    # Apply transformation to all atoms in ligandB
-    allB_indices = sorted(coordsB_all.keys())
-    allB_coords = np.array([coordsB_all[i] for i in allB_indices])
-    centroid_B = np.mean(coordsB, axis=0)
+    # Apply transformation to all atoms in ligandB.pdb
+    allB_indices = sorted(pdbB_coords.keys())
+    allB_coords = np.array([pdbB_coords[i] for i in allB_indices])
     centered_allB = allB_coords - centroid_B
-    transformed_allB = (centered_allB @ R) + np.mean(coordsA, axis=0)
+    transformed_allB = (centered_allB @ R) + centroid_A
     # Write aligned pdb
-    write_aligned_pdb(atom_linesB, transformed_allB, out_pdb)
+    write_aligned_pdb(pdbB_lines, transformed_allB, out_pdb)
 
 # --- Main script ---
 def main():
-    parser = argparse.ArgumentParser(description='FEP prep: align ligands (pdb, MCS), generate water/complex systems.')
+    parser = argparse.ArgumentParser(description='FEP prep: align ligands (mol2 MCS, pdb alignment), generate water/complex systems.')
     parser.add_argument('--ligA_pdb', required=True)
     parser.add_argument('--ligA_itp', required=True)
     parser.add_argument('--ligB_pdb', required=True)
     parser.add_argument('--ligB_itp', required=True)
     parser.add_argument('--protein_pdb', required=True)
+    parser.add_argument('--ligA_mol2', required=False)
+    parser.add_argument('--ligB_mol2', required=False)
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_pdb))
+    ligA_mol2 = args.ligA_mol2 or os.path.join(out_dir, 'ligandA.mol2')
+    ligB_mol2 = args.ligB_mol2 or os.path.join(out_dir, 'ligandB.mol2')
     aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
-    align_ligandB_to_A_mcs(args.ligA_pdb, args.ligB_pdb, aligned_ligB_pdb)
+    align_ligandB_to_A_mcs_mol2pdb(ligA_mol2, ligB_mol2, args.ligA_pdb, args.ligB_pdb, aligned_ligB_pdb)
 
     out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
     out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
@@ -209,8 +294,8 @@ def main():
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
-    copyfile(args.protein_gro, os.path.join(out_dirs_full[1], 'protein.pdb'))
-    copyfile(args.protein_gro, os.path.join(out_dirs_full[3], 'protein.pdb'))
+    copyfile(args.protein_pdb, os.path.join(out_dirs_full[1], 'protein.pdb'))
+    copyfile(args.protein_pdb, os.path.join(out_dirs_full[3], 'protein.pdb'))
 
     print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
     print("Output written to:")
