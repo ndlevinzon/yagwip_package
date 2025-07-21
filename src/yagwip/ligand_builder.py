@@ -26,7 +26,7 @@ class LigandPipeline(YagwipBase):
         super().__init__(debug=debug, logger=logger)
 
     @auto_monitor
-    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None, conect_records=None):
+    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None, connect_records=None):
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
             "H": 0.31,
@@ -101,11 +101,11 @@ class LigandPipeline(YagwipBase):
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
-        # Use CONECT records if provided, else spatial partitioning
-        if conect_records:
+        # Use CONNECT records if provided, else spatial partitioning
+        if connect_records:
             bonds, atom_bonds = LigandUtils.find_bonds_spatial(
                 coords, elements, covalent_radii, bond_tolerance,
-                conect_records=conect_records, logger=self.logger
+                connect_records=connect_records, logger=self.logger
             )
         else:
             bonds, atom_bonds = LigandUtils.find_bonds_spatial(
