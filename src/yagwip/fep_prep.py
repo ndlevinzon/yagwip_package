@@ -1327,28 +1327,28 @@ def is_1_4_connected(atom_i, atom_j, adjacency, max_depth=3):
 def generate_exclusions(hybrid_atoms, lam, coord_dict, rlist_nm=1.2):
     """
     Exclude A–B atom pairs only when their distance is < rlist_nm.
-    coord_dict  : {hybrid_idx: (x,y,z)} in **nanometres**
+    coord_dict  : {hybrid_idx: (x,y,z)} in **angstroms**
     """
     exclusions = []
-
-    if lam in (0.0, 1.0):  # pure states – nothing to exclude
+    if lam in (0.0, 1.0):
         return exclusions
 
-    # classify atoms by origin
+    # 1 Å = 0.1 nm  → pre‑scale once for speed
+    nm_coords = {idx: np.array(Å)*0.1 for idx, Å in coord_dict.items()}
+
     atoms_a = [atm.index for atm in hybrid_atoms if atm.origA_idx is not None]
     atoms_b = [atm.index for atm in hybrid_atoms if atm.origB_idx is not None]
 
     for ai in atoms_a:
         for aj in atoms_b:
-            if ai == aj:
+            if ai == aj:          # self check
                 continue
-            ci, cj = coord_dict.get(ai), coord_dict.get(aj)
-            if ci is None or cj is None:
-                continue  # safety
-            dist = np.linalg.norm(np.subtract(ci, cj))
-            if dist < rlist_nm:  # within neighbour list cut‑off
+            try:
+                dist = np.linalg.norm(nm_coords[ai] - nm_coords[aj])
+            except KeyError:      # coordinate missing – skip
+                continue
+            if dist < rlist_nm:   # now a true nm–vs–nm comparison
                 exclusions.append({"ai": ai, "aj": aj, "funct": 1})
-
     return exclusions
 
 
@@ -1455,9 +1455,20 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         if not os.path.exists(lam_dir):
             os.makedirs(lam_dir)
 
-        # Generate hybrid topology (initially with empty coord_dict)
-        outfilename = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
-        coord_dict = {}  # Empty by default
+        # Generate coordinates first (gives you coord_dict in Å)
+        if ligA_mol2 and ligB_mol2 and atom_map_txt:
+            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
+            coord_dict = hybridize_coords_from_mol2_files(
+                ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam
+            )  # <-- returns {idx: (Å,Å,Å)}
+            print(f"Wrote {out_pdb}")
+        else:
+            # Fallback if mol2 files are not provided
+            print(f"Warning: mol2 files not provided for lambda {lam_str}, using empty coord_dict.")
+            coord_dict = {}
+
+        # Then build topology using that coord_dict
+        out_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.itp")
         hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_pairs, hybrid_exclusions = (
             create_hybrid_topology_for_lambda(
                 dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, dihedB, mapping, lam, coord_dict
@@ -1465,7 +1476,7 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         )
 
         write_hybrid_topology(
-            outfilename, hybrid_atoms, hybrid_bonds=hybrid_bonds,
+            out_itp, hybrid_atoms, hybrid_bonds=hybrid_bonds,
             hybrid_angles=hybrid_angles, hybrid_dihedrals=hybrid_dihedrals,
             hybrid_pairs=hybrid_pairs, hybrid_exclusions=hybrid_exclusions,
             system_name="LigandA to LigandB Hybrid", molecule_name="LIG", nmols=1
@@ -1474,23 +1485,9 @@ def process_lambda_windows(dfA, dfB, bondsA, bondsB, anglesA, anglesB, dihedA, d
         # Create position restraints file
         posre_filename = os.path.join(lam_dir, "posre_ligand.itp")
 
-        print(f"Wrote {outfilename}")
+        print(f"Wrote {out_itp}")
         if os.path.exists(posre_filename):
             print(f"Wrote {posre_filename}")
-
-        # Generate coordinates if mol2 files are provided
-        if ligA_mol2 and ligB_mol2 and atom_map_txt:
-            out_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_str}.pdb")
-
-            # Generate coordinates directly from MOL2 files
-            # Note: We don't regenerate the topology here to maintain consistent atom counts
-            coord_dict = hybridize_coords_from_mol2_files(
-                ligA_mol2, ligB_mol2, atom_map_txt, out_pdb, lam
-            )
-            print(f"Wrote {out_pdb}")
-        else:
-            # Fallback if mol2 files are not provided
-            print(f"Warning: mol2 files not provided for lambda {lam_str}, skipping coordinate generation.")
 
 
 # =====================
