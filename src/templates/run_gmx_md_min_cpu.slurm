@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=__BASE___gmx_min
-#SBATCH --output=slurm/remd_job_%j.out
-#SBATCH --error=slurm/remd_job_%j.err
+#SBATCH --output=slurm/md_job_%j.out
+#SBATCH --error=slurm/md_job_%j.err
 #SBATCH --nodes=1              # Number of Nodes
 #SBATCH --ntasks-per-node=1    # Replicas per Node
 #SBATCH --cpus-per-task=64     # CPUs Per Replicas
