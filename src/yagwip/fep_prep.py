@@ -193,10 +193,11 @@ def enumerate_connected_subgraphs(graph, size):
     from itertools import combinations
     return [set(s) for s in combinations(graph.atoms.keys(), size)]
 
-def find_mcs(g1, g2):
+def find_mcs(g1, g2, max_mcs_size=10):
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
-    for size in range(len(g1.atoms), 0, -1):
+    max_size = min(len(g1.atoms), max_mcs_size)
+    for size in range(max_size, 2, -1):
         subgraphs1 = enumerate_connected_subgraphs(g1, size)
         if not subgraphs1:
             continue
@@ -371,7 +372,9 @@ def main():
     # 1. Find MCS and write atom_map.txt
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
+    if len(gA.atoms) > 10 or len(gB.atoms) > 10:
+        print("[WARNING] Ligands are large; MCS search is limited to 10 atoms and may not find the true MCS. For larger ligands, use RDKit or a more efficient algorithm.")
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB, max_mcs_size=10)
     if mcs_size < 3 or mapping is None:
         raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
