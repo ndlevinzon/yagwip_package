@@ -248,6 +248,57 @@ class Editor(LoggingMixin):
             f"Wrote combined coordinates to {combined_gro} with ligand atom names from {ligand_itp}"
         )
 
+    def comment_out_topol_line_and_rerun_genions(self, run_genions_func, error_message, max_retries=10):
+        """
+        If an error like 'ERROR 1 [file topol.top, line 37791]' is encountered during genions,
+        comment out the offending line in topol.top and rerun genions, up to max_retries times.
+        Args:
+            run_genions_func: Callable that runs genions and returns (success: bool, error_message: str)
+            error_message: The error message from the last genions run
+            max_retries: Maximum number of attempts
+        Returns:
+            True if genions succeeds, False otherwise
+        """
+        import re
+        attempt = 0
+        while attempt < max_retries:
+            match = re.search(r"\[file topol\\.top, line (\d+)\]", error_message)
+            if not match:
+                self._log(f"[ERROR] Could not find line number in error message: {error_message}")
+                return False
+            line_num = int(match.group(1))
+            top_path = "./topol.top"
+            try:
+                with open(top_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                if 0 <= line_num - 1 < len(lines):
+                    if not lines[line_num - 1].strip().startswith(";"):
+                        lines[line_num - 1] = f";{lines[line_num - 1]}"
+                        with open(top_path, "w", encoding="utf-8") as f:
+                            f.writelines(lines)
+                        self._log(f"[#] Commented out line {line_num} in topol.top (Attempt {attempt+1}/{max_retries})")
+                else:
+                    self._log(f"[ERROR] Line number {line_num} out of range in topol.top")
+                    return False
+            except Exception as e:
+                self._log(f"[ERROR] Failed to modify topol.top: {e}")
+                return False
+            # Rerun genions
+            success, new_error_message = run_genions_func()
+            if success:
+                self._log(f"[SUCCESS] genions completed successfully after {attempt+1} attempts.")
+                return True
+            # If error persists, check if it's the same type
+            if "[file topol.top, line" in new_error_message:
+                error_message = new_error_message
+                attempt += 1
+                continue
+            else:
+                self._log(f"[ERROR] genions failed with a different error after {attempt+1} attempts.")
+                return False
+        self._log(f"[ERROR] Maximum retries ({max_retries}) reached for genions improper dihedral error.")
+        return False
+
     def append_hybrid_ligand_coordinates_to_gro(
             self, protein_gro, ligand_pdb, hybrid_itp, combined_gro="complex.gro"
     ):

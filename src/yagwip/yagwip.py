@@ -712,10 +712,34 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Other Options: use "set genions" to override defaults
         """
 
+        import re
         # Check if lambda subdirectories exist (case 3)
         lambda_dirs = [
             d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
         ]
+
+        def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
+            # Run genions and capture error message
+            from io import StringIO
+            import sys
+            import contextlib
+            error_message = ""
+            success = False
+            # Patch: capture stderr/stdout
+            with StringIO() as buf, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                try:
+                    self.builder.run_genions(basename, custom_command=custom_command, fep_mode=fep_mode)
+                    output = buf.getvalue()
+                    # Check for error pattern
+                    if re.search(r"ERROR 1 \[file topol\\.top, line \\d+\]", output):
+                        error_message = output
+                        success = False
+                    else:
+                        success = True
+                except Exception as e:
+                    error_message = str(e)
+                    success = False
+            return success, error_message
 
         if lambda_dirs:
             # Case 3: Lambda subdirectories with hybrid files
@@ -743,13 +767,25 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 os.chdir(lam_dir)
 
                 try:
-                    # Run genions on the solvated hybrid complex
-                    self.builder.run_genions(
+                    # First attempt
+                    success, error_message = run_genions_and_capture(
                         f"hybrid_complex_{lam_value}",
                         custom_command=self.custom_cmds.get("genions"),
                         fep_mode=True,
                     )
-                    self._log_success(f"Added ions to {solvated_complex}")
+                    if success:
+                        self._log_success(f"Added ions to {solvated_complex}")
+                    elif "[file topol.top, line" in error_message:
+                        # Use the new Editor function to fix and retry
+                        def rerun():
+                            return run_genions_and_capture(
+                                f"hybrid_complex_{lam_value}",
+                                custom_command=self.custom_cmds.get("genions"),
+                                fep_mode=True,
+                            )
+                        self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                    else:
+                        self._log_error(f"Failed to add ions to {lam_dir}: {error_message}")
                 except Exception as e:
                     self._log_error(f"Failed to add ions to {lam_dir}: {e}")
                 finally:
@@ -765,9 +801,20 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
             if not self._require_pdb():
                 return
-            self.builder.run_genions(
+            # First attempt
+            success, error_message = run_genions_and_capture(
                 solvated_pdb, custom_command=self.custom_cmds.get("genions")
             )
+            if success:
+                self._log_success(f"Added ions to {solvated_pdb}.solv.gro")
+            elif "[file topol.top, line" in error_message:
+                def rerun():
+                    return run_genions_and_capture(
+                        solvated_pdb, custom_command=self.custom_cmds.get("genions")
+                    )
+                self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+            else:
+                self._log_error(f"Failed to add ions: {error_message}")
 
     def do_em(self, arg):
         """Run energy minimization."""
