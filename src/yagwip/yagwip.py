@@ -509,94 +509,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records.")
         return protein_file, ligand_file, connect_records
 
-    def do_fep_prep(self, arg):
-        """
-        Run the complete FEP preparation workflow using fep_prep.py CLI.
-        This will:
-        1) Align ligand B to ligand A using Kabsch algorithm
-        2) Run MCS to generate atom_map.txt using aligned coordinates
-        3) Generate hybrid topologies for all lambda windows
-        4) Generate hybrid coordinates for all lambda windows
-        """
-        ligandA_mol2 = "ligandA.mol2"
-        ligandB_mol2 = "ligandB.mol2"
-        ligandA_itp = "ligandA.itp"
-        ligandB_itp = "ligandB.itp"
-        atom_map = "atom_map.txt"
-        fep_utils_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
-        python_exe = sys.executable
+    #def do_fep_prep(self, arg):
 
-        # Check if required files exist
-        if not os.path.exists(ligandA_mol2):
-            self._log_error(f"Ligand A file not found: {ligandA_mol2}")
-            return
-        if not os.path.exists(ligandB_mol2):
-            self._log_error(f"Ligand B file not found: {ligandB_mol2}")
-            return
-
-        # Step 1: Align ligand B to ligand A
-        aligned_ligandB_mol2 = "ligandB_aligned.mol2"
-        cmds = [
-            (
-                [
-                    python_exe,
-                    fep_utils_path,
-                    "align",
-                    ligandA_mol2,
-                    ligandB_mol2,
-                    aligned_ligandB_mol2,
-                ],
-                "Align ligand B to ligand A using Kabsch algorithm",
-            ),
-            (
-                [
-                    python_exe,
-                    fep_utils_path,
-                    "mcs",
-                    ligandA_mol2,
-                    aligned_ligandB_mol2,
-                    atom_map,
-                ],
-                "Run MCS to generate atom_map.txt using aligned coordinates",
-            ),
-            (
-                [
-                    python_exe,
-                    fep_utils_path,
-                    "hybrid_topology",
-                    ligandA_itp,
-                    ligandB_itp,
-                    atom_map,
-                ],
-                "Generate hybrid topologies for all lambda windows",
-            ),
-            (
-                [
-                    python_exe,
-                    fep_utils_path,
-                    "hybrid_coords",
-                    ligandA_mol2,
-                    aligned_ligandB_mol2,
-                    atom_map,
-                ],
-                "Generate hybrid coordinates for all lambda windows using aligned coordinates",
-            ),
-        ]
-
-        for cmd, desc in cmds:
-            command_str = " ".join(cmd)
-            success = self._execute_command(command_str, description=desc)
-            if not success:
-                self._log_error(f"Step failed: {desc}")
-                break
-        else:
-            self._log_success("FEP preparation complete.")
-            self._log_info("Aligned ligand B coordinates saved to ligandB_aligned.mol2")
-            self._log_info("All lambda windows generated with aligned coordinates")
 
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx. Handles protein-only, protein-ligand, and FEP cases.
+        Run pdb2gmx. Handles protein-only, protein-ligand, and ligand cases.
         """
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
@@ -633,33 +551,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._pdb2gmx_protein_ligand(output_gro)
 
-    def _pdb2gmx_fep(self, lambda_dirs, protein_gro):
-        """Handle the FEP workflow for pdb2gmx."""
-        self._log_info(f"Found {len(lambda_dirs)} lambda subdirectories. Processing hybrid FEP setup...")
-
-        for lam_dir in sorted(lambda_dirs):
-            lam_value = lam_dir.replace("lambda_", "")
-            self._log_info(f"Processing {lam_dir} (lambda = {lam_value})")
-
-            hybrid_pdb = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.pdb")
-            hybrid_itp = os.path.join(lam_dir, f"hybrid_lambda_{lam_value}.itp")
-
-            if not os.path.exists(hybrid_pdb) or not os.path.exists(hybrid_itp):
-                self._log_warning(f"Skipping {lam_dir} due to missing PDB or ITP files.")
-                continue
-
-            complex_gro = os.path.join(lam_dir, f"hybrid_complex_{lam_value}.gro")
-            self.editor.append_hybrid_ligand_coordinates_to_gro(protein_gro, hybrid_pdb, hybrid_itp, complex_gro)
-
-            lambda_topol = os.path.join(lam_dir, "topol.top")
-            shutil.copy("topol.top", lambda_topol)
-
-            self.editor.include_ligand_itp_in_topol(lambda_topol, "LIG", ligand_itp_path=f"hybrid_lambda_{lam_value}.itp")
-            self.editor.fix_lambda_topology_paths(lambda_topol, lam_value)
-            self._log_success(f"Created {complex_gro} and updated {lambda_topol} for lambda {lam_value}")
-
-        self._log_success(f"Processed {len(lambda_dirs)} lambda windows")
-
     def _pdb2gmx_protein_ligand(self, protein_gro):
         """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
         ligand_pdb_file = "ligandA.pdb"
@@ -675,6 +566,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
 
+    def _pdb2gmx_ligand(self, protein_gro):
+        """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
+        ligand_pdb_file = "ligandA.pdb"
+        ligand_itp_file = "ligandA.itp"
+
     def do_solvate(self, arg):
         """
         Run solvate with optional custom command override. Handles three cases:
@@ -684,60 +580,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-
-        # Check if lambda subdirectories exist (case 3)
-        lambda_dirs = [
-            d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
-        ]
-
-        if lambda_dirs:
-            # Case 3: Lambda subdirectories with hybrid files
-            self._log_info(
-                f"Found {len(lambda_dirs)} lambda subdirectories. Processing solvation for each lambda..."
-            )
-
-            for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace("lambda_", "")
-                self._log_info(f"Solvating {lam_dir} (lambda = {lam_value})")
-
-                # Check for hybrid complex file in lambda directory
-                hybrid_complex = os.path.join(
-                    lam_dir, f"hybrid_complex_{lam_value}.gro"
-                )
-
-                if not os.path.exists(hybrid_complex):
-                    self._log_warning(f"Hybrid complex not found: {hybrid_complex}")
-                    continue
-
-                # Change to lambda directory and run solvate
-                original_dir = os.getcwd()
-                os.chdir(lam_dir)
-
-                try:
-                    # Run solvate on the hybrid complex
-                    self.builder.run_solvate(
-                        f"hybrid_complex_{lam_value}",
-                        custom_command=self.custom_cmds.get("solvate"),
-                    )
-                    self._log_success(f"Solvated {hybrid_complex}")
-                except Exception as e:
-                    self._log_error(f"Failed to solvate {lam_dir}: {e}")
-                finally:
-                    # Return to original directory
-                    os.chdir(original_dir)
-
-            self._log_success(
-                f"Processed solvation for {len(lambda_dirs)} lambda windows"
-            )
-
-        else:
-            # Cases 1 & 2: Protein-only or protein + single ligand
-            complex_pdb = "complex" if self.ligand_pdb_path else "protein"
-            if not self._require_pdb():
-                return
-            self.builder.run_solvate(
-                complex_pdb, custom_command=self.custom_cmds.get("solvate")
-            )
+        # Cases 1 & 2: Protein-only or protein + single ligand
+        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
+        if not self._require_pdb():
+            return
+        self.builder.run_solvate(
+            complex_pdb, custom_command=self.custom_cmds.get("solvate")
+        )
 
     def do_genions(self, arg):
         """
@@ -750,10 +599,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
 
         import re
-        # Check if lambda subdirectories exist (case 3)
-        lambda_dirs = [
-            d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)
-        ]
 
         def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
             # Run genions and capture error message
@@ -778,80 +623,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     success = False
             return success, error_message
 
-        if lambda_dirs:
-            # Case 3: Lambda subdirectories with hybrid files
-            self._log_info(
-                f"Found {len(lambda_dirs)} lambda subdirectories. Processing ion addition for each lambda..."
-            )
-
-            for lam_dir in sorted(lambda_dirs):
-                lam_value = lam_dir.replace("lambda_", "")
-                self._log_info(f"Adding ions to {lam_dir} (lambda = {lam_value})")
-
-                # Check for solvated hybrid complex file in lambda directory
-                solvated_complex = os.path.join(
-                    lam_dir, f"hybrid_complex_{lam_value}.solv.gro"
+        # Cases 1 & 2: Protein-only or protein + single ligand
+        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
+        if not self._require_pdb():
+            return
+        # First attempt
+        success, error_message = run_genions_and_capture(
+            solvated_pdb, custom_command=self.custom_cmds.get("genions")
+        )
+        if success:
+            self._log_success(f"Added ions to {solvated_pdb}.solv.gro")
+        elif "[file topol.top, line" in error_message:
+            def rerun():
+                return run_genions_and_capture(
+                    solvated_pdb, custom_command=self.custom_cmds.get("genions")
                 )
-
-                if not os.path.exists(solvated_complex):
-                    self._log_warning(
-                        f"Solvated hybrid complex not found: {solvated_complex}"
-                    )
-                    continue
-
-                # Change to lambda directory and run genions
-                original_dir = os.getcwd()
-                os.chdir(lam_dir)
-
-                try:
-                    # First attempt
-                    success, error_message = run_genions_and_capture(
-                        f"hybrid_complex_{lam_value}",
-                        custom_command=self.custom_cmds.get("genions"),
-                        fep_mode=True,
-                    )
-                    if success:
-                        self._log_success(f"Added ions to {solvated_complex}")
-                    elif "[file topol.top, line" in error_message:
-                        # Use the new Editor function to fix and retry
-                        def rerun():
-                            return run_genions_and_capture(
-                                f"hybrid_complex_{lam_value}",
-                                custom_command=self.custom_cmds.get("genions"),
-                                fep_mode=True,
-                            )
-                        self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
-                    else:
-                        self._log_error(f"Failed to add ions to {lam_dir}: {error_message}")
-                except Exception as e:
-                    self._log_error(f"Failed to add ions to {lam_dir}: {e}")
-                finally:
-                    # Return to original directory
-                    os.chdir(original_dir)
-
-            self._log_success(
-                f"Processed ion addition for {len(lambda_dirs)} lambda windows"
-            )
-
+            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
         else:
-            # Cases 1 & 2: Protein-only or protein + single ligand
-            solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
-            if not self._require_pdb():
-                return
-            # First attempt
-            success, error_message = run_genions_and_capture(
-                solvated_pdb, custom_command=self.custom_cmds.get("genions")
-            )
-            if success:
-                self._log_success(f"Added ions to {solvated_pdb}.solv.gro")
-            elif "[file topol.top, line" in error_message:
-                def rerun():
-                    return run_genions_and_capture(
-                        solvated_pdb, custom_command=self.custom_cmds.get("genions")
-                    )
-                self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
-            else:
-                self._log_error(f"Failed to add ions: {error_message}")
+            self._log_error(f"Failed to add ions: {error_message}")
 
     def do_em(self, arg):
         """Run energy minimization."""
