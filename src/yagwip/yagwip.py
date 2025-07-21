@@ -24,7 +24,7 @@ import io
 from io import StringIO
 import cmd
 import sys
-import shutil
+import string
 import subprocess
 import random
 import argparse
@@ -640,22 +640,49 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
 
-    def _pdb2gmx_ligand(self, protein_gro):
-        """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
-        ligand_pdb_file = "ligandA.pdb"
-        ligand_itp_file = "ligandA.itp"
+    def _pdb2gmx_ligand(self, lambda_dirs, output_gro):
+        """
+        Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.gro in the current directory.
+        """
+        ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+        found = False
+        for fname in ligand_gro_files:
+            if os.path.isfile(fname):
+                found = True
+                break
+        if not found:
+            self._log_error(f"No ligand_*.gro file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
+            return
+        # Continue with existing logic (if any)
 
     def do_solvate(self, arg):
         """
         Run solvate with optional custom command override. Handles three cases:
         1) Protein-only: solvates protein.gro
         2) Protein + single ligand: solvates complex.gro
-        3) Lambda subdirectories: solvates hybrid_complex_XX.gro in each lambda directory
+        3) Ligand-only: solvates ligandX.gro in current directory
+        4) Lambda subdirectories: solvates hybrid_complex_XX.gro in each lambda directory
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-        # Cases 1 & 2: Protein-only or protein + single ligand
-        complex_pdb = "complex" if self.ligand_pdb_path else "protein"
+        # Determine which system to solvate
+        if self.ligand_pdb_path and os.path.isfile("complex.gro"):
+            complex_pdb = "complex"
+        elif not os.path.isfile("protein.gro"):
+            # Ligand-only: look for ligandX.gro
+            ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+            found = None
+            for fname in ligand_gro_files:
+                if os.path.isfile(fname):
+                    found = fname[:-4]  # strip .gro
+                    break
+            if found:
+                complex_pdb = found
+            else:
+                self._log_error("No protein.gro or ligand_*.gro found for solvation.")
+                return
+        else:
+            complex_pdb = "protein"
         if not self._require_pdb():
             return
         self.builder.run_solvate(
@@ -667,10 +694,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Run genions with optional custom command override. Handles three cases:
         1) Protein-only: adds ions to protein.solv.gro
         2) Protein + single ligand: adds ions to complex.solv.gro
-        3) Lambda subdirectories: adds ions to hybrid_complex_XX.solv.gro in each lambda directory
+        3) Ligand-only: adds ions to ligandX.solv.gro in current directory
+        4) Lambda subdirectories: adds ions to hybrid_complex_XX.solv.gro in each lambda directory
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
+
         def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
             error_message = ""
             success = False
@@ -690,8 +719,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     success = False
             return success, error_message
 
-        # Cases 1 & 2: Protein-only or protein + single ligand
-        solvated_pdb = "complex" if self.ligand_pdb_path else "protein"
+        # Determine which system to add ions to
+        if self.ligand_pdb_path and os.path.isfile("complex.gro"):
+            solvated_pdb = "complex"
+        elif not os.path.isfile("protein.gro"):
+            # Ligand-only: look for ligandX.gro
+            ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+            found = None
+            for fname in ligand_gro_files:
+                if os.path.isfile(fname):
+                    found = fname[:-4]  # strip .gro
+                    break
+            if found:
+                solvated_pdb = found
+            else:
+                self._log_error("No protein.gro or ligand_*.gro found for genions.")
+                return
+        else:
+            solvated_pdb = "protein"
         if not self._require_pdb():
             return
         # First attempt
@@ -705,6 +750,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 return run_genions_and_capture(
                     solvated_pdb, custom_command=self.custom_cmds.get("genions")
                 )
+
             self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
         else:
             self._log_error(f"Failed to add ions: {error_message}")
