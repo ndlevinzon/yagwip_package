@@ -189,37 +189,42 @@ def are_isomorphic(g1, g2):
         return False, None
     return backtrack({}, set())
 
-def enumerate_connected_subgraphs(graph, size):
-    from itertools import combinations
-    return [set(s) for s in combinations(graph.atoms.keys(), size)]
-
-def find_mcs(g1, g2, max_mcs_size=5):
-    if len(g1.atoms) > len(g2.atoms):
-        g1, g2 = g2, g1
-    max_size = min(len(g1.atoms), max_mcs_size)
-    for size in range(max_size, 2, -1):
-        subgraphs1 = enumerate_connected_subgraphs(g1, size)
-        if not subgraphs1:
-            continue
-        for atom_indices1 in subgraphs1:
-            sg1 = g1.subgraph(atom_indices1)
-            elem_count1 = defaultdict(int)
-            for a in sg1.atoms.values():
-                elem_count1[a.element] += 1
-            subgraphs2 = [
-                s
-                for s in enumerate_connected_subgraphs(g2, size)
-                if all(
-                    sum(g2.atoms[i].element == e for i in s) == c
-                    for e, c in elem_count1.items()
-                )
-            ]
-            for atom_indices2 in subgraphs2:
-                sg2 = g2.subgraph(atom_indices2)
+def find_mcs(g1, g2):
+    # Legacy approach: try to match all atoms by element and degree, using backtracking
+    # Returns the largest mapping found
+    best_size = 0
+    best_mapping = None
+    best_atoms1 = None
+    best_atoms2 = None
+    nA = len(g1.atoms)
+    nB = len(g2.atoms)
+    # Try all possible sizes from min(nA, nB) down to 3
+    for size in range(min(nA, nB), 2, -1):
+        # Try all combinations of size atoms from g1
+        from itertools import combinations
+        for atoms1 in combinations(g1.atoms.keys(), size):
+            sg1 = g1.subgraph(atoms1)
+            # Try all combinations of size atoms from g2
+            for atoms2 in combinations(g2.atoms.keys(), size):
+                sg2 = g2.subgraph(atoms2)
                 iso, mapping = are_isomorphic(sg1, sg2)
                 if iso:
-                    return size, mapping, atom_indices1, atom_indices2
-    return 0, None, None, None
+                    # mapping: sg1 idx -> sg2 idx
+                    # Convert mapping to original indices
+                    orig_mapping = {list(atoms1)[i]: list(atoms2)[j] for i, j in mapping.items()}
+                    if size > best_size:
+                        best_size = size
+                        best_mapping = orig_mapping
+                        best_atoms1 = set(atoms1)
+                        best_atoms2 = set(atoms2)
+                    break  # Only need one mapping of this size
+            if best_size == size:
+                break
+        if best_size == size:
+            break
+    if best_size == 0:
+        return 0, None, None, None
+    return best_size, best_mapping, best_atoms1, best_atoms2
 
 def write_atom_map(mapping, filename):
     with open(filename, "w") as f:
@@ -251,6 +256,8 @@ def kabsch_align(coords_A, coords_B):
     return aligned_coords_B, R, centroid_A - centroid_B
 
 def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2, mapping):
+    if not mapping:
+        raise RuntimeError("No atom mapping found for alignment.")
     coordsA, namesA = parse_mol2_coords(ligandA_mol2)
     coordsB, namesB = parse_mol2_coords(ligandB_mol2)
     # Extract coordinates for mapped atoms only
@@ -306,9 +313,9 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
     return aligned_ligandB_mol2
 
 def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
-    # Parse atom map
     mapping = load_atom_map(atom_map_file)
-    # Parse PDBs
+    if not mapping:
+        raise RuntimeError("No atom mapping found for PDB alignment.")
     coordsA, namesA, atom_linesA, _ = parse_pdb_coords(ligA_pdb)
     coordsB, namesB, atom_linesB, _ = parse_pdb_coords(ligB_pdb)
     # Extract coordinates for mapped atoms
@@ -372,9 +379,7 @@ def main():
     # 1. Find MCS and write atom_map.txt
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
-    if len(gA.atoms) > 10 or len(gB.atoms) > 10:
-        print("[WARNING] Ligands are large; MCS search is limited to 10 atoms and may not find the true MCS. For larger ligands, use RDKit or a more efficient algorithm.")
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB, max_mcs_size=10)
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
     if mcs_size < 3 or mapping is None:
         raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
