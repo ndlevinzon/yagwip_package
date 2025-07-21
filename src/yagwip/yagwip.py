@@ -576,6 +576,25 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run pdb2gmx. Handles protein-only, protein-ligand, and FEP cases.
         """
+        amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
+        amber_ff_dest = os.path.abspath("amber14sb.ff")
+        if not os.path.exists(amber_ff_dest):
+            os.makedirs(amber_ff_dest)
+            self._log_info(f"Created directory: {amber_ff_dest}")
+            try:
+                for item in Path(amber_ff_source).iterdir():
+                    if item.is_file():
+                        content = item.read_text(encoding="utf-8")
+                        dest_file = os.path.join(amber_ff_dest, item.name)
+                        with open(dest_file, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        self._log_debug(f"Copied {item.name}")
+                self._log_success("Copied all amber14sb.ff files.")
+            except Exception as e:
+                self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+        else:
+            self._log_info(f"amber14sb.ff already exists, not overwriting.")
+
         # First, run pdb2gmx on the protein component
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
@@ -621,22 +640,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
         """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
-        # This logic is based on the original implementation, which specifically checks for ligandA.
-        # This is less flexible but more reliable for the standard protein-ligand case.
         ligand_pdb_file = "ligandA.pdb"
         ligand_itp_file = "ligandA.itp"
 
+        # Protein + ligand case
         if self.ligand_pdb_path and os.path.exists(ligand_pdb_file) and os.path.getsize(ligand_pdb_file) > 0:
             if not os.path.exists(ligand_itp_file):
                 self._log_error(f"Ligand ITP file not found: {ligand_itp_file}")
                 return
-
             self._log_info("Processing protein-ligand system...")
+            # Add ligand coordinates to protein gro and update topology
             self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
-        else:
-            self._log_info("Processing protein-only system...")
-            shutil.copy(protein_gro, "complex.gro")
 
     def do_solvate(self, arg):
         """
