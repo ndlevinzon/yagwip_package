@@ -304,14 +304,15 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _handle_protein_ligand(self, lines, hetatm_lines, args):
         ligand_name = self._assign_ligand_name()
-        protein_file, ligand_file = self._extract_ligand_and_protein(lines, ligand_name)
+        protein_file, ligand_file, conect_records = self._extract_ligand_and_protein_with_conect(lines, ligand_name)
         self.ligand_pdb_path = os.path.abspath(ligand_file)
         self._warn_if_no_hydrogens(hetatm_lines)
         itp_file = f"{ligand_name}.itp"
         if os.path.isfile(itp_file):
             self._process_ligand_itp(itp_file, ligand_name)
         elif args.ligand_builder:
-            self._run_ligand_builder(ligand_file, ligand_name, args.c, args.m)
+            # Pass CONECT records to ligand_pipeline
+            self._run_ligand_builder(ligand_file, ligand_name, args.c, args.m, conect_records=conect_records)
             if os.path.isfile(itp_file):
                 self._process_ligand_itp(itp_file, ligand_name)
         else:
@@ -382,7 +383,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
             )
 
-    def _run_ligand_builder(self, ligand_file, ligand_name, charge, multiplicity):
+    def _run_ligand_builder(self, ligand_file, ligand_name, charge, multiplicity, conect_records=None):
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
         if not os.path.exists(amber_ff_dest):
@@ -402,7 +403,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
 
-        mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file)
+        # Pass conect_records to convert_pdb_to_mol2
+        mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file, conect_records=conect_records)
         if not mol2_file or not os.path.isfile(mol2_file):
             self._log_error(
                 f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline..."
@@ -471,21 +473,41 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.editor.modify_improper_dihedrals_in_ligand_itp()
         self.editor.rename_residue_in_itp_atoms_section()
 
-    def _extract_ligand_and_protein(self, lines, ligand_name):
+    def _extract_ligand_and_protein_with_conect(self, lines, ligand_name):
         protein_file = "protein.pdb"
         ligand_file = f"{ligand_name}.pdb"
+        ligand_indices = []
+        conect_records = {}
         with open(protein_file, "w", encoding="utf-8") as prot_out, open(
             ligand_file, "w", encoding="utf-8"
         ) as lig_out:
             for line in lines:
                 if line.startswith("HETATM"):
                     lig_out.write(line[:17] + "LIG" + line[20:])
+                    try:
+                        idx = int(line[6:11])
+                        ligand_indices.append(idx)
+                    except Exception:
+                        pass
                 else:
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
-        self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}")
-        return protein_file, ligand_file
+        # Now extract CONECT records for ligand atoms
+        for line in lines:
+            if line.startswith("CONECT"):
+                parts = line.split()
+                if len(parts) > 1:
+                    try:
+                        idx = int(parts[1])
+                        if idx in ligand_indices:
+                            bonded = [int(x) for x in parts[2:] if x.isdigit() and int(x) in ligand_indices]
+                            if bonded:
+                                conect_records[idx] = bonded
+                    except Exception:
+                        pass
+        self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(conect_records)} ligand CONECT records.")
+        return protein_file, ligand_file, conect_records
 
     def do_fep_prep(self, arg):
         """

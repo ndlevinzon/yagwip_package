@@ -26,8 +26,7 @@ class LigandPipeline(YagwipBase):
         super().__init__(debug=debug, logger=logger)
 
     @auto_monitor
-    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None):
-        """Converts a ligand PDB file to a MOL2 file using a custom parser and writer."""
+    def convert_pdb_to_mol2(self, pdb_file, mol2_file=None, conect_records=None):
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
             "H": 0.31,
@@ -102,14 +101,15 @@ class LigandPipeline(YagwipBase):
         coords = df_atoms[["x", "y", "z"]].values
         elements = df_atoms["atom_type"].values
         n_atoms = len(df_atoms)
-        # Use spatial partitioning for O(n) bond detection
-        bonds, atom_bonds = LigandUtils().find_bonds_spatial(
-            coords, elements, covalent_radii, bond_tolerance, self.logger
-        )
+        # Use CONECT records if provided, else spatial partitioning
+        if conect_records:
+            bonds, atom_bonds = LigandUtils.find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, self.logger, conect_records=conect_records)
+        else:
+            bonds, atom_bonds = LigandUtils.find_bonds_spatial(coords, elements, covalent_radii, bond_tolerance, self.logger)
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
-        df_atoms = LigandUtils().apply_valence_rules(df_atoms, df_bonds, valence_rules)
+        df_atoms = LigandUtils.apply_valence_rules(df_atoms, df_bonds, valence_rules)
 
         # Build minimal MOL2 dict
         mol2 = {}
