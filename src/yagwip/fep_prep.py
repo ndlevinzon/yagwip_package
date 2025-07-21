@@ -15,6 +15,7 @@ def kabsch(P, Q):
     U = np.dot(V, W)
     return U
 
+
 def load_pdb_coords(pdb_file):
     coords = []
     atom_lines = []
@@ -28,11 +29,13 @@ def load_pdb_coords(pdb_file):
                 atom_lines.append(line)
     return np.array(coords), atom_lines
 
+
 def write_aligned_pdb(atom_lines, coords, out_file):
     with open(out_file, 'w') as f:
         for line, (x, y, z) in zip(atom_lines, coords):
             newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
             f.write(newline)
+
 
 def align_ligandB_to_A(ligA_pdb, ligB_pdb, out_pdb):
     P, _ = load_pdb_coords(ligA_pdb)
@@ -43,6 +46,7 @@ def align_ligandB_to_A(ligA_pdb, ligB_pdb, out_pdb):
     Q_aligned = np.dot(Q_cent, U)
     Q_aligned += P.mean(axis=0)
     write_aligned_pdb(atom_lines, Q_aligned, out_pdb)
+
 
 # --- Main script ---
 def main():
