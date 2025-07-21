@@ -654,11 +654,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         for fname in ligand_pdb_files:
             if os.path.isfile(fname):
                 found = True
+                self.builder.run_pdb2gmx(fname, custom_command=self.custom_cmds.get("pdb2gmx"))
                 break
         if not found:
             self._log_error(f"No ligand_*.gro file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
             return
-        self.builder.run_pdb2gmx(ligand_pdb_files, custom_command=self.custom_cmds.get("pdb2gmx"))
+
 
 
     def do_solvate(self, arg):
