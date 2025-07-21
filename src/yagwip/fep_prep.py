@@ -189,7 +189,7 @@ def main():
     parser.add_argument('--ligA_itp', required=True)
     parser.add_argument('--ligB_pdb', required=True)
     parser.add_argument('--ligB_itp', required=True)
-    parser.add_argument('--protein_gro', required=True)
+    parser.add_argument('--protein_pdb', required=True)
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_pdb))
@@ -209,8 +209,8 @@ def main():
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
-    copyfile(args.protein_gro, os.path.join(out_dirs_full[1], 'protein.gro'))
-    copyfile(args.protein_gro, os.path.join(out_dirs_full[3], 'protein.gro'))
+    copyfile(args.protein_gro, os.path.join(out_dirs_full[1], 'protein.pdb'))
+    copyfile(args.protein_gro, os.path.join(out_dirs_full[3], 'protein.pdb'))
 
     print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
     print("Output written to:")

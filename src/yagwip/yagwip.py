@@ -509,8 +509,51 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records.")
         return protein_file, ligand_file, connect_records
 
-    #def do_fep_prep(self, arg):
-
+    def do_fep_prep(self, arg):
+        """
+        Run the FEP preparation workflow using fep_prep.py CLI.
+        This will:
+        1) Find ligandA.pdb, ligandA.itp, ligandB.pdb, ligandB.itp, and protein.pdb in the current directory
+        2) Align ligandB to ligandA and organize files into A/B_complex/water directories
+        """
+        import subprocess
+        cwd = os.getcwd()
+        required_files = [
+            "ligandA.pdb",
+            "ligandA.itp",
+            "ligandB.pdb",
+            "ligandB.itp",
+            "protein.pdb",
+        ]
+        missing = [f for f in required_files if not os.path.isfile(os.path.join(cwd, f))]
+        if missing:
+            self._log_error(f"Missing required files: {', '.join(missing)}")
+            return
+        fep_prep_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
+        python_exe = sys.executable
+        cmd = [
+            python_exe,
+            fep_prep_path,
+            "--ligA_pdb", "ligandA.pdb",
+            "--ligA_itp", "ligandA.itp",
+            "--ligB_pdb", "ligandB.pdb",
+            "--ligB_itp", "ligandB.itp",
+            "--protein_pdb", "protein.pdb"
+        ]
+        self._log_info(f"Running FEP prep: {' '.join(cmd)}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            self._log_success("FEP preparation complete.")
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+        except subprocess.CalledProcessError as e:
+            self._log_error(f"FEP prep failed: {e}")
+            if e.stdout:
+                print(e.stdout)
+            if e.stderr:
+                print(e.stderr)
 
     def do_pdb2gmx(self, arg):
         """
@@ -547,7 +590,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         lambda_dirs = [d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)]
 
         if lambda_dirs:
-            self._pdb2gmx_fep(lambda_dirs, output_gro)
+            self._pdb2gmx_ligand(lambda_dirs, output_gro)
         else:
             self._pdb2gmx_protein_ligand(output_gro)
 
