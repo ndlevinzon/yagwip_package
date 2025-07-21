@@ -109,8 +109,8 @@ else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
 
-echo "Minimization and Equilibration Done. Submitting MD..."
-sbatch run_gmx_md_cpu.slurm
+echo "Minimization and Equilibration Done. Submitting TREMD..."
+sbatch run_gmx_tremd_cpu.slurm
 
 #--------------------------------------
 #__  _____   _______       __________

@@ -41,7 +41,7 @@ for i in ${!temperatures[@]}; do
     cp topol.top ${npt_prefix}.gro $dir/
 
     # Generate MDP for this temperature
-    sed "s/XXX/${temp}/g" remd_template.mdp > $dir/remd.mdp
+    sed "s/XXX/${temp}/g" ${prod_prefix}.mdp > $dir/remd.mdp
 
     # grompp for each replica
     pushd $dir
