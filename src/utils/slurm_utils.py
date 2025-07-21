@@ -125,6 +125,37 @@ class SlurmWriter(YagwipBase):
                 shutil.copy(str(f), os.getcwd())
         self._log_info(f"Copied .mdp templates for {sim_type} (excluded: {exclude})")
 
+        # Copy minimization and main SLURM files for md
+        if sim_type == "md":
+            min_slurm = self.template_dir / "run_gmx_md_min.slurm"
+            main_slurm = self.template_dir / "run_gmx_md.slurm"
+            for slurm_path in [min_slurm, main_slurm]:
+                if slurm_path.is_file():
+                    try:
+                        with open(str(slurm_path), "r", encoding="utf-8") as f:
+                            slurm_content = f.read()
+                        # Replace BASE and INIT variables
+                        slurm_content = re.sub(
+                            r"__BASE__", basename or "PLACEHOLDER", slurm_content
+                        )
+                        # Use 'complex' if ligand_pdb_path is present, else 'protein'
+                        init_name = "complex" if ligand_pdb_path else "protein"
+                        slurm_content = re.sub(
+                            r"__INIT__", init_name, slurm_content
+                        )
+                        out_slurm = os.path.basename(slurm_path)
+                        with open(out_slurm, "w", encoding="utf-8") as f:
+                            f.write(slurm_content)
+                        self._log_success(
+                            f"Customized SLURM script written: {out_slurm}"
+                        )
+                    except (OSError, IOError) as e:
+                        self._log_error(f"Failed to configure SLURM script: {e}")
+                else:
+                    self._log_warning(
+                        f"{os.path.basename(slurm_path)} not found in template directory."
+                    )
+
         # Copy minimization SLURM file for tremd
         if sim_type == "tremd":
             min_slurm = self.template_dir / "run_gmx_tremd_min_cpu.slurm"
