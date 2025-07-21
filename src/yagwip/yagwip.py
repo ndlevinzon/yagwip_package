@@ -311,7 +311,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if os.path.isfile(itp_file):
             self._process_ligand_itp(itp_file, ligand_name)
         elif args.ligand_builder:
-            # Pass CONECT records to ligand_pipeline
+            # Pass CONNECT records to ligand_pipeline
             self._run_ligand_builder(ligand_file, ligand_name, args.c, args.m, connect_records=connect_records)
             if os.path.isfile(itp_file):
                 self._process_ligand_itp(itp_file, ligand_name)
@@ -493,7 +493,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
-        # Now extract CONECT records for ligand atoms
+        # Now extract CONNECT records for ligand atoms
         for line in lines:
             if line.startswith("CONECT"):
                 parts = line.split()
@@ -506,7 +506,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                                 connect_records[idx] = bonded
                     except Exception:
                         pass
-        self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONECT records.")
+        self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records.")
         return protein_file, ligand_file, connect_records
 
     def do_fep_prep(self, arg):
