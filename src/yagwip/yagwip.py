@@ -579,6 +579,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run pdb2gmx. Handles protein-only, protein-ligand, and FEP (A/B) cases.
         """
+        if not os.path.isfile("protein.pdb"):
+            self._log_info("protein.pdb not found. Switching to ligand-only workflow.")
+            # Call _pdb2gmx_ligand with dummy args (lambda_dirs=None, output_gro=None) for now
+            self._pdb2gmx_ligand(lambda_dirs=None, output_gro=None)
+            return
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
         if not os.path.exists(amber_ff_dest):
@@ -653,7 +658,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not found:
             self._log_error(f"No ligand_*.gro file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
             return
-        # Continue with existing logic (if any)
+
 
     def do_solvate(self, arg):
         """
