@@ -662,54 +662,40 @@ class LigandUtils(LoggingMixin):
         return unique_rings
 
     def find_bonds_spatial(
-            self, coords, elements, covalent_radii, bond_tolerance, logger=None
+            self, coords, elements, covalent_radii, bond_tolerance, logger=None, conect_records=None
     ):
         max_radii = max(covalent_radii.values())
         max_bond_distance = 2 * max_radii + bond_tolerance
         grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
         n_atoms = len(coords)
-        # --- 1. Initial strict bond graph for ring detection ---
-        strict_cutoff = 1.2  # Ångstroms, strict for covalent bonds
-        initial_atom_bonds = {i: [] for i in range(n_atoms)}
-        for i in range(n_atoms):
-            for j in range(i+1, n_atoms):
-                dist = np.linalg.norm(coords[i] - coords[j])
-                if dist < strict_cutoff:
-                    initial_atom_bonds[i].append(j)
-                    initial_atom_bonds[j].append(i)
-        # Detect rings up to 8 atoms in the initial graph (ordered cycles)
-        rings = self.find_rings(n_atoms, initial_atom_bonds, max_ring_size=8)
-        # Store all original ring bonds (as frozenset of pairs, from ordered cycles)
-        original_ring_bonds = set()
-        for ring in rings:
-            for idx in range(len(ring)):
-                a = ring[idx]
-                b = ring[(idx+1)%len(ring)]  # wrap around
-                original_ring_bonds.add(frozenset((a, b)))
-        # For fast lookup: for each atom, which rings is it in?
-        atom_to_rings = {i: set() for i in range(n_atoms)}
-        for ring in rings:
-            for idx in ring:
-                atom_to_rings[idx].add(tuple(sorted(ring)))
-        # --- 2. Main bond assignment with ring preservation ---
         bonds = []
         atom_bonds = {i: [] for i in range(n_atoms)}
         bond_id = 1
-        # Always add all original ring bonds first
-        for bond in original_ring_bonds:
-            i, j = tuple(bond)
-            if j not in atom_bonds[i]:
-                bonds.append({
-                    "bond_id": bond_id,
-                    "origin_atom_id": i + 1,
-                    "target_atom_id": j + 1,
-                    "bond_type": "1",
-                    "status_bit": "",
-                })
-                atom_bonds[i].append(j)
-                atom_bonds[j].append(i)
-                bond_id += 1
-        # Now add all other bonds as usual, but do not add any bond that would create a new ring
+        used_pairs = set()
+        # --- 1. Use CONECT records if provided ---
+        if conect_records:
+            for i, bonded_list in conect_records.items():
+                for j in bonded_list:
+                    # i, j are 1-based indices from PDB, convert to 0-based
+                    idx_i = i - 1
+                    idx_j = j - 1
+                    if idx_i < 0 or idx_j < 0 or idx_i >= n_atoms or idx_j >= n_atoms:
+                        continue
+                    pair = tuple(sorted((idx_i, idx_j)))
+                    if pair in used_pairs:
+                        continue
+                    used_pairs.add(pair)
+                    bonds.append({
+                        "bond_id": bond_id,
+                        "origin_atom_id": idx_i + 1,
+                        "target_atom_id": idx_j + 1,
+                        "bond_type": "1",
+                        "status_bit": "",
+                    })
+                    atom_bonds[idx_i].append(idx_j)
+                    atom_bonds[idx_j].append(idx_i)
+                    bond_id += 1
+        # --- 2. For atoms not covered by CONECT, use distance-based assignment (e.g., hydrogens) ---
         for i in range(n_atoms):
             coord_i = coords[i]
             elem_i = elements[i]
@@ -733,36 +719,25 @@ class LigandUtils(LoggingMixin):
                     r_cov_i = covalent_radii.get(elem_i, 0.77)
                     r_cov_j = covalent_radii.get(elem_j, 0.77)
                     max_bond = r_cov_i + r_cov_j + bond_tolerance
+                    pair = tuple(sorted((i, j)))
+                    # Only add if not already present from CONECT
+                    if pair in used_pairs:
+                        continue
+                    # Only assign if at least one atom is hydrogen or not in CONECT
+                    if conect_records:
+                        in_conect_i = (i + 1) in conect_records
+                        in_conect_j = (j + 1) in conect_records
+                        if in_conect_i and in_conect_j:
+                            continue
                     if 0.4 < dist < max_bond:
-                        # Skip if this is already a ring bond
-                        if frozenset((i, j)) in original_ring_bonds:
-                            continue
-                        # Check if adding this bond would create a new ring (cycle)
-                        def has_path(a, b, visited):
-                            if a == b:
-                                return True
-                            visited.add(a)
-                            for neighbor in atom_bonds[a]:
-                                if neighbor not in visited:
-                                    if has_path(neighbor, b, visited):
-                                        return True
-                            return False
-                        if has_path(i, j, set()):
-                            if logger:
-                                logger.warning(
-                                    f"Skipping bond between atoms {i+1} and {j+1} to avoid creating a new ring."
-                                )
-                            continue
                         if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                            bonds.append(
-                                {
-                                    "bond_id": bond_id,
-                                    "origin_atom_id": i + 1,
-                                    "target_atom_id": j + 1,
-                                    "bond_type": "1",
-                                    "status_bit": "",
-                                }
-                            )
+                            bonds.append({
+                                "bond_id": bond_id,
+                                "origin_atom_id": i + 1,
+                                "target_atom_id": j + 1,
+                                "bond_type": "1",
+                                "status_bit": "",
+                            })
                             atom_bonds[i].append(j)
                             atom_bonds[j].append(i)
                             bond_id += 1
@@ -771,13 +746,6 @@ class LigandUtils(LoggingMixin):
                                 logger.warning(
                                     f"Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
                                 )
-        # Optional: verify all original rings are present
-        final_rings = self.find_rings(n_atoms, atom_bonds, max_ring_size=8)
-        orig_ring_sets = set(frozenset(r) for r in [tuple(sorted(ring)) for ring in rings])
-        final_ring_sets = set(frozenset(r) for r in [tuple(sorted(ring)) for ring in final_rings])
-        missing = orig_ring_sets - final_ring_sets
-        if missing and logger:
-            logger.warning(f"[RING WARNING] Some original rings were not preserved: {missing}")
         return bonds, atom_bonds
 
     def is_valid_bond(self, elem_i, elem_j, atom_bonds, i, j):
