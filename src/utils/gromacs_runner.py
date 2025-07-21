@@ -67,80 +67,9 @@ class Builder(YagwipBase):
                 self._execute_command(cmd, f"solvate step {i+1}")
 
     @auto_monitor
-    def run_genions(self, basename, custom_command=None, fep_mode=False):
-        """Run genion to add ions to the system. If lambda directories are present, copy and patch ions_fep.mdp in each lambda dir with correct lambda index and run genions in each."""
-        # Detect lambda directories (case 3)
-        if fep_mode:
-            # FEP mode: copy and patch ions_fep.mdp in each lambda dir and run genions in each
-            vdw_lambdas = [
-                "0.00",
-                "0.05",
-                "0.10",
-                "0.15",
-                "0.20",
-                "0.25",
-                "0.30",
-                "0.35",
-                "0.40",
-                "0.45",
-                "0.50",
-                "0.55",
-                "0.60",
-                "0.65",
-                "0.70",
-                "0.75",
-                "0.80",
-                "0.85",
-                "0.90",
-                "0.95",
-                "1.00",
-            ]
-            module_dir = os.path.dirname(os.path.abspath(__file__))
-            assets_dir = os.path.join(os.path.dirname(module_dir), "templates")
-            template_mdp = os.path.join(assets_dir, "ions_fep.mdp")
-
-            # Use only the directory name for lambda value and filenames
-            cwd = os.path.basename(os.getcwd())  # e.g., 'lambda_0.00'
-            lam_value = cwd.replace("lambda_", "")  # '0.00'
-            lambda_index = lam_value
-            if lam_value in vdw_lambdas:
-                lambda_index = vdw_lambdas.index(lam_value)
-            # Copy ions_fep.mdp into current dir (overwrite if exists)
-            dest_mdp = os.path.join(os.getcwd(), "ions_fep.mdp")
-            shutil.copy2(str(template_mdp), dest_mdp)
-            with open(dest_mdp, "r", encoding="utf-8") as f:
-                content = f.read().replace("__LAMBDA__", str(lambda_index))
-            with open(dest_mdp, "w", encoding="utf-8") as f:
-                f.write(content)
-            self._log_info(
-                f"Copied and patched ions_fep.mdp in {os.getcwd()} with lambda index {lambda_index}"
-            )
-            # Run genions in lambda dir
-            base = f"hybrid_complex_{lam_value}"
-            input_gro = f"{base}.solv.gro"
-            output_gro = f"{base}.solv.ions.gro"
-            tpr_out = "ions_fep.tpr"
-            ion_options = "-pname NA -nname CL -conc 0.150 -neutral"
-            grompp_opts = ""
-            ion_pipe_input = (
-                PIPE_INPUTS["genion_prot"]
-                if base.endswith("protein")
-                else PIPE_INPUTS["genion_complex"]
-            )
-            default_cmds = [
-                f"{self.gmx_path} grompp -f ions_fep.mdp -c {input_gro} -r {input_gro} -p topol.top -o {tpr_out} {grompp_opts} -maxwarn 50",
-                f"{self.gmx_path} genion -s {tpr_out} -o {output_gro} -p topol.top {ion_options}",
-            ]
-            if custom_command:
-                self._log_info("Using custom genion command")
-                self._execute_command(custom_command, "custom genion")
-            else:
-                for i, cmd in enumerate(default_cmds):
-                    pipe_input = ion_pipe_input if i == 1 else None
-                    self._execute_command(
-                        cmd, f"genion step {i+1}", pipe_input=pipe_input
-                    )
-            return
+    def run_genions(self, basename, custom_command=None):
+        """Run genion to add ions to the system. If lambda directories are present, copy and
+        patch ions_fep.mdp in each lambda dir with correct lambda index and run genions in each."""
         # Non-FEP or no lambda dirs: original logic
         base = self._resolve_basename(basename)
         if base is None:

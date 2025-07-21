@@ -553,7 +553,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "--ligA_itp", "ligandA.itp",
             "--ligB_pdb", "ligandB.pdb",
             "--ligB_itp", "ligandB.itp",
-            "--protein_pdb", "protein.pdb"
         ]
         self._log_info("FEP prep workflow:")
         self._log_info("  1. Find MCS and write atom_map.txt")
@@ -578,7 +577,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_pdb2gmx(self, arg):
         """
-        Run pdb2gmx. Handles protein-only, protein-ligand, and ligand cases.
+        Run pdb2gmx. Handles protein-only, protein-ligand, and FEP (A/B) cases.
         """
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
@@ -607,13 +606,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
             return
 
-        # Check for lambda directories to decide workflow
-        lambda_dirs = [d for d in os.listdir(".") if d.startswith("lambda_") and os.path.isdir(d)]
-
-        if lambda_dirs:
-            self._pdb2gmx_ligand(lambda_dirs, output_gro)
+        # FEP: Check for A/B complex/water directories
+        fep_dirs = ["A_complex", "A_water", "B_complex", "B_water"]
+        fep_present = all(os.path.isdir(d) for d in fep_dirs)
+        if fep_present:
+            self._pdb2gmx_fep(fep_dirs)
         else:
-            self._pdb2gmx_protein_ligand(output_gro)
+            # Check for ligand presence
+            ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile("ligand.pdb")
+            if ligand_present:
+                self._pdb2gmx_protein_ligand(output_gro)
+
+    def _pdb2gmx_fep(self, fep_dirs):
+        """
+        Run pdb2gmx for FEP workflow (A/B complex/water directories).
+        """
+        self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
+        # TODO: Implement FEP-specific pdb2gmx logic here
+        self._log_info("[FEP] pdb2gmx workflow not yet implemented.")
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
         """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
@@ -661,9 +671,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
-
-
-
         def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
             error_message = ""
             success = False
