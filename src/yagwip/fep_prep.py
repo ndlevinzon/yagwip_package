@@ -146,6 +146,51 @@ class MolGraph:
             sg.atoms[idx].degree = len(sg.adj[idx])
         return sg
 
+def enumerate_connected_subgraphs(graph, size):
+    results = set()
+    for start in graph.atoms:
+        stack = [(frozenset([start]), start)]
+        while stack:
+            nodes, last = stack.pop()
+            if len(nodes) == size:
+                results.add(nodes)
+                continue
+            for nbr in graph.atoms[last].neighbors:
+                if nbr not in nodes:
+                    new_nodes = nodes | {nbr}
+                    if len(new_nodes) <= size:
+                        stack.append((new_nodes, nbr))
+    return [set(s) for s in results]
+
+def find_mcs(g1, g2):
+    # Always use the smaller graph for subgraph enumeration
+    if len(g1.atoms) > len(g2.atoms):
+        g1, g2 = g2, g1
+    for size in range(len(g1.atoms), 2, -1):  # Start from largest, need at least 3 for alignment
+        subgraphs1 = enumerate_connected_subgraphs(g1, size)
+        if not subgraphs1:
+            continue
+        for atom_indices1 in subgraphs1:
+            sg1 = g1.subgraph(atom_indices1)
+            # Chemical invariant: element counts
+            elem_count1 = defaultdict(int)
+            for a in sg1.atoms.values():
+                elem_count1[a.element] += 1
+            # Find candidate subgraphs in g2 with same element counts
+            subgraphs2 = [
+                s for s in enumerate_connected_subgraphs(g2, size)
+                if all(
+                    sum(g2.atoms[i].element == e for i in s) == c
+                    for e, c in elem_count1.items()
+                )
+            ]
+            for atom_indices2 in subgraphs2:
+                sg2 = g2.subgraph(atom_indices2)
+                iso, mapping = are_isomorphic(sg1, sg2)
+                if iso:
+                    return size, mapping, atom_indices1, atom_indices2
+    return 0, None, None, None
+
 def are_isomorphic(g1, g2):
     if len(g1.atoms) != len(g2.atoms):
         return False, None
@@ -209,90 +254,6 @@ def are_isomorphic(g1, g2):
         return False, None
 
     return backtrack({}, set())
-
-def find_mcs(g1, g2):
-    # Greedy/incremental (seed-and-extend) MCS algorithm
-    def atom_env_hash(graph, idx):
-        atom = graph.atoms[idx]
-        neighbors = sorted((graph.atoms[n].element, graph.atoms[n].degree) for n in atom.neighbors)
-        dist2 = set()
-        for n in atom.neighbors:
-            dist2.update(graph.atoms[nn].element for nn in graph.atoms[n].neighbors if nn != idx)
-        dist2 = tuple(sorted(dist2))
-        return (atom.element, atom.degree, tuple(neighbors), dist2)
-
-    # Build candidate pairs (seeds) with matching environment hashes
-    seeds = []
-    for idx1 in g1.atoms:
-        hash1 = atom_env_hash(g1, idx1)
-        for idx2 in g2.atoms:
-            if atom_env_hash(g2, idx2) == hash1:
-                seeds.append((idx1, idx2))
-
-    best_mapping = {}
-    best_size = 0
-    best_atoms1 = set()
-    best_atoms2 = set()
-
-    def extend(mapping, used1, used2):
-        nonlocal best_mapping, best_size, best_atoms1, best_atoms2
-        if len(mapping) > best_size:
-            best_size = len(mapping)
-            best_mapping = dict(mapping)
-            best_atoms1 = set(mapping.keys())
-            best_atoms2 = set(mapping.values())
-        # Try to extend mapping by adding neighbor pairs
-        frontier = []
-        for idx1 in mapping:
-            for nbr1 in g1.atoms[idx1].neighbors:
-                if nbr1 in used1:
-                    continue
-                hash1 = atom_env_hash(g1, nbr1)
-                for idx2 in mapping.values():
-                    for nbr2 in g2.atoms[idx2].neighbors:
-                        if nbr2 in used2:
-                            continue
-                        if atom_env_hash(g2, nbr2) == hash1:
-                            frontier.append((nbr1, nbr2))
-        # Remove duplicates
-        seen = set()
-        unique_frontier = []
-        for p in frontier:
-            if p not in seen:
-                unique_frontier.append(p)
-                seen.add(p)
-        for idx1, idx2 in unique_frontier:
-            # Check if mapping is valid
-            ok = True
-            for mapped1, mapped2 in mapping.items():
-                if (nbr1 := idx1) in g1.atoms[mapped1].neighbors:
-                    if (nbr2 := idx2) not in g2.atoms[mapped2].neighbors:
-                        ok = False
-                        break
-                if (nbr2 := idx2) in g2.atoms[mapped2].neighbors:
-                    if (nbr1 := idx1) not in g1.atoms[mapped1].neighbors:
-                        ok = False
-                        break
-            if not ok:
-                continue
-            mapping[idx1] = idx2
-            used1.add(idx1)
-            used2.add(idx2)
-            extend(mapping, used1, used2)
-            del mapping[idx1]
-            used1.remove(idx1)
-            used2.remove(idx2)
-
-    # Try all seeds
-    for idx1, idx2 in seeds:
-        mapping = {idx1: idx2}
-        used1 = {idx1}
-        used2 = {idx2}
-        extend(mapping, used1, used2)
-
-    if best_size < 3:
-        return 0, None, None, None
-    return best_size, best_mapping, best_atoms1, best_atoms2
 
 def write_atom_map(mapping, filename):
     with open(filename, "w") as f:
