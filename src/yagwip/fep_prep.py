@@ -193,7 +193,7 @@ def enumerate_connected_subgraphs(graph, size):
     from itertools import combinations
     return [set(s) for s in combinations(graph.atoms.keys(), size)]
 
-def find_mcs(g1, g2, max_mcs_size=10):
+def find_mcs(g1, g2, max_mcs_size=5):
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
     max_size = min(len(g1.atoms), max_mcs_size)
