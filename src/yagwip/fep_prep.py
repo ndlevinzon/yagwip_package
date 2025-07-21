@@ -4,6 +4,30 @@ import numpy as np
 from shutil import copyfile
 from collections import defaultdict
 
+# --- MOL2 parsing ---
+def parse_mol2_coords(filename):
+    coords = {}
+    names = {}
+    with open(filename) as f:
+        lines = f.readlines()
+    in_atoms = False
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms = True
+            continue
+        if in_atoms:
+            if line.startswith("@<TRIPOS>"):
+                break
+            parts = line.split()
+            if len(parts) < 6:
+                continue
+            idx = int(parts[0])
+            name = parts[1]
+            x, y, z = map(float, parts[2:5])
+            coords[idx] = (x, y, z)
+            names[idx] = name
+    return coords, names
+
 # --- Atom and Bond classes for MolGraph ---
 class Atom:
     def __init__(self, idx, element):
@@ -116,6 +140,20 @@ def are_isomorphic(g1, g2):
         for idx2 in candidates[idx1]:
             if idx2 in used2:
                 continue
+            ok = True
+            for nbr1 in g1.atoms[idx1].neighbors:
+                if nbr1 in mapping:
+                    nbr2 = mapping[nbr1]
+                    a, b = min(idx1, nbr1), max(idx1, nbr1)
+                    a2, b2 = min(idx2, nbr2), max(idx2, nbr2)
+                    if (a2, b2) not in g2.bond_types:
+                        ok = False
+                        break
+                    if g1.bond_types[(a, b)] != g2.bond_types[(a2, b2)]:
+                        ok = False
+                        break
+            if not ok:
+                continue
             mapping[idx1] = idx2
             used2.add(idx2)
             found, final_map = backtrack(mapping, used2)
@@ -157,130 +195,117 @@ def find_mcs(g1, g2):
                     return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
 
-# --- MOL2 and PDB parsing ---
-def parse_mol2_coords(filename):
-    coords = {}
-    names = {}
+def write_atom_map(mapping, filename):
+    with open(filename, "w") as f:
+        for a, b in mapping.items():
+            f.write(f"{a} {b}\n")
+
+def load_atom_map(filename):
+    mapping = {}
     with open(filename) as f:
-        lines = f.readlines()
-    in_atoms = False
-    for line in lines:
-        if line.startswith("@<TRIPOS>ATOM"):
-            in_atoms = True
-            continue
-        if in_atoms:
-            if line.startswith("@<TRIPOS>"):
-                break
-            parts = line.split()
-            if len(parts) < 6:
+        for line in f:
+            if line.strip() == "":
                 continue
-            idx = int(parts[0])
-            name = parts[1]
-            x, y, z = map(float, parts[2:5])
-            coords[idx] = (x, y, z)
-            names[idx] = name
-    return coords, names
+            a, b = map(int, line.split())
+            mapping[a] = b
+    return mapping
 
-def parse_pdb_coords(filename):
-    coords = {}
-    names = {}
-    atom_lines = []
-    idx = 1
-    with open(filename) as f:
-        lines = f.readlines()
-    for line in lines:
-        if line.startswith("ATOM") or line.startswith("HETATM"):
-            x = float(line[30:38])
-            y = float(line[38:46])
-            z = float(line[46:54])
-            coords[idx] = (x, y, z)
-            names[idx] = line[12:16].strip()
-            atom_lines.append(line)
-            idx += 1
-    return coords, names, atom_lines, lines
-
-def write_aligned_pdb(atom_lines, coords, out_file):
-    with open(out_file, 'w') as f:
-        for line, (x, y, z) in zip(atom_lines, coords):
-            newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
-            f.write(newline)
-
-# --- Kabsch alignment using MCS mapping from mol2, applied to pdbs ---
-def align_ligandB_to_A_mcs_mol2pdb(ligA_mol2, ligB_mol2, ligA_pdb, ligB_pdb, out_pdb):
-    # 1. Find MCS using mol2s
-    gA = MolGraph.from_mol2(ligA_mol2)
-    gB = MolGraph.from_mol2(ligB_mol2)
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
-    if mcs_size < 3 or mapping is None or atom_indicesA is None or atom_indicesB is None:
-        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
-    # 2. Parse mol2 and pdb files
-    mol2A_coords, mol2A_names = parse_mol2_coords(ligA_mol2)
-    mol2B_coords, mol2B_names = parse_mol2_coords(ligB_mol2)
-    pdbA_coords, pdbA_names, pdbA_lines, _ = parse_pdb_coords(ligA_pdb)
-    pdbB_coords, pdbB_names, pdbB_lines, _ = parse_pdb_coords(ligB_pdb)
-    # 3. Build mapping from mol2 idx to pdb idx (assume order, fallback to name)
-    def mol2_to_pdb_idx(mol2_names, pdb_names):
-        mapping = {}
-        used = set()
-        for m_idx, m_name in mol2_names.items():
-            # Try to find the first pdb idx with the same name not already used
-            for p_idx, p_name in pdb_names.items():
-                if p_name == m_name and p_idx not in used:
-                    mapping[m_idx] = p_idx
-                    used.add(p_idx)
-                    break
-            else:
-                # fallback: use same index if possible
-                if m_idx in pdb_names and m_name == pdb_names[m_idx]:
-                    mapping[m_idx] = m_idx
-        return mapping
-    mapA = mol2_to_pdb_idx(mol2A_names, pdbA_names)
-    mapB = mol2_to_pdb_idx(mol2B_names, pdbB_names)
-    # 4. Extract coordinates for mapped atoms from PDBs using MCS mapping
-    mappedA = sorted(atom_indicesA)
-    mappedB = [mapping[a] for a in mappedA]
-    pdbA_indices = [mapA[a] for a in mappedA if a in mapA]
-    pdbB_indices = [mapB[mapping[a]] for a in mappedA if a in mapA and mapping[a] in mapB]
-    if len(pdbA_indices) < 3 or len(pdbB_indices) < 3:
-        raise RuntimeError("Could not find enough mapped atoms in PDBs for alignment.")
-    coordsA = np.array([pdbA_coords[i] for i in pdbA_indices])
-    coordsB = np.array([pdbB_coords[i] for i in pdbB_indices])
-    # 5. Kabsch align
-    centroid_A = np.mean(coordsA, axis=0)
-    centroid_B = np.mean(coordsB, axis=0)
-    centered_A = coordsA - centroid_A
-    centered_B = coordsB - centroid_B
+# --- Kabsch alignment and robust ligand alignment ---
+def kabsch_align(coords_A, coords_B):
+    centroid_A = np.mean(coords_A, axis=0)
+    centroid_B = np.mean(coords_B, axis=0)
+    centered_A = coords_A - centroid_A
+    centered_B = coords_B - centroid_B
     H = centered_B.T @ centered_A
     U, S, Vt = np.linalg.svd(H)
     d = np.sign(np.linalg.det(Vt.T @ U.T))
     Vt[-1, :] *= d
     R = Vt.T @ U.T
-    # Apply transformation to all atoms in ligandB.pdb
-    allB_indices = sorted(pdbB_coords.keys())
-    allB_coords = np.array([pdbB_coords[i] for i in allB_indices])
-    centered_allB = allB_coords - centroid_B
-    transformed_allB = (centered_allB @ R) + centroid_A
-    # Write aligned pdb
-    write_aligned_pdb(pdbB_lines, transformed_allB, out_pdb)
+    aligned_coords_B = (centered_B @ R) + centroid_A
+    return aligned_coords_B, R, centroid_A - centroid_B
+
+def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2, mapping):
+    coordsA, namesA = parse_mol2_coords(ligandA_mol2)
+    coordsB, namesB = parse_mol2_coords(ligandB_mol2)
+    # Extract coordinates for mapped atoms only
+    mapped_coords_A = []
+    mapped_coords_B = []
+    for idxA, idxB in mapping.items():
+        if idxA in coordsA and idxB in coordsB:
+            mapped_coords_A.append(coordsA[idxA])
+            mapped_coords_B.append(coordsB[idxB])
+    if len(mapped_coords_A) < 3:
+        print("Not enough mapped atoms (need at least 3) for alignment.")
+        return None
+    coords_A = np.array(mapped_coords_A)
+    coords_B = np.array(mapped_coords_B)
+    aligned_coords_B, rotation_matrix, translation = kabsch_align(coords_A, coords_B)
+    # Read original mol2 file to preserve all sections
+    with open(ligandB_mol2, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    in_atoms_section = False
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms_section = True
+            new_lines.append(line)
+            continue
+        elif in_atoms_section and line.startswith("@<TRIPOS>"):
+            in_atoms_section = False
+            new_lines.append(line)
+            continue
+        elif in_atoms_section:
+            parts = line.split()
+            if len(parts) >= 6:
+                atom_id = int(parts[0])
+                orig_coord = coordsB[atom_id]
+                centered_coord = np.array(orig_coord) - np.mean(coords_B, axis=0)
+                rotated_coord = centered_coord @ rotation_matrix
+                final_coord = rotated_coord + np.mean(coords_A, axis=0)
+                x, y, z = final_coord
+                new_line = f"{parts[0]:>7} {parts[1]:<6} {x:>9.4f} {y:>9.4f} {z:>9.4f} {parts[5]:<6}"
+                if len(parts) > 6:
+                    new_line += f" {parts[6]}"
+                new_line += "\n"
+                new_lines.append(new_line)
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+    with open(aligned_ligandB_mol2, 'w') as f:
+        f.writelines(new_lines)
+    print(f"Aligned ligand B to ligand A and saved to {aligned_ligandB_mol2}")
+    print(f"Rotation matrix:\n{rotation_matrix}")
+    print(f"Translation vector: {translation}")
+    return aligned_ligandB_mol2
 
 # --- Main script ---
 def main():
-    parser = argparse.ArgumentParser(description='FEP prep: align ligands (mol2 MCS, pdb alignment), generate water/complex systems.')
+    parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
+    parser.add_argument('--ligA_mol2', required=True)
+    parser.add_argument('--ligB_mol2', required=True)
     parser.add_argument('--ligA_pdb', required=True)
     parser.add_argument('--ligA_itp', required=True)
     parser.add_argument('--ligB_pdb', required=True)
     parser.add_argument('--ligB_itp', required=True)
     parser.add_argument('--protein_pdb', required=True)
-    parser.add_argument('--ligA_mol2', required=False)
-    parser.add_argument('--ligB_mol2', required=False)
     args = parser.parse_args()
 
-    out_dir = os.path.dirname(os.path.abspath(args.ligA_pdb))
-    ligA_mol2 = args.ligA_mol2 or os.path.join(out_dir, 'ligandA.mol2')
-    ligB_mol2 = args.ligB_mol2 or os.path.join(out_dir, 'ligandB.mol2')
-    aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
-    align_ligandB_to_A_mcs_mol2pdb(ligA_mol2, ligB_mol2, args.ligA_pdb, args.ligB_pdb, aligned_ligB_pdb)
+    out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
 
+    # === SECTION 1: Find MCS and Write Atom Map ===
+    gA = MolGraph.from_mol2(args.ligA_mol2)
+    gB = MolGraph.from_mol2(args.ligB_mol2)
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
+    if mcs_size < 3 or mapping is None:
+        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
+    write_atom_map(mapping, os.path.join(out_dir, "atom_map.txt"))
+
+    # === SECTION 2: Align ligandB to ligandA using atom map ===
+    aligned_ligB_mol2 = os.path.join(out_dir, 'ligandB_aligned.mol2')
+    align_ligands_with_mapping(args.ligA_mol2, args.ligB_mol2, aligned_ligB_mol2, mapping)
+
+    # === SECTION 3: Organize Files ===
     out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
     out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
     for d in out_dirs_full:
@@ -290,16 +315,16 @@ def main():
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
     copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
-    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
+    copyfile(args.ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
-    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
+    copyfile(args.ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
     copyfile(args.protein_pdb, os.path.join(out_dirs_full[1], 'protein.pdb'))
     copyfile(args.protein_pdb, os.path.join(out_dirs_full[3], 'protein.pdb'))
 
     print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
     print("Output written to:")
-    print(f"  {aligned_ligB_pdb}")
+    print(f"  {aligned_ligB_mol2}")
     for d in out_dirs_full:
         print(f"  {d}/")
         for f in os.listdir(d):
