@@ -649,15 +649,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.gro in the current directory.
         """
-        ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+        ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
         found = False
-        for fname in ligand_gro_files:
+        for fname in ligand_pdb_files:
             if os.path.isfile(fname):
                 found = True
                 break
         if not found:
             self._log_error(f"No ligand_*.gro file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
             return
+        self.builder.run_pdb2gmx(ligand_pdb_files, custom_command=self.custom_cmds.get("pdb2gmx"))
 
 
     def do_solvate(self, arg):
