@@ -110,7 +110,7 @@ class LigandPipeline(YagwipBase):
         else:
             bonds, atom_bonds = LigandUtils.find_bonds_spatial(
                 coords, elements, covalent_radii, bond_tolerance,
-                logger=self.logger
+                connect_records=None, logger=self.logger
             )
         df_bonds = pd.DataFrame(bonds)
 
