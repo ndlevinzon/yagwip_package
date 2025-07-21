@@ -522,8 +522,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run the FEP preparation workflow using fep_prep.py CLI.
         This will:
-        1) Require ligandA.mol2, ligandB.mol2, ligandA.pdb, ligandA.itp, ligandB.pdb, ligandB.itp, protein.pdb in the current directory
-        2) Find MCS, write atom_map.txt, align ligandB.mol2, and organize files
+        1) Find MCS and write atom_map.txt
+        2) Align ligandB.mol2 to ligandA.mol2
+        3) Align ligandB.pdb to ligandA.pdb
+        4) Organize all files into A/B_complex/water directories
+        Output: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, and subdirectories.
         """
         cwd = os.getcwd()
         required_files = [
@@ -552,12 +555,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "--ligB_itp", "ligandB.itp",
             "--protein_pdb", "protein.pdb"
         ]
-        self._log_info("Using mol2 files for MCS and alignment.")
+        self._log_info("FEP prep workflow:")
+        self._log_info("  1. Find MCS and write atom_map.txt")
+        self._log_info("  2. Align ligandB.mol2 to ligandA.mol2")
+        self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
+        self._log_info("  4. Organize all files into subdirectories")
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             self._log_success("FEP preparation complete.")
-            self._log_info("atom_map.txt and aligned_ligandB.mol2 written.")
+            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, and subdirectories.")
             if result.stdout:
                 print(result.stdout)
             if result.stderr:
@@ -830,6 +837,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_quit(self, _):
         """Exit the YAGWIP shell."""
+        self._log_info("YAGWIP reminds you:")
         self.print_random_quote()
         self._log_info("Goodbye!")
         return True
