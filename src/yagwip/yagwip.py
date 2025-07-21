@@ -621,15 +621,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
         """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
-        if self.ligand_pdb_path and os.path.exists(self.ligand_pdb_path):
-            ligand_itp = self.ligand_pdb_path.replace(".pdb", ".itp")
-            if not os.path.exists(ligand_itp):
-                self._log_error(f"Ligand ITP file not found: {ligand_itp}")
+        # This logic is based on the original implementation, which specifically checks for ligandA.
+        # This is less flexible but more reliable for the standard protein-ligand case.
+        ligand_pdb_file = "ligandA.pdb"
+        ligand_itp_file = "ligandA.itp"
+
+        if self.ligand_pdb_path and os.path.exists(ligand_pdb_file) and os.path.getsize(ligand_pdb_file) > 0:
+            if not os.path.exists(ligand_itp_file):
+                self._log_error(f"Ligand ITP file not found: {ligand_itp_file}")
                 return
 
             self._log_info("Processing protein-ligand system...")
-            self.editor.append_ligand_coordinates_to_gro(protein_gro, self.ligand_pdb_path, ligand_itp, "complex.gro")
-            self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=os.path.basename(ligand_itp))
+            self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
+            self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
         else:
             self._log_info("Processing protein-only system...")
             shutil.copy(protein_gro, "complex.gro")
