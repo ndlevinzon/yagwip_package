@@ -17,6 +17,8 @@ from yagwip.base import YagwipBase
 from utils.pipeline_utils import LigandUtils
 from utils.log_utils import auto_monitor
 
+ligand_utils = LigandUtils()
+
 
 class LigandPipeline(YagwipBase):
     """Ligand parameterization and force field generation pipeline."""
@@ -103,19 +105,19 @@ class LigandPipeline(YagwipBase):
         n_atoms = len(df_atoms)
         # Use CONNECT records if provided, else spatial partitioning
         if connect_records:
-            bonds, atom_bonds = LigandUtils.find_bonds_spatial(self,
+            bonds, atom_bonds = ligand_utils.find_bonds_spatial(
                 coords=coords, elements=elements, covalent_radii=covalent_radii, bond_tolerance=bond_tolerance,
                 connect_records=connect_records, logger=self.logger
             )
         else:
-            bonds, atom_bonds = LigandUtils.find_bonds_spatial(self,
+            bonds, atom_bonds = ligand_utils.find_bonds_spatial(
                 coords=coords, elements=elements, covalent_radii=covalent_radii, bond_tolerance=bond_tolerance,
                 connect_records=None, logger=self.logger
             )
         df_bonds = pd.DataFrame(bonds)
 
         # Apply valence rules and assign proper atom types
-        df_atoms = LigandUtils.apply_valence_rules(df_atoms, df_bonds, valence_rules)
+        df_atoms = ligand_utils.apply_valence_rules(df_atoms, df_bonds, valence_rules)
 
         # Build minimal MOL2 dict
         mol2 = {}
