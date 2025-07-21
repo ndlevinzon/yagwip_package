@@ -378,6 +378,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb):
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
     copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
+    # Copy aligned ligandB.pdb instead of the original
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
