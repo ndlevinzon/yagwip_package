@@ -19,14 +19,23 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # === Standard Library Imports ===
 import os
+import re
+import io
+from io import StringIO
 import cmd
 import sys
 import shutil
+import subprocess
 import random
 import argparse
+import contextlib
 import importlib.metadata
+import multiprocessing as mp
 from pathlib import Path
 from importlib.resources import files
+
+# === Third-Party Imports ===
+import pandas as pd
 
 # === Local Imports ===
 from utils.gromacs_runner import Builder, Sim
@@ -35,6 +44,8 @@ from yagwip.base import YagwipBase
 from yagwip.config import validate_gromacs_installation
 from utils.slurm_utils import SlurmWriter
 from utils.pipeline_utils import Editor
+from utils.log_utils import setup_logger
+from utils.batch_processor import ParallelBatchProcessor
 
 # === Metadata ===
 __author__ = "NDL, gregorpatof"
@@ -114,7 +125,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self.debug = not self.debug
         # Update logger and simulation mode
-        from utils.log_utils import setup_logger
 
         self.logger = setup_logger(debug_mode=self.debug)
 
@@ -426,8 +436,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if atom_end is None:
             atom_end = len(lines)
         atom_lines = lines[atom_start:atom_end]
-        import pandas as pd
-        import io
+
 
         df_atoms = pd.read_csv(
             io.StringIO("".join(atom_lines)),
@@ -516,7 +525,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         1) Find ligandA.pdb, ligandA.itp, ligandB.pdb, ligandB.itp, and protein.pdb in the current directory
         2) Align ligandB to ligandA and organize files into A/B_complex/water directories
         """
-        import subprocess
         cwd = os.getcwd()
         required_files = [
             "ligandA.pdb",
@@ -641,13 +649,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Other Options: use "set genions" to override defaults
         """
 
-        import re
+
 
         def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
-            # Run genions and capture error message
-            from io import StringIO
-            import sys
-            import contextlib
             error_message = ""
             success = False
             # Patch: capture stderr/stdout
@@ -740,7 +744,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_error("TREMD temperature ladder calculation failed.")
 
     def _parse_tremd_prep(self, arg):
-        import argparse
 
         parser = argparse.ArgumentParser(
             description="Calculate Replicas Temperature Replica Exchange"
@@ -879,12 +882,10 @@ def main():
 
     # Handle batch processing
     if args.batch:
-        from utils.batch_processor import ParallelBatchProcessor
 
         # Determine number of workers
         max_workers = args.workers
         if args.parallel and not max_workers:
-            import multiprocessing as mp
 
             max_workers = min(mp.cpu_count(), 8)  # Auto-detect with cap
 
