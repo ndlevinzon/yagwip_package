@@ -38,13 +38,13 @@ def parse_pdb_coords(filename):
         lines = f.readlines()
     for line in lines:
         if line.startswith("ATOM") or line.startswith("HETATM"):
-                x = float(line[30:38])
-                y = float(line[38:46])
-                z = float(line[46:54])
-                coords[idx] = (x, y, z)
-                names[idx] = line[12:16].strip()
-                atom_lines.append(line)
-                idx += 1
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            coords[idx] = (x, y, z)
+            names[idx] = line[12:16].strip()
+            atom_lines.append(line)
+            idx += 1
     return coords, names, atom_lines, lines
 
 
@@ -150,30 +150,38 @@ class MolGraph:
 def are_isomorphic(g1, g2):
     if len(g1.atoms) != len(g2.atoms):
         return False, None
+
+    def atom_env_hash(graph, idx):
+        atom = graph.atoms[idx]
+        neighbors = sorted((graph.atoms[n].element, graph.atoms[n].degree) for n in atom.neighbors)
+        # Path invariants: elements at distance 2
+        dist2 = set()
+        for n in atom.neighbors:
+            dist2.update(graph.atoms[nn].element for nn in graph.atoms[n].neighbors if nn != idx)
+        dist2 = tuple(sorted(dist2))
+        return (atom.element, atom.degree, tuple(neighbors), dist2)
+
     candidates = {}
-    for idx1, atom1 in g1.atoms.items():
+    for idx1 in g1.atoms:
+        hash1 = atom_env_hash(g1, idx1)
         candidates[idx1] = [
-            idx2
-            for idx2, atom2 in g2.atoms.items()
-            if atom1.element == atom2.element and atom1.degree == atom2.degree
+            idx2 for idx2 in g2.atoms
+            if atom_env_hash(g2, idx2) == hash1
         ]
         if not candidates[idx1]:
             return False, None
 
     def neighbor_signature(graph, idx):
-        # Return a sorted tuple of (element, degree) for all neighbors
         return tuple(sorted((graph.atoms[n].element, graph.atoms[n].degree) for n in graph.atoms[idx].neighbors))
 
     def backtrack(mapping, used2):
         if len(mapping) == len(g1.atoms):
             return True, dict(mapping)
-        # Most constrained first: pick unmapped idx1 with fewest candidates
         unmapped = [i for i in g1.atoms if i not in mapping]
         idx1 = min(unmapped, key=lambda i: len([c for c in candidates[i] if c not in used2]))
         for idx2 in candidates[idx1]:
             if idx2 in used2:
                 continue
-            # Neighborhood check: neighbor signature must match
             sig1 = neighbor_signature(g1, idx1)
             sig2 = neighbor_signature(g2, idx2)
             if sig1 != sig2:
