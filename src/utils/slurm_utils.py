@@ -127,8 +127,8 @@ class SlurmWriter(YagwipBase):
 
         # Copy minimization and main SLURM files for md
         if sim_type == "md":
-            min_slurm = self.template_dir / "run_gmx_md_min.slurm"
-            main_slurm = self.template_dir / "run_gmx_md.slurm"
+            min_slurm = self.template_dir / "run_gmx_md_min_cpu.slurm"
+            main_slurm = self.template_dir / "run_gmx_md_cpu.slurm"
             for slurm_path in [min_slurm, main_slurm]:
                 if slurm_path.is_file():
                     try:
