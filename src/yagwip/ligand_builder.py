@@ -104,12 +104,12 @@ class LigandPipeline(YagwipBase):
         # Use CONNECT records if provided, else spatial partitioning
         if connect_records:
             bonds, atom_bonds = LigandUtils.find_bonds_spatial(
-                coords, elements, covalent_radii, bond_tolerance,
+                coords, elements, covalent_radii, bond_tolerance=bond_tolerance,
                 connect_records=connect_records, logger=self.logger
             )
         else:
             bonds, atom_bonds = LigandUtils.find_bonds_spatial(
-                coords, elements, covalent_radii, bond_tolerance,
+                coords, elements, covalent_radii, bond_tolerance=bond_tolerance,
                 connect_records=None, logger=self.logger
             )
         df_bonds = pd.DataFrame(bonds)
