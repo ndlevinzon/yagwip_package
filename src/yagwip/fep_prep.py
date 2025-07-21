@@ -28,6 +28,31 @@ def parse_mol2_coords(filename):
             names[idx] = name
     return coords, names
 
+# --- PDB parsing ---
+def parse_pdb_coords(filename):
+    coords = {}
+    names = {}
+    atom_lines = []
+    idx = 1
+    with open(filename) as f:
+        lines = f.readlines()
+    for line in lines:
+        if line.startswith("ATOM") or line.startswith("HETATM"):
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            coords[idx] = (x, y, z)
+            names[idx] = line[12:16].strip()
+            atom_lines.append(line)
+            idx += 1
+    return coords, names, atom_lines, lines
+
+def write_aligned_pdb(atom_lines, coords, out_file):
+    with open(out_file, 'w') as f:
+        for line, (x, y, z) in zip(atom_lines, coords):
+            newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
+            f.write(newline)
+
 # --- Atom and Bond classes for MolGraph ---
 class Atom:
     def __init__(self, idx, element):
@@ -279,6 +304,56 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
     print(f"Translation vector: {translation}")
     return aligned_ligandB_mol2
 
+def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
+    # Parse atom map
+    mapping = load_atom_map(atom_map_file)
+    # Parse PDBs
+    coordsA, namesA, atom_linesA, _ = parse_pdb_coords(ligA_pdb)
+    coordsB, namesB, atom_linesB, _ = parse_pdb_coords(ligB_pdb)
+    # Extract coordinates for mapped atoms
+    mapped_coords_A = []
+    mapped_coords_B = []
+    for idxA, idxB in mapping.items():
+        if idxA in coordsA and idxB in coordsB:
+            mapped_coords_A.append(coordsA[idxA])
+            mapped_coords_B.append(coordsB[idxB])
+    if len(mapped_coords_A) < 3:
+        print("Not enough mapped atoms (need at least 3) for alignment.")
+        return None
+    coords_A = np.array(mapped_coords_A)
+    coords_B = np.array(mapped_coords_B)
+    aligned_coords_B, rotation_matrix, translation = kabsch_align(coords_A, coords_B)
+    # Apply transform to all atoms in ligandB.pdb
+    allB_indices = sorted(coordsB.keys())
+    allB_coords = np.array([coordsB[i] for i in allB_indices])
+    centered_allB = allB_coords - np.mean(coords_B, axis=0)
+    transformed_allB = (centered_allB @ rotation_matrix) + np.mean(coords_A, axis=0)
+    write_aligned_pdb(atom_linesB, transformed_allB, aligned_ligB_pdb)
+    print(f"Aligned ligandB.pdb to ligandA.pdb and saved to {aligned_ligB_pdb}")
+    return aligned_ligB_pdb
+
+def organize_files(args, out_dir, aligned_ligB_pdb):
+    out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
+    out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
+    for d in out_dirs_full:
+        os.makedirs(d, exist_ok=True)
+    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[0], 'ligandA.pdb'))
+    copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
+    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
+    copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
+    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
+    copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
+    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
+    copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
+    copyfile(args.protein_pdb, os.path.join(out_dirs_full[1], 'protein.pdb'))
+    copyfile(args.protein_pdb, os.path.join(out_dirs_full[3], 'protein.pdb'))
+    print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
+    print("Output written to:")
+    for d in out_dirs_full:
+        print(f"  {d}/")
+        for f in os.listdir(d):
+            print(f"    {f}")
+
 # --- Main script ---
 def main():
     parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
@@ -293,42 +368,25 @@ def main():
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
 
-    # === SECTION 1: Find MCS and Write Atom Map ===
+    # 1. Find MCS and write atom_map.txt
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
     mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
     if mcs_size < 3 or mapping is None:
         raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
-    write_atom_map(mapping, os.path.join(out_dir, "atom_map.txt"))
+    atom_map_file = os.path.join(out_dir, "atom_map.txt")
+    write_atom_map(mapping, atom_map_file)
 
-    # === SECTION 2: Align ligandB to ligandA using atom map ===
+    # 2. Align ligandB.mol2 to ligandA.mol2 using atom_map.txt
     aligned_ligB_mol2 = os.path.join(out_dir, 'ligandB_aligned.mol2')
     align_ligands_with_mapping(args.ligA_mol2, args.ligB_mol2, aligned_ligB_mol2, mapping)
 
-    # === SECTION 3: Organize Files ===
-    out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
-    out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
-    for d in out_dirs_full:
-        os.makedirs(d, exist_ok=True)
+    # 3. Align ligandB.pdb to ligandA.pdb using atom_map.txt
+    aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
+    align_ligandB_pdb(args.ligA_pdb, args.ligB_pdb, atom_map_file, aligned_ligB_pdb)
 
-    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[0], 'ligandA.pdb'))
-    copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
-    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
-    copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
-    copyfile(args.ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
-    copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
-    copyfile(args.ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
-    copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
-    copyfile(args.protein_pdb, os.path.join(out_dirs_full[1], 'protein.pdb'))
-    copyfile(args.protein_pdb, os.path.join(out_dirs_full[3], 'protein.pdb'))
-
-    print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
-    print("Output written to:")
-    print(f"  {aligned_ligB_mol2}")
-    for d in out_dirs_full:
-        print(f"  {d}/")
-        for f in os.listdir(d):
-            print(f"    {f}")
+    # 4. Organize files into subdirectories
+    organize_files(args, out_dir, aligned_ligB_pdb)
 
 if __name__ == '__main__':
     main()
