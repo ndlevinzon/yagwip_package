@@ -47,7 +47,6 @@ def parse_pdb_coords(filename):
             idx += 1
     return coords, names, atom_lines, lines
 
-
 def write_aligned_pdb(atom_lines, coords, out_file):
     with open(out_file, 'w') as f:
         for line, (x, y, z) in zip(atom_lines, coords):
@@ -212,39 +211,86 @@ def are_isomorphic(g1, g2):
     return backtrack({}, set())
 
 def find_mcs(g1, g2):
-    # Legacy approach: try to match all atoms by element and degree, using backtracking
-    # Returns the largest mapping found
+    # Greedy/incremental (seed-and-extend) MCS algorithm
+    def atom_env_hash(graph, idx):
+        atom = graph.atoms[idx]
+        neighbors = sorted((graph.atoms[n].element, graph.atoms[n].degree) for n in atom.neighbors)
+        dist2 = set()
+        for n in atom.neighbors:
+            dist2.update(graph.atoms[nn].element for nn in graph.atoms[n].neighbors if nn != idx)
+        dist2 = tuple(sorted(dist2))
+        return (atom.element, atom.degree, tuple(neighbors), dist2)
+
+    # Build candidate pairs (seeds) with matching environment hashes
+    seeds = []
+    for idx1 in g1.atoms:
+        hash1 = atom_env_hash(g1, idx1)
+        for idx2 in g2.atoms:
+            if atom_env_hash(g2, idx2) == hash1:
+                seeds.append((idx1, idx2))
+
+    best_mapping = {}
     best_size = 0
-    best_mapping = None
-    best_atoms1 = None
-    best_atoms2 = None
-    nA = len(g1.atoms)
-    nB = len(g2.atoms)
-    # Try all possible sizes from min(nA, nB) down to 3
-    for size in range(min(nA, nB), 2, -1):
-        # Try all combinations of size atoms from g1
-        from itertools import combinations
-        for atoms1 in combinations(g1.atoms.keys(), size):
-            sg1 = g1.subgraph(atoms1)
-            # Try all combinations of size atoms from g2
-            for atoms2 in combinations(g2.atoms.keys(), size):
-                sg2 = g2.subgraph(atoms2)
-                iso, mapping = are_isomorphic(sg1, sg2)
-                if iso:
-                    # mapping: sg1 idx -> sg2 idx
-                    # Convert mapping to original indices
-                    orig_mapping = {list(atoms1)[i]: list(atoms2)[j] for i, j in mapping.items()}
-                    if size > best_size:
-                        best_size = size
-                        best_mapping = orig_mapping
-                        best_atoms1 = set(atoms1)
-                        best_atoms2 = set(atoms2)
-                    break  # Only need one mapping of this size
-            if best_size == size:
-                break
-        if best_size == size:
-            break
-    if best_size == 0:
+    best_atoms1 = set()
+    best_atoms2 = set()
+
+    def extend(mapping, used1, used2):
+        nonlocal best_mapping, best_size, best_atoms1, best_atoms2
+        if len(mapping) > best_size:
+            best_size = len(mapping)
+            best_mapping = dict(mapping)
+            best_atoms1 = set(mapping.keys())
+            best_atoms2 = set(mapping.values())
+        # Try to extend mapping by adding neighbor pairs
+        frontier = []
+        for idx1 in mapping:
+            for nbr1 in g1.atoms[idx1].neighbors:
+                if nbr1 in used1:
+                    continue
+                hash1 = atom_env_hash(g1, nbr1)
+                for idx2 in mapping.values():
+                    for nbr2 in g2.atoms[idx2].neighbors:
+                        if nbr2 in used2:
+                            continue
+                        if atom_env_hash(g2, nbr2) == hash1:
+                            frontier.append((nbr1, nbr2))
+        # Remove duplicates
+        seen = set()
+        unique_frontier = []
+        for p in frontier:
+            if p not in seen:
+                unique_frontier.append(p)
+                seen.add(p)
+        for idx1, idx2 in unique_frontier:
+            # Check if mapping is valid
+            ok = True
+            for mapped1, mapped2 in mapping.items():
+                if (nbr1 := idx1) in g1.atoms[mapped1].neighbors:
+                    if (nbr2 := idx2) not in g2.atoms[mapped2].neighbors:
+                        ok = False
+                        break
+                if (nbr2 := idx2) in g2.atoms[mapped2].neighbors:
+                    if (nbr1 := idx1) not in g1.atoms[mapped1].neighbors:
+                        ok = False
+                        break
+            if not ok:
+                continue
+            mapping[idx1] = idx2
+            used1.add(idx1)
+            used2.add(idx2)
+            extend(mapping, used1, used2)
+            del mapping[idx1]
+            used1.remove(idx1)
+            used2.remove(idx2)
+
+    # Try all seeds
+    for idx1, idx2 in seeds:
+        mapping = {idx1: idx2}
+        used1 = {idx1}
+        used2 = {idx2}
+        extend(mapping, used1, used2)
+
+    if best_size < 3:
         return 0, None, None, None
     return best_size, best_mapping, best_atoms1, best_atoms2
 
