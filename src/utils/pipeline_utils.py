@@ -631,27 +631,35 @@ class LigandUtils(LoggingMixin):
     def find_rings(self, n_atoms, atom_bonds, max_ring_size=8):
         """
         Find all rings up to max_ring_size in the molecular graph.
-        Returns a list of sets, each set is the indices of atoms in a ring.
+        Returns a list of ordered lists (cycles), each is the indices of atoms in a ring.
         """
-        rings = set()
-        def dfs(path, start, current, depth):
+        rings = []
+        def dfs(path, start, current, depth, visited_edges):
             if depth > max_ring_size:
                 return
             for neighbor in atom_bonds[current]:
+                edge = tuple(sorted((current, neighbor)))
                 if neighbor == start and depth >= 3:
                     # Found a ring
-                    ring = tuple(sorted(path))
-                    rings.add(ring)
-                elif neighbor not in path:
-                    dfs(path + [neighbor], start, neighbor, depth + 1)
+                    # Only add if all edges are unique (no repeated edges)
+                    if len(set(path)) == len(path):
+                        # Check for duplicates (same cycle in different order)
+                        canonical = min([path[i:] + path[:i] for i in range(len(path))])
+                        if canonical not in rings:
+                            rings.append(canonical)
+                elif neighbor not in path and edge not in visited_edges:
+                    dfs(path + [neighbor], start, neighbor, depth + 1, visited_edges | {edge})
         for atom in range(n_atoms):
-            dfs([atom], atom, atom, 1)
-        # Remove duplicates (rings with same atoms in different order)
-        unique_rings = set()
+            dfs([atom], atom, atom, 1, set())
+        # Remove duplicates (cycles with same atoms in different order)
+        unique_rings = []
+        seen = set()
         for ring in rings:
-            if len(ring) <= max_ring_size:
-                unique_rings.add(frozenset(ring))
-        return list(unique_rings)
+            key = tuple(sorted(ring))
+            if key not in seen and len(ring) <= max_ring_size:
+                unique_rings.append(ring)
+                seen.add(key)
+        return unique_rings
 
     def find_bonds_spatial(
             self, coords, elements, covalent_radii, bond_tolerance, logger=None
@@ -669,21 +677,20 @@ class LigandUtils(LoggingMixin):
                 if dist < strict_cutoff:
                     initial_atom_bonds[i].append(j)
                     initial_atom_bonds[j].append(i)
-        # Detect rings up to 8 atoms in the initial graph
+        # Detect rings up to 8 atoms in the initial graph (ordered cycles)
         rings = self.find_rings(n_atoms, initial_atom_bonds, max_ring_size=8)
-        # Store all original ring bonds (as frozenset of pairs)
+        # Store all original ring bonds (as frozenset of pairs, from ordered cycles)
         original_ring_bonds = set()
         for ring in rings:
-            ring_list = sorted(ring)
-            for idx in range(len(ring_list)):
-                a = ring_list[idx]
-                b = ring_list[(idx+1)%len(ring_list)]  # wrap around
+            for idx in range(len(ring)):
+                a = ring[idx]
+                b = ring[(idx+1)%len(ring)]  # wrap around
                 original_ring_bonds.add(frozenset((a, b)))
         # For fast lookup: for each atom, which rings is it in?
         atom_to_rings = {i: set() for i in range(n_atoms)}
         for ring in rings:
             for idx in ring:
-                atom_to_rings[idx].add(ring)
+                atom_to_rings[idx].add(tuple(sorted(ring)))
         # --- 2. Main bond assignment with ring preservation ---
         bonds = []
         atom_bonds = {i: [] for i in range(n_atoms)}
@@ -731,7 +738,6 @@ class LigandUtils(LoggingMixin):
                         if frozenset((i, j)) in original_ring_bonds:
                             continue
                         # Check if adding this bond would create a new ring (cycle)
-                        # Simple DFS to see if a path already exists between i and j
                         def has_path(a, b, visited):
                             if a == b:
                                 return True
@@ -767,8 +773,8 @@ class LigandUtils(LoggingMixin):
                                 )
         # Optional: verify all original rings are present
         final_rings = self.find_rings(n_atoms, atom_bonds, max_ring_size=8)
-        orig_ring_sets = set(frozenset(r) for r in rings)
-        final_ring_sets = set(frozenset(r) for r in final_rings)
+        orig_ring_sets = set(frozenset(r) for r in [tuple(sorted(ring)) for ring in rings])
+        final_ring_sets = set(frozenset(r) for r in [tuple(sorted(ring)) for ring in final_rings])
         missing = orig_ring_sets - final_ring_sets
         if missing and logger:
             logger.warning(f"[RING WARNING] Some original rings were not preserved: {missing}")
