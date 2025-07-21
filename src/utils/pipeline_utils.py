@@ -656,13 +656,9 @@ class LigandUtils(LoggingMixin):
     def find_bonds_spatial(
             self, coords, elements, covalent_radii, bond_tolerance, logger=None
     ):
-        # Calculate maximum bond distance
         max_radii = max(covalent_radii.values())
         max_bond_distance = 2 * max_radii + bond_tolerance
-
-        # Build spatial grid
         grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
-
         n_atoms = len(coords)
         # --- 1. Initial strict bond graph for ring detection ---
         strict_cutoff = 1.2  # Ångstroms, strict for covalent bonds
@@ -692,6 +688,21 @@ class LigandUtils(LoggingMixin):
         bonds = []
         atom_bonds = {i: [] for i in range(n_atoms)}
         bond_id = 1
+        # Always add all original ring bonds first
+        for bond in original_ring_bonds:
+            i, j = tuple(bond)
+            if j not in atom_bonds[i]:
+                bonds.append({
+                    "bond_id": bond_id,
+                    "origin_atom_id": i + 1,
+                    "target_atom_id": j + 1,
+                    "bond_type": "1",
+                    "status_bit": "",
+                })
+                atom_bonds[i].append(j)
+                atom_bonds[j].append(i)
+                bond_id += 1
+        # Now add all other bonds as usual, but do not add any bond that would create a new ring
         for i in range(n_atoms):
             coord_i = coords[i]
             elem_i = elements[i]
@@ -716,15 +727,26 @@ class LigandUtils(LoggingMixin):
                     r_cov_j = covalent_radii.get(elem_j, 0.77)
                     max_bond = r_cov_i + r_cov_j + bond_tolerance
                     if 0.4 < dist < max_bond:
-                        # If both atoms are in the same original ring, only allow bond if it was present in original_ring_bonds
-                        shared_rings = atom_to_rings[i] & atom_to_rings[j]
-                        if shared_rings:
-                            if frozenset((i, j)) not in original_ring_bonds:
-                                if logger:
-                                    logger.warning(
-                                        f"Skipping bond between atoms {i+1} and {j+1} to preserve original ring structure."
-                                    )
-                                continue
+                        # Skip if this is already a ring bond
+                        if frozenset((i, j)) in original_ring_bonds:
+                            continue
+                        # Check if adding this bond would create a new ring (cycle)
+                        # Simple DFS to see if a path already exists between i and j
+                        def has_path(a, b, visited):
+                            if a == b:
+                                return True
+                            visited.add(a)
+                            for neighbor in atom_bonds[a]:
+                                if neighbor not in visited:
+                                    if has_path(neighbor, b, visited):
+                                        return True
+                            return False
+                        if has_path(i, j, set()):
+                            if logger:
+                                logger.warning(
+                                    f"Skipping bond between atoms {i+1} and {j+1} to avoid creating a new ring."
+                                )
+                            continue
                         if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
                             bonds.append(
                                 {
@@ -743,6 +765,13 @@ class LigandUtils(LoggingMixin):
                                 logger.warning(
                                     f"Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
                                 )
+        # Optional: verify all original rings are present
+        final_rings = self.find_rings(n_atoms, atom_bonds, max_ring_size=8)
+        orig_ring_sets = set(frozenset(r) for r in rings)
+        final_ring_sets = set(frozenset(r) for r in final_rings)
+        missing = orig_ring_sets - final_ring_sets
+        if missing and logger:
+            logger.warning(f"[RING WARNING] Some original rings were not preserved: {missing}")
         return bonds, atom_bonds
 
     def is_valid_bond(self, elem_i, elem_j, atom_bonds, i, j):
