@@ -391,7 +391,7 @@ class LigandPipeline(YagwipBase):
         if acpype_path is None:
             self._log_warning("[ERROR] ACPYPE not found. Skipping acpype step.")
             return False
-        cmd = f"{acpype_path} -i {mol2_file} -c user"
+        cmd = f"{acpype_path} -i {mol2_file} -c user -a gaff2"
         self._log_info(f"[RUNNING] {cmd}")
         try:
             result = subprocess.run(
