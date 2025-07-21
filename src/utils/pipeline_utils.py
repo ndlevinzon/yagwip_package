@@ -237,7 +237,7 @@ class Editor(LoggingMixin):
             fout.write(header[0])
             fout.write(f"{total_atoms}\n")
             fout.writelines(atom_lines)
-            for i, (res_id, res_name, atom_index, x, y, z) in enumerate(coords):
+            for i, (res_id, res_name, atom_index, x, y, z) in enumerate(coords.values()):
                 atom_name = ligand_atom_names[i] if i < len(ligand_atom_names) else "X"
                 fout.write(
                     f"{res_id:5d}{res_name:<5}{atom_name:>5}{atom_index:5d}{x / 10:8.3f}{y / 10:8.3f}{z / 10:8.3f}\n"
