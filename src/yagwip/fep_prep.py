@@ -38,14 +38,15 @@ def parse_pdb_coords(filename):
         lines = f.readlines()
     for line in lines:
         if line.startswith("ATOM") or line.startswith("HETATM"):
-            x = float(line[30:38])
-            y = float(line[38:46])
-            z = float(line[46:54])
-            coords[idx] = (x, y, z)
-            names[idx] = line[12:16].strip()
-            atom_lines.append(line)
-            idx += 1
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+                coords[idx] = (x, y, z)
+                names[idx] = line[12:16].strip()
+                atom_lines.append(line)
+                idx += 1
     return coords, names, atom_lines, lines
+
 
 def write_aligned_pdb(atom_lines, coords, out_file):
     with open(out_file, 'w') as f:
@@ -158,12 +159,24 @@ def are_isomorphic(g1, g2):
         ]
         if not candidates[idx1]:
             return False, None
+
+    def neighbor_signature(graph, idx):
+        # Return a sorted tuple of (element, degree) for all neighbors
+        return tuple(sorted((graph.atoms[n].element, graph.atoms[n].degree) for n in graph.atoms[idx].neighbors))
+
     def backtrack(mapping, used2):
         if len(mapping) == len(g1.atoms):
             return True, dict(mapping)
-        idx1 = next(i for i in g1.atoms if i not in mapping)
+        # Most constrained first: pick unmapped idx1 with fewest candidates
+        unmapped = [i for i in g1.atoms if i not in mapping]
+        idx1 = min(unmapped, key=lambda i: len([c for c in candidates[i] if c not in used2]))
         for idx2 in candidates[idx1]:
             if idx2 in used2:
+                continue
+            # Neighborhood check: neighbor signature must match
+            sig1 = neighbor_signature(g1, idx1)
+            sig2 = neighbor_signature(g2, idx2)
+            if sig1 != sig2:
                 continue
             ok = True
             for nbr1 in g1.atoms[idx1].neighbors:
@@ -187,6 +200,7 @@ def are_isomorphic(g1, g2):
             del mapping[idx1]
             used2.remove(idx2)
         return False, None
+
     return backtrack({}, set())
 
 def find_mcs(g1, g2):
