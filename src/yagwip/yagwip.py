@@ -489,7 +489,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_fep_prep(self, arg):
         """
-        Run the complete FEP preparation workflow using dual_hybrid_topologies.py CLI.
+        Run the complete FEP preparation workflow using fep_prep.py CLI.
         This will:
         1) Align ligand B to ligand A using Kabsch algorithm
         2) Run MCS to generate atom_map.txt using aligned coordinates
@@ -501,7 +501,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         ligandA_itp = "ligandA.itp"
         ligandB_itp = "ligandB.itp"
         atom_map = "atom_map.txt"
-        fep_utils_path = os.path.join(os.path.dirname(__file__), "dual_hybrid_topologies.py")
+        fep_utils_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
         python_exe = sys.executable
 
         # Check if required files exist
