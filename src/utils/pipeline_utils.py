@@ -629,7 +629,7 @@ class LigandUtils(LoggingMixin):
         return neighbors
 
     def find_bonds_spatial(
-            self, coords, elements, covalent_radii, bond_tolerance, logger=None
+            self, coords, elements, covalent_radii, bond_tolerance, connect_records=None, logger=None
     ):
         """
         Find bonds using spatial partitioning for O(n) average case performance.
