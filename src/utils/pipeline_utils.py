@@ -628,116 +628,82 @@ class LigandUtils(LoggingMixin):
                     neighbors.append((x + dx, y + dy, z + dz))
         return neighbors
 
-    def find_rings(self, n_atoms, atom_bonds, max_ring_size=8):
-        """
-        Find all rings up to max_ring_size in the molecular graph.
-        Returns a list of ordered lists (cycles), each is the indices of atoms in a ring.
-        """
-        rings = []
-        def dfs(path, start, current, depth, visited_edges):
-            if depth > max_ring_size:
-                return
-            for neighbor in atom_bonds[current]:
-                edge = tuple(sorted((current, neighbor)))
-                if neighbor == start and depth >= 3:
-                    # Found a ring
-                    # Only add if all edges are unique (no repeated edges)
-                    if len(set(path)) == len(path):
-                        # Check for duplicates (same cycle in different order)
-                        canonical = min([path[i:] + path[:i] for i in range(len(path))])
-                        if canonical not in rings:
-                            rings.append(canonical)
-                elif neighbor not in path and edge not in visited_edges:
-                    dfs(path + [neighbor], start, neighbor, depth + 1, visited_edges | {edge})
-        for atom in range(n_atoms):
-            dfs([atom], atom, atom, 1, set())
-        # Remove duplicates (cycles with same atoms in different order)
-        unique_rings = []
-        seen = set()
-        for ring in rings:
-            key = tuple(sorted(ring))
-            if key not in seen and len(ring) <= max_ring_size:
-                unique_rings.append(ring)
-                seen.add(key)
-        return unique_rings
-
     def find_bonds_spatial(
-            self, coords, elements, covalent_radii, bond_tolerance, logger=None, conect_records=None
+            self, coords, elements, covalent_radii, bond_tolerance, logger=None
     ):
+        """
+        Find bonds using spatial partitioning for O(n) average case performance.
+
+        Args:
+            coords: numpy array of atom coordinates
+            elements: array of element symbols
+            covalent_radii: dictionary of covalent radii
+            bond_tolerance: bond distance tolerance
+
+        Returns:
+            bonds: list of bond dictionaries
+            atom_bonds: dictionary tracking bonds per atom
+        """
+        # Calculate maximum bond distance
         max_radii = max(covalent_radii.values())
         max_bond_distance = 2 * max_radii + bond_tolerance
+
+        # Build spatial grid
         grid, grid_size = self.build_spatial_grid(coords, max_bond_distance)
-        n_atoms = len(coords)
+
         bonds = []
-        atom_bonds = {i: [] for i in range(n_atoms)}
+        atom_bonds = {i: [] for i in range(len(coords))}
         bond_id = 1
-        used_pairs = set()
-        # --- 1. Use CONECT records if provided ---
-        if conect_records:
-            for i, bonded_list in conect_records.items():
-                for j in bonded_list:
-                    # i, j are 1-based indices from PDB, convert to 0-based
-                    idx_i = i - 1
-                    idx_j = j - 1
-                    if idx_i < 0 or idx_j < 0 or idx_i >= n_atoms or idx_j >= n_atoms:
-                        continue
-                    pair = tuple(sorted((idx_i, idx_j)))
-                    if pair in used_pairs:
-                        continue
-                    used_pairs.add(pair)
-                    bonds.append({
-                        "bond_id": bond_id,
-                        "origin_atom_id": idx_i + 1,
-                        "target_atom_id": idx_j + 1,
-                        "bond_type": "1",
-                        "status_bit": "",
-                    })
-                    atom_bonds[idx_i].append(idx_j)
-                    atom_bonds[idx_j].append(idx_i)
-                    bond_id += 1
-        # --- 2. For atoms not covered by CONECT, use distance-based assignment (e.g., hydrogens) ---
-        for i in range(n_atoms):
+
+        # Check each atom against atoms in neighboring cells
+        for i in range(len(coords)):
             coord_i = coords[i]
             elem_i = elements[i]
+
+            # Find grid cell for this atom
             min_coords = np.min(coords, axis=0)
             grid_x = int((coord_i[0] - min_coords[0]) / grid_size)
             grid_y = int((coord_i[1] - min_coords[1]) / grid_size)
             grid_z = int((coord_i[2] - min_coords[2]) / grid_size)
             current_cell = (grid_x, grid_y, grid_z)
+
+            # Check atoms in current and neighboring cells
             neighbor_cells = self.get_neighbor_cells(current_cell)
             checked_atoms = set()
+
             for cell_key in neighbor_cells:
                 if cell_key not in grid:
                     continue
+
                 for j in grid[cell_key]:
-                    if j <= i or j in checked_atoms:
+                    if j <= i or j in checked_atoms:  # Avoid duplicates
                         continue
                     checked_atoms.add(j)
+
                     elem_j = elements[j]
                     coord_j = coords[j]
+
+                    # Calculate distance
                     dist = np.linalg.norm(coord_i - coord_j)
+
+                    # Check if atoms could form a bond
                     r_cov_i = covalent_radii.get(elem_i, 0.77)
                     r_cov_j = covalent_radii.get(elem_j, 0.77)
                     max_bond = r_cov_i + r_cov_j + bond_tolerance
-                    pair = tuple(sorted((i, j)))
-                    # Only add if not already present from CONECT
-                    if pair in used_pairs:
-                        continue
-                    # Only assign if at least one atom is hydrogen or not in CONECT
-                    if conect_records:
-                        in_conect_i = (i + 1) in conect_records
-                        in_conect_j = (j + 1) in conect_records
-                        if in_conect_i and in_conect_j:
-                            continue
+
                     if 0.4 < dist < max_bond:
+                        # Validate bond is chemically possible
                         if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
-                            bonds.append({
-                                "bond_id": bond_id,
-                                "origin_atom_id": i + 1,
-                                "target_atom_id": j + 1,
-                                "bond_type": "1",
-                                "status_bit": "",
-                            })
+                            bonds.append(
+                                {
+                                    "bond_id": bond_id,
+                                    "origin_atom_id": i + 1,  # 1-based indexing
+                                    "target_atom_id": j + 1,
+                                    "bond_type": "1",
+                                    "status_bit": "",
+                                }
+                            )
+                            # Update bond tracking
                             atom_bonds[i].append(j)
                             atom_bonds[j].append(i)
                             bond_id += 1
@@ -746,6 +712,7 @@ class LigandUtils(LoggingMixin):
                                 logger.warning(
                                     f"Skipping invalid bond between {elem_i} and {elem_j} (atoms {i + 1} and {j + 1})"
                                 )
+
         return bonds, atom_bonds
 
     def is_valid_bond(self, elem_i, elem_j, atom_bonds, i, j):
