@@ -1,9 +1,13 @@
+"""
+Dual Topology FEP Preparation Module - WIP
+"""
+
+
 # === Standard Library Imports ===
 import sys
 import os
 from collections import defaultdict
 import logging
-import random
 
 # === Third-Party Imports ===
 import pandas as pd
@@ -1546,17 +1550,17 @@ def print_help():
 Enhanced FEP Preparation Tool - Dual Topology with Growing Procedure
 
 Usage:
-  python fep_prep.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2
+  python dual_hybrid_topologies.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2
       Find MCS and align ligand B to ligand A using MCS-based alignment
-  python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
+  python dual_hybrid_topologies.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt
       Find the maximum common substructure (continuous only) and write atom_map.txt
-  python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
+  python dual_hybrid_topologies.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt
       Generate hybrid .itp files for all lambda windows with growing procedure
-  python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
+  python dual_hybrid_topologies.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt
       Generate hybridized .pdb files for all lambda windows with realistic dummy placement
-  python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2
+  python dual_hybrid_topologies.py full_workflow ligandA.mol2 ligandB.mol2
       Complete workflow: find MCS, align ligands, generate hybrid topology and coordinates
-  python fep_prep.py growing_info
+  python dual_hybrid_topologies.py growing_info
       Display detailed information about the growing procedure
 
 Key Features:
@@ -1579,7 +1583,7 @@ def main():
     elif cmd == "align":
         if len(sys.argv) != 5:
             print(
-                "Usage: python fep_prep.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2"
+                "Usage: python dual_hybrid_topologies.py align ligandA.mol2 ligandB.mol2 aligned_ligandB.mol2"
             )
             sys.exit(1)
         ligA_mol2, ligB_mol2, aligned_ligandB_mol2 = sys.argv[2:5]
@@ -1601,7 +1605,7 @@ def main():
     elif cmd == "mcs":
         if len(sys.argv) != 5:
             print(
-                "Usage: python fep_prep.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt"
+                "Usage: python dual_hybrid_topologies.py mcs ligandA.mol2 ligandB.mol2 atom_map.txt"
             )
             sys.exit(1)
         mol1, mol2, outmap = sys.argv[2:5]
@@ -1617,7 +1621,7 @@ def main():
     elif cmd == "hybrid_topology":
         if len(sys.argv) != 5:
             print(
-                "Usage: python fep_prep.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt"
+                "Usage: python dual_hybrid_topologies.py hybrid_topology ligandA.itp ligandB.itp atom_map.txt"
             )
             sys.exit(1)
         itpA, itpB, mapfile = sys.argv[2:5]
@@ -1629,7 +1633,7 @@ def main():
     elif cmd == "hybrid_coords":
         if len(sys.argv) != 5:
             print(
-                "Usage: python fep_prep.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt"
+                "Usage: python dual_hybrid_topologies.py hybrid_coords ligandA.mol2 ligandB.mol2 atom_map.txt"
             )
             sys.exit(1)
         ligA_mol2, ligB_mol2, atom_map_txt = sys.argv[2:5]
@@ -1666,7 +1670,7 @@ def main():
     elif cmd == "full_workflow":
         if len(sys.argv) != 4:
             print(
-                "Usage: python fep_prep.py full_workflow ligandA.mol2 ligandB.mol2"
+                "Usage: python dual_hybrid_topologies.py full_workflow ligandA.mol2 ligandB.mol2"
             )
             sys.exit(1)
         ligA_mol2, ligB_mol2 = sys.argv[2:4]
