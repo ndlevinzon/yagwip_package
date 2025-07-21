@@ -146,7 +146,7 @@ class Builder(YagwipBase):
         if base is None:
             return
         else:
-            mdp_file = files(".templates").joinpath("ions.mdp")
+            mdp_file = files("templates").joinpath("ions.mdp")
         input_gro = f"{base}.solv.gro"
         output_gro = f"{base}.solv.ions.gro"
         tpr_out = "ions.tpr"
