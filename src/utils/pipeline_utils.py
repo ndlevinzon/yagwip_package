@@ -692,6 +692,14 @@ class LigandUtils(LoggingMixin):
                     max_bond = r_cov_i + r_cov_j + bond_tolerance
 
                     if 0.4 < dist < max_bond:
+                        # Special case: Prevent C-C bond if either carbon already has 4 bonds
+                        if elem_i == "C" and elem_j == "C":
+                            if len(atom_bonds[i]) >= 4 or len(atom_bonds[j]) >= 4:
+                                if logger:
+                                    logger.warning(
+                                        f"Skipping C-C bond between atoms {i+1} and {j+1} because one carbon already has 4 bonds."
+                                    )
+                                continue
                         # Validate bond is chemically possible
                         if self.is_valid_bond(elem_i, elem_j, atom_bonds, i, j):
                             bonds.append(
