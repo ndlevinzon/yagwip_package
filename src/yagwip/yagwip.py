@@ -686,9 +686,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Replace ligandX with LIG in the [ molecules ] section
                     content = re.sub(r'ligand[A-Z]\s+\d+', 'LIG              1', content)
 
-                    # Add forcefield include before ligand include
-                    content = re.sub(r'(#include "ligand[A-Z]\.itp")', r'#include "./amber14sb.ff/forcefield.itp"\n\1',
-                                     content)
+                    # Replace the ligand GMX itp include line with forcefield include
+                    content = re.sub(r'#include "ligand[A-Z]_GMX\.itp"\s*\n',
+                                     '#include "./amber14sb.ff/forcefield.itp"\n', content)
 
                     # Write the modified content to topol.top
                     with open("topol.top", 'w') as f:
