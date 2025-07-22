@@ -931,7 +931,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Determine which system to solvate based on available files.
         Returns the base name for solvation or None if no suitable files found.
         """
-        if self.ligand_pdb_path and os.path.isfile("complex.gro"):
+        if os.path.isfile("complex.gro"):
             return "complex"
         elif not os.path.isfile("protein.gro"):
             # Ligand-only: look for ligandX.gro or hybrid files (FEP case)
