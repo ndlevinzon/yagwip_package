@@ -670,7 +670,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         content = f.read()
 
                     # Remove the position restraints block
-                    import re
                     # Remove the entire POSRES_LIG block
                     content = re.sub(
                         r'; Ligand position restraints\s*\n#ifdef POSRES_LIG\s*\n#include "posre_[^"]*\.itp"\s*\n#endif\s*\n',
@@ -679,12 +678,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Remove all "_GMX" strings
                     content = content.replace("_GMX", "")
 
+                    # Replace ligandX with LIG in the [ molecules ] section
+                    content = re.sub(r'ligand[A-Z]\s+\d+', 'LIG              1', content)
+
                     # Write the modified content to topol.top
                     with open("topol.top", 'w') as f:
                         f.write(content)
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
-                    break
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
             return
