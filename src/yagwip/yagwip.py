@@ -894,8 +894,17 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if self.ligand_pdb_path and os.path.isfile("complex.gro"):
             return "complex"
         elif not os.path.isfile("protein.gro"):
-            # Ligand-only: look for ligandX.gro
+            # Ligand-only: look for ligandX.gro or hybrid files (FEP case)
             ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+            hybrid_gro_files = ["hybrid_stateA.gro", "hybrid_stateB.gro"]
+
+            # Check for hybrid files first (FEP case)
+            for fname in hybrid_gro_files:
+                if os.path.isfile(fname):
+                    found = fname[:-4]  # strip .gro
+                    return found
+
+            # Check for regular ligand files
             found = None
             for fname in ligand_gro_files:
                 if os.path.isfile(fname):
@@ -904,7 +913,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             if found:
                 return found
             else:
-                self._log_error("No protein.gro or ligand_*.gro found for solvation.")
+                self._log_error("No protein.gro, ligand_*.gro, or hybrid_state*.gro found for solvation.")
                 return None
         else:
             return "protein"
