@@ -3,13 +3,13 @@
 ; ============================================================
 integrator           = md
 dt                   = 0.002
-nsteps               = 2500000      ; 5 ns  (scale as needed)
+nsteps               = 2500000      ; 5 ns  (scale as needed)
 
 ; --------- Free‑energy collection ---------------------------
 free-energy          = yes
 init-lambda-state    = XXX
 delta-lambda         = 0            ; single λ point
-nstdhdl              = 100          ; write ΔHdl every 100 steps
+nstdhdl              = 100          ; write ΔHdl every 100 steps
 dhdl-print-energy    = yes
 couple-moltype       = LIG
 couple-lambda0       = vdw-q

@@ -1,5 +1,5 @@
 ; ============================================================
-;  NVT Equilibration  --  Single‑topology FEP, λ = XXX
+;  NVT Equilibration  --  Single‑topology FEP, λ = XXX
 ; ============================================================
 integrator           = md
 dt                   = 0.002      ; 2 fs
@@ -42,4 +42,3 @@ constraint-algorithm = lincs
 continuation         = no
 gen-vel              = yes
 gen-temp             = 300
-gen-seed             = your_seed

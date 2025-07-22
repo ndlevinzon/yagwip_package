@@ -1,5 +1,5 @@
 ; ============================================================
-;  NPT Equilibration  --  Single‑topology FEP, λ = XXX
+;  NPT Equilibration  --  Single‑topology FEP, λ = XXX
 ; ============================================================
 integrator           = md
 dt                   = 0.002
