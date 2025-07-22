@@ -641,6 +641,53 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
 
+        # Copy amber14sb.ff to all FEP directories
+        amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
+
+        # Define the 4 FEP directories that need amber14sb.ff
+        fep_amber_dirs = [
+            os.path.join("ligand_only", "A_to_B"),
+            os.path.join("ligand_only", "B_to_A"),
+            os.path.join("protein_complex", "A_to_B"),
+            os.path.join("protein_complex", "B_to_A")
+        ]
+
+        # Copy amber14sb.ff to each FEP directory
+        for fep_dir in fep_amber_dirs:
+            if os.path.isdir(fep_dir):
+                amber_ff_dest = os.path.join(fep_dir, "amber14sb.ff")
+                if not os.path.exists(amber_ff_dest):
+                    os.makedirs(amber_ff_dest)
+                    self._log_info(f"Created amber14sb.ff in {fep_dir}")
+                    try:
+                        for item in Path(amber_ff_source).iterdir():
+                            if item.is_file():
+                                content = item.read_text(encoding="utf-8")
+                                dest_file = os.path.join(amber_ff_dest, item.name)
+                                with open(dest_file, "w", encoding="utf-8") as f:
+                                    f.write(content)
+                        self._log_success(f"Copied amber14sb.ff to {fep_dir}")
+                    except Exception as e:
+                        self._log_error(f"Failed to copy amber14sb.ff to {fep_dir}: {e}")
+                else:
+                    self._log_info(f"amber14sb.ff already exists in {fep_dir}, not overwriting")
+
+        self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
+
+        # Process hybrid.itp files in each FEP directory
+        for fep_dir in fep_amber_dirs:
+            if os.path.isdir(fep_dir):
+                hybrid_itp_path = os.path.join(fep_dir, "hybrid.itp")
+                if os.path.exists(hybrid_itp_path):
+                    self._log_info(f"Processing hybrid.itp in {fep_dir}")
+                    try:
+                        self._process_ligand_itp(hybrid_itp_path, "LIG")
+                        self._log_success(f"Processed hybrid.itp in {fep_dir}")
+                    except Exception as e:
+                        self._log_error(f"Failed to process hybrid.itp in {fep_dir}: {e}")
+                else:
+                    self._log_warning(f"hybrid.itp not found in {fep_dir}")
+
         # Process ligand_only directories
         ligand_only_dir = "ligand_only"
         if os.path.isdir(ligand_only_dir):
