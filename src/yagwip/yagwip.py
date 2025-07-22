@@ -1040,13 +1040,38 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         self._log_success("FEP solvate workflow completed for A_to_B and B_to_A directories.")
 
+    def _determine_genions_base(self):
+        """
+        Determine the base name for genions based on available files.
+        Returns the base name for genions or None if no suitable files found.
+        """
+        if os.path.isfile("complex.gro"):
+            return "complex"
+        elif not os.path.isfile("protein.gro"):
+            # Ligand-only: look for ligandX.gro or hybrid_stateX.gro
+            # Check for hybrid files first (FEP case)
+            hybrid_gro_files = ["hybrid_stateA.gro", "hybrid_stateB.gro"]
+            for hybrid_file in hybrid_gro_files:
+                if os.path.isfile(hybrid_file):
+                    return hybrid_file[:-4]  # strip .gro
+
+            # Check for regular ligand files
+            ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
+            for fname in ligand_gro_files:
+                if os.path.isfile(fname):
+                    return fname[:-4]  # strip .gro
+
+            return None
+        else:
+            return "protein"
+
     def do_genions(self, arg):
         """
         Run genions with optional custom command override. Handles three cases:
         1) Protein-only: adds ions to protein.solv.gro
         2) Protein + single ligand: adds ions to complex.solv.gro
         3) Ligand-only: adds ions to ligandX.solv.gro in current directory
-        4) Lambda subdirectories: adds ions to hybrid_complex_XX.solv.gro in each lambda directory
+        4) FEP directories: adds ions to hybrid_stateX.solv.gro or complex.solv.gro in each A_to_B/B_to_A directory
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
@@ -1070,26 +1095,21 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     success = False
             return success, error_message
 
-        # Determine which system to add ions to
-        if self.ligand_pdb_path and os.path.isfile("complex.gro"):
-            solvated_base = "complex"
-        elif not os.path.isfile("protein.gro"):
-            # Ligand-only: look for ligandX.gro
-            ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
-            found = None
-            for fname in ligand_gro_files:
-                if os.path.isfile(fname):
-                    found = fname[:-4]  # strip .gro
-                    break
-            if found:
-                solvated_base = found
-            else:
-                self._log_error("No protein.gro or ligand_*.gro found for genions.")
-                return
-        else:
-            solvated_base = "protein"
+        # Check for FEP directories first
+        fep_dirs = [d for d in ["ligand_only", "protein_complex"] if os.path.isdir(d)]
+        if fep_dirs:
+            self._do_genions_fep(fep_dirs)
+            return
+
+        # Regular workflow
+        solvated_base = self._determine_genions_base()
+        if solvated_base is None:
+            self._log_error("No suitable files found for genions.")
+            return
+
         if not self._require_pdb():
             return
+
         # First attempt
         success, error_message = run_genions_and_capture(
             solvated_base, custom_command=self.custom_cmds.get("genions")
@@ -1105,6 +1125,159 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
         else:
             self._log_error(f"Failed to add ions: {error_message}")
+
+    def _do_genions_fep(self, fep_dirs):
+        """
+        Run genions for FEP workflow (ligand_only and protein_complex directories at A_to_B and B_to_A level).
+        """
+        self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
+
+        def run_genions_and_capture(basename, custom_command=None):
+            error_message = ""
+            success = False
+            # Patch: capture stderr/stdout
+            with StringIO() as buf, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                try:
+                    self.builder.run_genions(basename, custom_command=custom_command)
+                    output = buf.getvalue()
+                    # Check for error pattern
+                    if re.search(r"ERROR 1 \[file topol\\.top, line \\d+\]", output):
+                        error_message = output
+                        success = False
+                    else:
+                        success = True
+                except Exception as e:
+                    error_message = str(e)
+                    success = False
+            return success, error_message
+
+        # Process ligand_only directories
+        ligand_only_dir = "ligand_only"
+        if os.path.isdir(ligand_only_dir):
+            self._log_info(f"Processing {ligand_only_dir} directories...")
+
+            # Process A_to_B directory
+            a_to_b_dir = os.path.join(ligand_only_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Change to A_to_B directory and run genions
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    base = "hybrid_stateA"  # Use hybrid_stateA for A_to_B
+                    if os.path.isfile(f"{base}.solv.gro"):
+                        success, error_message = run_genions_and_capture(
+                            base, custom_command=self.custom_cmds.get("genions")
+                        )
+                        if success:
+                            self._log_success(f"Added ions to {base}.solv.gro in {a_to_b_dir}")
+                        elif "[file topol.top, line" in error_message:
+                            def rerun():
+                                return run_genions_and_capture(
+                                    base, custom_command=self.custom_cmds.get("genions")
+                                )
+
+                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                        else:
+                            self._log_error(f"Failed to add ions in {a_to_b_dir}: {error_message}")
+                    else:
+                        self._log_error(f"{base}.solv.gro not found in {a_to_b_dir}")
+                finally:
+                    os.chdir(original_cwd)
+
+            # Process B_to_A directory
+            b_to_a_dir = os.path.join(ligand_only_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Change to B_to_A directory and run genions
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    base = "hybrid_stateB"  # Use hybrid_stateB for B_to_A
+                    if os.path.isfile(f"{base}.solv.gro"):
+                        success, error_message = run_genions_and_capture(
+                            base, custom_command=self.custom_cmds.get("genions")
+                        )
+                        if success:
+                            self._log_success(f"Added ions to {base}.solv.gro in {b_to_a_dir}")
+                        elif "[file topol.top, line" in error_message:
+                            def rerun():
+                                return run_genions_and_capture(
+                                    base, custom_command=self.custom_cmds.get("genions")
+                                )
+
+                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                        else:
+                            self._log_error(f"Failed to add ions in {b_to_a_dir}: {error_message}")
+                    else:
+                        self._log_error(f"{base}.solv.gro not found in {b_to_a_dir}")
+                finally:
+                    os.chdir(original_cwd)
+
+        # Process protein_complex directories
+        protein_complex_dir = "protein_complex"
+        if os.path.isdir(protein_complex_dir):
+            self._log_info(f"Processing {protein_complex_dir} directories...")
+
+            # Process A_to_B directory
+            a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Change to A_to_B directory and run genions
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    base = "complex"  # Use complex for protein_complex
+                    if os.path.isfile(f"{base}.solv.gro"):
+                        success, error_message = run_genions_and_capture(
+                            base, custom_command=self.custom_cmds.get("genions")
+                        )
+                        if success:
+                            self._log_success(f"Added ions to {base}.solv.gro in {a_to_b_dir}")
+                        elif "[file topol.top, line" in error_message:
+                            def rerun():
+                                return run_genions_and_capture(
+                                    base, custom_command=self.custom_cmds.get("genions")
+                                )
+
+                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                        else:
+                            self._log_error(f"Failed to add ions in {a_to_b_dir}: {error_message}")
+                    else:
+                        self._log_error(f"{base}.solv.gro not found in {a_to_b_dir}")
+                finally:
+                    os.chdir(original_cwd)
+
+            # Process B_to_A directory
+            b_to_a_dir = os.path.join(protein_complex_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Change to B_to_A directory and run genions
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    base = "complex"  # Use complex for protein_complex
+                    if os.path.isfile(f"{base}.solv.gro"):
+                        success, error_message = run_genions_and_capture(
+                            base, custom_command=self.custom_cmds.get("genions")
+                        )
+                        if success:
+                            self._log_success(f"Added ions to {base}.solv.gro in {b_to_a_dir}")
+                        elif "[file topol.top, line" in error_message:
+                            def rerun():
+                                return run_genions_and_capture(
+                                    base, custom_command=self.custom_cmds.get("genions")
+                                )
+
+                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                        else:
+                            self._log_error(f"Failed to add ions in {b_to_a_dir}: {error_message}")
+                    else:
+                        self._log_error(f"{base}.solv.gro not found in {b_to_a_dir}")
+                finally:
+                    os.chdir(original_cwd)
+
+        self._log_success("FEP genions workflow completed for A_to_B and B_to_A directories.")
 
     def do_em(self, arg):
         """Run energy minimization."""
