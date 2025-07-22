@@ -439,12 +439,14 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
     # A_complex: use PDB files
     copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
+    copyfile("protein.pdb", os.path.join(out_dirs_full[1], 'protein.pdb'))
     # B_water: use aligned GRO files
     copyfile(aligned_ligB_gro, os.path.join(out_dirs_full[2], 'ligandB.gro'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
     # B_complex: use aligned PDB files
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
+    copyfile("protein.pdb", os.path.join(out_dirs_full[3], 'protein.pdb'))
     print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
     print("Output written to:")
     for d in out_dirs_full:
