@@ -526,18 +526,20 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         1) Find MCS and write atom_map.txt
         2) Align ligandB.mol2 to ligandA.mol2
         3) Align ligandB.pdb to ligandA.pdb
-        4) Organize all files into A/B_complex/water directories
-        Output: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, and subdirectories.
+        4) Align ligandB.gro to ligandA.gro
+        5) Organize all files into A/B_complex/water directories
+        Output: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, and subdirectories.
         """
         cwd = os.getcwd()
         required_files = [
             "ligandA.mol2",
             "ligandB.mol2",
             "ligandA.pdb",
+            "ligandA.gro",
             "ligandA.itp",
             "ligandB.pdb",
+            "ligandB.gro",
             "ligandB.itp",
-            "protein.pdb",
         ]
         missing = [f for f in required_files if not os.path.isfile(os.path.join(cwd, f))]
         if missing:
@@ -551,20 +553,23 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "--ligA_mol2", "ligandA.mol2",
             "--ligB_mol2", "ligandB.mol2",
             "--ligA_pdb", "ligandA.pdb",
+            "--ligA_gro", "ligandA.gro",
             "--ligA_itp", "ligandA.itp",
             "--ligB_pdb", "ligandB.pdb",
+            "--ligB_gro", "ligandB.gro",
             "--ligB_itp", "ligandB.itp",
         ]
         self._log_info("FEP prep workflow:")
         self._log_info("  1. Find MCS and write atom_map.txt")
         self._log_info("  2. Align ligandB.mol2 to ligandA.mol2")
         self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
-        self._log_info("  4. Organize all files into subdirectories")
+        self._log_info("  4. Align ligandB.gro to ligandA.gro")
+        self._log_info("  5. Organize all files into subdirectories")
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             self._log_success("FEP preparation complete.")
-            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, and subdirectories.")
+            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, and subdirectories.")
             if result.stdout:
                 print(result.stdout)
             if result.stderr:
