@@ -474,9 +474,10 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
 
 
 # --- Hybrid topology creation (inspired by make_hybrid.py) ---
-def create_hybrid_topology(ligA_mol2, ligB_mol2, ligA_itp, ligB_itp, atom_map_file, out_itp, out_pdbA, out_pdbB):
+def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, atom_map_file, out_itp, out_pdbA,
+                           out_pdbB):
     """
-    Create hybrid topology between ligandA and ligandB using our custom MCS and alignment.
+    Create hybrid topology between ligandA and aligned ligandB using our custom MCS and alignment.
 
     This function creates a single topology that can represent both ligands through:
     - Mapped atoms: atoms that exist in both ligands (from MCS)
@@ -484,7 +485,7 @@ def create_hybrid_topology(ligA_mol2, ligB_mol2, ligA_itp, ligB_itp, atom_map_fi
 
     Args:
         ligA_mol2: Path to ligand A mol2 file
-        ligB_mol2: Path to ligand B mol2 file
+        ligB_aligned_mol2: Path to aligned ligand B mol2 file (already aligned to ligand A)
         ligA_itp: Path to ligand A itp file
         ligB_itp: Path to ligand B itp file
         atom_map_file: Path to atom mapping file
@@ -501,7 +502,7 @@ def create_hybrid_topology(ligA_mol2, ligB_mol2, ligA_itp, ligB_itp, atom_map_fi
 
     # Parse mol2 files for coordinates and atom info
     coordsA, namesA = parse_mol2_coords(ligA_mol2)
-    coordsB, namesB = parse_mol2_coords(ligB_mol2)
+    coordsB_aligned, namesB = parse_mol2_coords(ligB_aligned_mol2)  # Use aligned coordinates
 
     # Parse ITP files for forcefield parameters
     atomsA = parse_itp_atoms(ligA_itp)
@@ -584,8 +585,8 @@ def create_hybrid_topology(ligA_mol2, ligB_mol2, ligA_itp, ligB_itp, atom_map_fi
     write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
 
     # Write hybrid PDB files for both states
-    write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB, mapping, state='A')
-    write_hybrid_pdb(out_pdbB, hybrid_atoms, coordsA, coordsB, mapping, state='B')
+    write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A')
+    write_hybrid_pdb(out_pdbB, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='B')
 
     print(f"Created hybrid topology with {len(hybrid_atoms)} atoms")
     print(f"  - {len([a for a in hybrid_atoms if a['mapped']])} mapped atoms")
@@ -691,10 +692,24 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
             f.write("\n")
 
 
-def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB, mapping, state='A'):
+def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
     """Write hybrid PDB file for specified state."""
     with open(out_file, 'w') as f:
         f.write("REMARK Hybrid structure for FEP\n")
+
+        # Calculate centroid of MCS atoms for better dummy placement
+        mcs_coords = []
+        for atom in hybrid_atoms:
+            if atom['mapped']:
+                if state == 'A' and atom['origA_idx'] in coordsA:
+                    mcs_coords.append(coordsA[atom['origA_idx']])
+                elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+                    mcs_coords.append(coordsB_aligned[atom['origB_idx']])
+
+        if mcs_coords:
+            centroid = tuple(sum(c[i] for c in mcs_coords) / len(mcs_coords) for i in range(3))
+        else:
+            centroid = (0.0, 0.0, 0.0)
 
         for atom in hybrid_atoms:
             if state == 'A':
@@ -702,16 +717,16 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB, mapping, state='A
                     x, y, z = coordsA[atom['origA_idx']]
                     atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
                 else:
-                    # For unique B atoms in state A, place at origin
-                    x, y, z = 0.0, 0.0, 0.0
+                    # For unique B atoms in state A, place near MCS centroid
+                    x, y, z = centroid
                     atom_name = 'DUM'
             else:  # state == 'B'
-                if atom['origB_idx'] and atom['origB_idx'] in coordsB:
-                    x, y, z = coordsB[atom['origB_idx']]
+                if atom['origB_idx'] and atom['origB_idx'] in coordsB_aligned:
+                    x, y, z = coordsB_aligned[atom['origB_idx']]
                     atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
                 else:
-                    # For unique A atoms in state B, place at origin
-                    x, y, z = 0.0, 0.0, 0.0
+                    # For unique A atoms in state B, place near MCS centroid
+                    x, y, z = centroid
                     atom_name = 'DUM'
 
             f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
