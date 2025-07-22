@@ -664,12 +664,26 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             acpype_dir = f"ligand{c}.acpype"
             if os.path.isdir(acpype_dir):
                 gmx_top = os.path.join(acpype_dir, f"ligand{c}_GMX.top")
-                lig_gro = os.path.join(acpype_dir, f"ligand{c}_GMX.gro")
                 if os.path.isfile(gmx_top):
-                    shutil.copy2(gmx_top, "topol.top")
-                    self._log_success(f"Copied {gmx_top} to current directory")
-                    # shutil.copy2(lig_gro, "ligand.gro")
-                    # self._log_success(f"Copied {lig_gro} to current directory")
+                    # Read the topology file
+                    with open(gmx_top, 'r') as f:
+                        content = f.read()
+
+                    # Remove the position restraints block
+                    import re
+                    # Remove the entire POSRES_LIG block
+                    content = re.sub(
+                        r'; Ligand position restraints\s*\n#ifdef POSRES_LIG\s*\n#include "posre_[^"]*\.itp"\s*\n#endif\s*\n',
+                        '', content)
+
+                    # Remove all "_GMX" strings
+                    content = content.replace("_GMX", "")
+
+                    # Write the modified content to topol.top
+                    with open("topol.top", 'w') as f:
+                        f.write(content)
+
+                    self._log_success(f"Modified and copied {gmx_top} to topol.top")
                     break
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
