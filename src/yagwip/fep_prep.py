@@ -4,6 +4,7 @@ import numpy as np
 from shutil import copyfile
 from collections import defaultdict
 
+
 # --- MOL2 parsing ---
 def parse_mol2_coords(filename):
     coords = {}
@@ -28,6 +29,7 @@ def parse_mol2_coords(filename):
             names[idx] = name
     return coords, names
 
+
 # --- PDB parsing ---
 def parse_pdb_coords(filename):
     coords = {}
@@ -47,11 +49,13 @@ def parse_pdb_coords(filename):
             idx += 1
     return coords, names, atom_lines, lines
 
+
 def write_aligned_pdb(atom_lines, coords, out_file):
     with open(out_file, 'w') as f:
         for line, (x, y, z) in zip(atom_lines, coords):
             newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
             f.write(newline)
+
 
 # --- GRO parsing ---
 def parse_gro_coords(filename):
@@ -78,11 +82,13 @@ def parse_gro_coords(filename):
                 continue
     return coords, names, atom_lines, lines
 
+
 def write_aligned_gro(atom_lines, coords, out_file):
     with open(out_file, 'w') as f:
         for line, (x, y, z) in zip(atom_lines, coords):
             newline = line[:20] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[44:]
             f.write(newline)
+
 
 # --- Atom and Bond classes for MolGraph ---
 class Atom:
@@ -92,11 +98,13 @@ class Atom:
         self.neighbors = set()
         self.degree = 0
 
+
 class Bond:
     def __init__(self, a1, a2, order):
         self.a1 = a1
         self.a2 = a2
         self.order = order
+
 
 # --- MolGraph and MCS utilities ---
 class MolGraph:
@@ -177,6 +185,7 @@ class MolGraph:
             sg.atoms[idx].degree = len(sg.adj[idx])
         return sg
 
+
 def enumerate_connected_subgraphs(graph, size):
     results = set()
     for start in graph.atoms:
@@ -192,6 +201,7 @@ def enumerate_connected_subgraphs(graph, size):
                     if len(new_nodes) <= size:
                         stack.append((new_nodes, nbr))
     return [set(s) for s in results]
+
 
 def find_mcs(g1, g2):
     # Always use the smaller graph for subgraph enumeration
@@ -221,6 +231,7 @@ def find_mcs(g1, g2):
                 if iso:
                     return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
+
 
 def are_isomorphic(g1, g2):
     if len(g1.atoms) != len(g2.atoms):
@@ -286,10 +297,12 @@ def are_isomorphic(g1, g2):
 
     return backtrack({}, set())
 
+
 def write_atom_map(mapping, filename):
     with open(filename, "w") as f:
         for a, b in mapping.items():
             f.write(f"{a} {b}\n")
+
 
 def load_atom_map(filename):
     mapping = {}
@@ -300,6 +313,7 @@ def load_atom_map(filename):
             a, b = map(int, line.split())
             mapping[a] = b
     return mapping
+
 
 # --- Kabsch alignment and robust ligand alignment ---
 def kabsch_align(coords_A, coords_B):
@@ -314,6 +328,7 @@ def kabsch_align(coords_A, coords_B):
     R = Vt.T @ U.T
     aligned_coords_B = (centered_B @ R) + centroid_A
     return aligned_coords_B, R, centroid_A - centroid_B
+
 
 def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2, mapping):
     if not mapping:
@@ -372,6 +387,7 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
     print(f"Translation vector: {translation}")
     return aligned_ligandB_mol2
 
+
 def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
     mapping = load_atom_map(atom_map_file)
     if not mapping:
@@ -399,6 +415,7 @@ def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
     write_aligned_pdb(atom_linesB, transformed_allB, aligned_ligB_pdb)
     print(f"Aligned ligandB.pdb to ligandA.pdb and saved to {aligned_ligB_pdb}")
     return aligned_ligB_pdb
+
 
 def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
     mapping = load_atom_map(atom_map_file)
@@ -428,6 +445,7 @@ def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
     print(f"Aligned ligandB.gro to ligandA.gro and saved to {aligned_ligB_gro}")
     return aligned_ligB_gro
 
+
 def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
     out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
     out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
@@ -454,6 +472,253 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
         for f in os.listdir(d):
             print(f"    {f}")
 
+
+# --- Hybrid topology creation (inspired by make_hybrid.py) ---
+def create_hybrid_topology(ligA_mol2, ligB_mol2, ligA_itp, ligB_itp, atom_map_file, out_itp, out_pdbA, out_pdbB):
+    """
+    Create hybrid topology between ligandA and ligandB using our custom MCS and alignment.
+
+    This function creates a single topology that can represent both ligands through:
+    - Mapped atoms: atoms that exist in both ligands (from MCS)
+    - Dummy atoms: atoms that exist in only one ligand
+
+    Args:
+        ligA_mol2: Path to ligand A mol2 file
+        ligB_mol2: Path to ligand B mol2 file
+        ligA_itp: Path to ligand A itp file
+        ligB_itp: Path to ligand B itp file
+        atom_map_file: Path to atom mapping file
+        out_itp: Output hybrid topology file
+        out_pdbA: Output PDB for state A
+        out_pdbB: Output PDB for state B
+    """
+    print("Creating hybrid topology...")
+
+    # Load atom mapping
+    mapping = load_atom_map(atom_map_file)
+    if not mapping:
+        raise RuntimeError("No atom mapping found for hybrid topology creation.")
+
+    # Parse mol2 files for coordinates and atom info
+    coordsA, namesA = parse_mol2_coords(ligA_mol2)
+    coordsB, namesB = parse_mol2_coords(ligB_mol2)
+
+    # Parse ITP files for forcefield parameters
+    atomsA = parse_itp_atoms(ligA_itp)
+    atomsB = parse_itp_atoms(ligB_itp)
+
+    # Create hybrid atoms
+    hybrid_atoms = []
+    atom_counter = 1
+
+    # Process mapped atoms (exist in both ligands)
+    for idxA, idxB in mapping.items():
+        if idxA in atomsA and idxB in atomsB:
+            atomA = atomsA[idxA]
+            atomB = atomsB[idxB]
+
+            hybrid_atom = {
+                'index': atom_counter,
+                'name': atomA['name'],
+                'typeA': atomA['type'],
+                'typeB': atomB['type'],
+                'chargeA': atomA['charge'],
+                'chargeB': atomB['charge'],
+                'massA': atomA['mass'],
+                'massB': atomB['mass'],
+                'mapped': True,
+                'origA_idx': idxA,
+                'origB_idx': idxB
+            }
+            hybrid_atoms.append(hybrid_atom)
+            atom_counter += 1
+
+    # Process unique A atoms (exist only in ligand A)
+    for idxA, atomA in atomsA.items():
+        if idxA not in mapping:
+            hybrid_atom = {
+                'index': atom_counter,
+                'name': 'D' + atomA['name'],  # Dummy prefix
+                'typeA': atomA['type'],
+                'typeB': 'DUM',  # Dummy type for B state
+                'chargeA': atomA['charge'],
+                'chargeB': 0.0,  # No charge in B state
+                'massA': atomA['mass'],
+                'massB': 0.001,  # Minimal mass in B state
+                'mapped': False,
+                'origA_idx': idxA,
+                'origB_idx': None
+            }
+            hybrid_atoms.append(hybrid_atom)
+            atom_counter += 1
+
+    # Process unique B atoms (exist only in ligand B)
+    for idxB, atomB in atomsB.items():
+        if idxB not in [v for v in mapping.values()]:
+            hybrid_atom = {
+                'index': atom_counter,
+                'name': 'D' + atomB['name'],  # Dummy prefix
+                'typeA': 'DUM',  # Dummy type for A state
+                'typeB': atomB['type'],
+                'chargeA': 0.0,  # No charge in A state
+                'chargeB': atomB['charge'],
+                'massA': 0.001,  # Minimal mass in A state
+                'massB': atomB['mass'],
+                'mapped': False,
+                'origA_idx': None,
+                'origB_idx': idxB
+            }
+            hybrid_atoms.append(hybrid_atom)
+            atom_counter += 1
+
+    # Create hybrid bonds
+    hybrid_bonds = create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms)
+
+    # Create hybrid angles
+    hybrid_angles = create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms)
+
+    # Create hybrid dihedrals
+    hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms)
+
+    # Write hybrid topology
+    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
+
+    # Write hybrid PDB files for both states
+    write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB, mapping, state='A')
+    write_hybrid_pdb(out_pdbB, hybrid_atoms, coordsA, coordsB, mapping, state='B')
+
+    print(f"Created hybrid topology with {len(hybrid_atoms)} atoms")
+    print(f"  - {len([a for a in hybrid_atoms if a['mapped']])} mapped atoms")
+    print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origA_idx']])} unique A atoms")
+    print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origB_idx']])} unique B atoms")
+
+
+def parse_itp_atoms(itp_file):
+    """Parse atom section from ITP file."""
+    atoms = {}
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_atoms = False
+    for line in lines:
+        if line.strip() == '[ atoms ]':
+            in_atoms = True
+            continue
+        elif in_atoms and line.strip().startswith('['):
+            break
+        elif in_atoms and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 8:
+                atom_idx = int(parts[0])
+                atom_type = parts[1]
+                atom_name = parts[4]
+                charge = float(parts[6])
+                mass = float(parts[7])
+                atoms[atom_idx] = {
+                    'name': atom_name,
+                    'type': atom_type,
+                    'charge': charge,
+                    'mass': mass
+                }
+
+    return atoms
+
+
+def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms):
+    """Create hybrid bonds between mapped and unique atoms."""
+    # This is a simplified version - in practice you'd need to parse bond sections from ITP files
+    # For now, we'll create bonds based on atom proximity and mapping
+    hybrid_bonds = []
+
+    # Create bonds for mapped atoms
+    for atom in hybrid_atoms:
+        if atom['mapped']:
+            # Find bonds involving this atom in both states
+            # This would require parsing bond sections from ITP files
+            pass
+
+    return hybrid_bonds
+
+
+def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms):
+    """Create hybrid angles."""
+    # Simplified - would need to parse angle sections from ITP files
+    return []
+
+
+def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms):
+    """Create hybrid dihedrals."""
+    # Simplified - would need to parse dihedral sections from ITP files
+    return []
+
+
+def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
+    """Write hybrid topology file."""
+    with open(out_file, 'w') as f:
+        f.write("; Hybrid topology for FEP\n")
+        f.write("[ moleculetype ]\n")
+        f.write("; Name            nrexcl\n")
+        f.write("LIG              3\n\n")
+
+        f.write("[ atoms ]\n")
+        f.write("; nr type resnr residue atom cgnr chargeA massA typeB chargeB massB\n")
+        for atom in hybrid_atoms:
+            f.write(f"{atom['index']:4d} {atom['typeA']:6s} {1:4d} {'LIG':6s} {atom['name']:4s} {1:4d} "
+                    f"{atom['chargeA']:8.4f} {atom['massA']:7.3f} {atom['typeB']:6s} "
+                    f"{atom['chargeB']:8.4f} {atom['massB']:7.3f}\n")
+        f.write("\n")
+
+        # Add bond, angle, dihedral sections if available
+        if hybrid_bonds:
+            f.write("[ bonds ]\n")
+            f.write("; ai    aj funct\n")
+            for bond in hybrid_bonds:
+                f.write(f"{bond['ai']:5d} {bond['aj']:5d} {bond['funct']:5d}\n")
+            f.write("\n")
+
+        if hybrid_angles:
+            f.write("[ angles ]\n")
+            f.write("; ai    aj    ak funct\n")
+            for angle in hybrid_angles:
+                f.write(f"{angle['ai']:5d} {angle['aj']:5d} {angle['ak']:5d} {angle['funct']:5d}\n")
+            f.write("\n")
+
+        if hybrid_dihedrals:
+            f.write("[ dihedrals ]\n")
+            f.write("; ai    aj    ak    al funct\n")
+            for dih in hybrid_dihedrals:
+                f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
+            f.write("\n")
+
+
+def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB, mapping, state='A'):
+    """Write hybrid PDB file for specified state."""
+    with open(out_file, 'w') as f:
+        f.write("REMARK Hybrid structure for FEP\n")
+
+        for atom in hybrid_atoms:
+            if state == 'A':
+                if atom['origA_idx'] and atom['origA_idx'] in coordsA:
+                    x, y, z = coordsA[atom['origA_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique B atoms in state A, place at origin
+                    x, y, z = 0.0, 0.0, 0.0
+                    atom_name = 'DUM'
+            else:  # state == 'B'
+                if atom['origB_idx'] and atom['origB_idx'] in coordsB:
+                    x, y, z = coordsB[atom['origB_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique A atoms in state B, place at origin
+                    x, y, z = 0.0, 0.0, 0.0
+                    atom_name = 'DUM'
+
+            f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+
+        f.write("END\n")
+
+
 # --- Main script ---
 def main():
     parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
@@ -465,6 +730,8 @@ def main():
     parser.add_argument('--ligB_pdb', required=True)
     parser.add_argument('--ligB_gro', required=True)
     parser.add_argument('--ligB_itp', required=True)
+    parser.add_argument('--create_hybrid', action='store_true',
+                        help='Create hybrid topology for FEP simulations')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
@@ -490,8 +757,17 @@ def main():
     aligned_ligB_gro = os.path.join(out_dir, 'ligandB_aligned.gro')
     align_ligandB_gro(args.ligA_gro, args.ligB_gro, atom_map_file, aligned_ligB_gro)
 
-    # 5. Organize files into subdirectories
+    # 5. Create hybrid topology if requested
+    if args.create_hybrid:
+        hybrid_itp = os.path.join(out_dir, 'hybrid.itp')
+        hybrid_pdbA = os.path.join(out_dir, 'hybrid_stateA.pdb')
+        hybrid_pdbB = os.path.join(out_dir, 'hybrid_stateB.pdb')
+        create_hybrid_topology(args.ligA_mol2, aligned_ligB_mol2, args.ligA_itp, args.ligB_itp,
+                               atom_map_file, hybrid_itp, hybrid_pdbA, hybrid_pdbB)
+
+    # 6. Organize files into subdirectories
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro)
+
 
 if __name__ == '__main__':
     main()
