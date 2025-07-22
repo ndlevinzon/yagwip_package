@@ -553,32 +553,34 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
             copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
-        # Define topol.top template content
-        topol_template = """; Hybrid Ligand-Solvent Simulation Topology File
-
-; Include forcefield parameters
-#include "./amber14sb.ff/forcefield.itp"
-; Include hybrid ligand topology
-#include "./hybrid.itp"
-; Include water topology
-#include "./amber14sb.ff/spce.itp"
-; Include topology for ions
-#include "./amber14sb.ff/ions.itp"
-
-
-[ system ]
- Hybrid Ligand-Solvent System
-
-[ molecules ]
-; Compound        nmols
- LIG          1
-"""
+            # Get topol.top template from templates directory
+            topol_template_path = files("templates").joinpath("topol.top")
+            with open(str(topol_template_path), 'r', encoding='utf-8') as f:
+                topol_template = f.read()
+            print(f"Using topol.top template from {topol_template_path}")
 
         # Write topol.top files to A_to_B and B_to_A level
         with open(os.path.join(ligand_a_to_b, 'topol.top'), 'w') as f:
             f.write(topol_template)
         with open(os.path.join(ligand_b_to_a, 'topol.top'), 'w') as f:
             f.write(topol_template)
+
+        # Copy FEP MDP files from templates to each A_to_B and B_to_A directory
+        fep_mdp_files = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
+        fep_directories = [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]
+
+        for fep_dir in fep_directories:
+            for mdp_file in fep_mdp_files:
+                mdp_template_path = files("templates").joinpath(mdp_file)
+                if mdp_template_path.is_file():
+                    dest_path = os.path.join(fep_dir, mdp_file)
+                    with open(str(mdp_template_path), 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    with open(dest_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"Copied {mdp_file} to {fep_dir}")
+                else:
+                    print(f"Warning: {mdp_file} template not found at {mdp_template_path}")
 
     print("Output written to:")
     print(f"  {ligand_only_dir}/")
