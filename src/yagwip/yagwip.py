@@ -663,7 +663,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
-                            self._pdb2gmx_ligand(None, None)  # lambda_dirs, output_gro
+                            self._pdb2gmx_ligand()  # lambda_dirs, output_gro
                         finally:
                             os.chdir(original_cwd)
 
