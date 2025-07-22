@@ -666,16 +666,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             acpype_dir = f"ligand{c}.acpype"
             if os.path.isdir(acpype_dir):
                 gmx_top = os.path.join(acpype_dir, f"ligand{c}_GMX.top")
+                lig_gro = os.path.join(acpype_dir, f"ligand{c}_GMX.gro")
                 if os.path.isfile(gmx_top):
                     shutil.copy2(gmx_top, "topol.top")
                     self._log_success(f"Copied {gmx_top} to topol.top")
+                    shutil.copy2(lig_gro, "ligand.gro")
+                    self._log_success(f"Copied {lig_gro}")
                     break
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
             return
-        # Run pdb2gmx on the found ligand
-        ligand_basename = os.path.splitext(os.path.basename(found_fname))[0]
-        self.builder.run_pdb2gmx(ligand_basename, custom_command=self.custom_cmds.get("pdb2gmx"))
 
     def do_solvate(self, arg):
         """
