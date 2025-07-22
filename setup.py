@@ -39,6 +39,7 @@ setuptools.setup(
         "templates": [
             "*.mdp",
             "*.slurm",
+            "topol.top",
             "amber14sb.ff/*",
         ],
         "assets": [

@@ -45,6 +45,7 @@ utils = [
 templates = [
   "*.mdp",
   "*.slurm",
+  "topol.top",
   "amber14sb.ff/*"
 ]
 assets = [
