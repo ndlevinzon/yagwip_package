@@ -637,49 +637,38 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _pdb2gmx_fep(self, fep_dirs):
         """
-        Run pdb2gmx for FEP workflow (ligand_only and protein_complex directories with lambda windows).
+        Run pdb2gmx for FEP workflow (ligand_only and protein_complex directories at A_to_B and B_to_A level).
         """
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
-
-        # Generate lambda values from 0.00 to 1.00 in increments of 0.05
-        lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
 
         # Process ligand_only directories
         ligand_only_dir = "ligand_only"
         if os.path.isdir(ligand_only_dir):
             self._log_info(f"Processing {ligand_only_dir} directories...")
 
-            # Process A_to_B lambda windows
+            # Process A_to_B directory
             a_to_b_dir = os.path.join(ligand_only_dir, "A_to_B")
             if os.path.isdir(a_to_b_dir):
-                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
-                        # Change to lambda directory and run _pdb2gmx_ligand
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            self._pdb2gmx_ligand()
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Change to A_to_B directory and run _pdb2gmx_ligand
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    self._pdb2gmx_ligand()
+                finally:
+                    os.chdir(original_cwd)
 
-            # Process B_to_A lambda windows
+            # Process B_to_A directory
             b_to_a_dir = os.path.join(ligand_only_dir, "B_to_A")
             if os.path.isdir(b_to_a_dir):
-                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
-                        # Change to lambda directory and run _pdb2gmx_ligand
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            self._pdb2gmx_ligand()  # lambda_dirs, output_gro
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Change to B_to_A directory and run _pdb2gmx_ligand
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    self._pdb2gmx_ligand()
+                finally:
+                    os.chdir(original_cwd)
 
         # Process protein_complex directories
         protein_complex_dir = "protein_complex"
@@ -696,61 +685,53 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_error(f"topol.top not found in current directory: {topol_top_source}")
                 return
 
-            # Process A_to_B lambda windows
+            # Process A_to_B directory
             a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
             if os.path.isdir(a_to_b_dir):
-                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        # Copy protein.gro to lambda directory
-                        protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
-                        shutil.copy2(protein_gro_source, protein_gro_dest)
-                        self._log_info(f"Copied protein.gro to {lambda_dir}")
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Copy protein.gro to A_to_B directory
+                protein_gro_dest = os.path.join(a_to_b_dir, "protein.gro")
+                shutil.copy2(protein_gro_source, protein_gro_dest)
+                self._log_info(f"Copied protein.gro to {a_to_b_dir}")
 
-                        # Copy topol.top to lambda directory
-                        topol_top_dest = os.path.join(lambda_dir, "topol.top")
-                        shutil.copy2(topol_top_source, topol_top_dest)
-                        self._log_info(f"Copied topol.top to {lambda_dir}")
+                # Copy topol.top to A_to_B directory
+                topol_top_dest = os.path.join(a_to_b_dir, "topol.top")
+                shutil.copy2(topol_top_source, topol_top_dest)
+                self._log_info(f"Copied topol.top to {a_to_b_dir}")
 
-                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
-                        # Change to lambda directory and run _pdb2gmx_protein_ligand
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            self._pdb2gmx_protein_ligand(
-                                "protein.gro")  # Now we have protein.gro in the lambda directory
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Running pdb2gmx for {a_to_b_dir}")
+                # Change to A_to_B directory and run _pdb2gmx_protein_ligand
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    self._pdb2gmx_protein_ligand("protein.gro")
+                finally:
+                    os.chdir(original_cwd)
 
-            # Process B_to_A lambda windows
+            # Process B_to_A directory
             b_to_a_dir = os.path.join(protein_complex_dir, "B_to_A")
             if os.path.isdir(b_to_a_dir):
-                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        # Copy protein.gro to lambda directory
-                        protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
-                        shutil.copy2(protein_gro_source, protein_gro_dest)
-                        self._log_info(f"Copied protein.gro to {lambda_dir}")
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Copy protein.gro to B_to_A directory
+                protein_gro_dest = os.path.join(b_to_a_dir, "protein.gro")
+                shutil.copy2(protein_gro_source, protein_gro_dest)
+                self._log_info(f"Copied protein.gro to {b_to_a_dir}")
 
-                        # Copy topol.top to lambda directory
-                        topol_top_dest = os.path.join(lambda_dir, "topol.top")
-                        shutil.copy2(topol_top_source, topol_top_dest)
-                        self._log_info(f"Copied topol.top to {lambda_dir}")
+                # Copy topol.top to B_to_A directory
+                topol_top_dest = os.path.join(b_to_a_dir, "topol.top")
+                shutil.copy2(topol_top_source, topol_top_dest)
+                self._log_info(f"Copied topol.top to {b_to_a_dir}")
 
-                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
-                        # Change to lambda directory and run _pdb2gmx_protein_ligand
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            self._pdb2gmx_protein_ligand(
-                                "protein.gro")  # Now we have protein.gro in the lambda directory
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Running pdb2gmx for {b_to_a_dir}")
+                # Change to B_to_A directory and run _pdb2gmx_protein_ligand
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    self._pdb2gmx_protein_ligand("protein.gro")
+                finally:
+                    os.chdir(original_cwd)
 
-        self._log_success("FEP pdb2gmx workflow completed for all lambda windows.")
+        self._log_success("FEP pdb2gmx workflow completed for A_to_B and B_to_A directories.")
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
         # Determine ligand PDB file (regular ligand or hybrid)
@@ -920,104 +901,85 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _do_solvate_fep(self, fep_dirs):
         """
-        Run solvate for FEP workflow (ligand_only and protein_complex directories with lambda windows).
+        Run solvate for FEP workflow (ligand_only and protein_complex directories at A_to_B and B_to_A level).
         """
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
-
-        # Generate lambda values from 0.00 to 1.00 in increments of 0.05
-        lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
 
         # Process ligand_only directories
         ligand_only_dir = "ligand_only"
         if os.path.isdir(ligand_only_dir):
             self._log_info(f"Processing {ligand_only_dir} directories...")
 
-            # Process A_to_B lambda windows
+            # Process A_to_B directory
             a_to_b_dir = os.path.join(ligand_only_dir, "A_to_B")
             if os.path.isdir(a_to_b_dir):
-                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running solvate for {lambda_dir}")
-                        # Change to lambda directory and run solvate
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            base = self._determine_solvate_base()
-                            if base is not None:
-                                self.builder.run_solvate(
-                                    base, custom_command=self.custom_cmds.get("solvate")
-                                )
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Change to A_to_B directory and run solvate
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    base = self._determine_solvate_base()
+                    if base is not None:
+                        self.builder.run_solvate(
+                            base, custom_command=self.custom_cmds.get("solvate")
+                        )
+                finally:
+                    os.chdir(original_cwd)
 
-            # Process B_to_A lambda windows
+            # Process B_to_A directory
             b_to_a_dir = os.path.join(ligand_only_dir, "B_to_A")
             if os.path.isdir(b_to_a_dir):
-                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running solvate for {lambda_dir}")
-                        # Change to lambda directory and run solvate
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            base = self._determine_solvate_base()
-                            if base is not None:
-                                self.builder.run_solvate(
-                                    base, custom_command=self.custom_cmds.get("solvate")
-                                )
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Change to B_to_A directory and run solvate
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    base = self._determine_solvate_base()
+                    if base is not None:
+                        self.builder.run_solvate(
+                            base, custom_command=self.custom_cmds.get("solvate")
+                        )
+                finally:
+                    os.chdir(original_cwd)
 
         # Process protein_complex directories
         protein_complex_dir = "protein_complex"
         if os.path.isdir(protein_complex_dir):
             self._log_info(f"Processing {protein_complex_dir} directories...")
 
-            # Process A_to_B lambda windows
+            # Process A_to_B directory
             a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
             if os.path.isdir(a_to_b_dir):
-                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running solvate for {lambda_dir}")
-                        # Change to lambda directory and run solvate
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            base = self._determine_solvate_base()
-                            if base is not None:
-                                self.builder.run_solvate(
-                                    base, custom_command=self.custom_cmds.get("solvate")
-                                )
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {a_to_b_dir}...")
+                # Change to A_to_B directory and run solvate
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(a_to_b_dir)
+                    base = self._determine_solvate_base()
+                    if base is not None:
+                        self.builder.run_solvate(
+                            base, custom_command=self.custom_cmds.get("solvate")
+                        )
+                finally:
+                    os.chdir(original_cwd)
 
-            # Process B_to_A lambda windows
+            # Process B_to_A directory
             b_to_a_dir = os.path.join(protein_complex_dir, "B_to_A")
             if os.path.isdir(b_to_a_dir):
-                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
-                for lambda_val in lambda_values:
-                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
-                    if os.path.isdir(lambda_dir):
-                        self._log_info(f"Running solvate for {lambda_dir}")
-                        # Change to lambda directory and run solvate
-                        original_cwd = os.getcwd()
-                        try:
-                            os.chdir(lambda_dir)
-                            base = self._determine_solvate_base()
-                            if base is not None:
-                                self.builder.run_solvate(
-                                    base, custom_command=self.custom_cmds.get("solvate")
-                                )
-                        finally:
-                            os.chdir(original_cwd)
+                self._log_info(f"Processing {b_to_a_dir}...")
+                # Change to B_to_A directory and run solvate
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(b_to_a_dir)
+                    base = self._determine_solvate_base()
+                    if base is not None:
+                        self.builder.run_solvate(
+                            base, custom_command=self.custom_cmds.get("solvate")
+                        )
+                finally:
+                    os.chdir(original_cwd)
 
-        self._log_success("FEP solvate workflow completed for all lambda windows.")
+        self._log_success("FEP solvate workflow completed for A_to_B and B_to_A directories.")
 
     def do_genions(self, arg):
         """
