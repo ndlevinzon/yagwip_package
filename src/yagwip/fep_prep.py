@@ -550,11 +550,18 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             lambda_dir = os.path.join(ligand_a_to_b, lambda_val)
             copyfile(hybrid_groA, os.path.join(lambda_dir, 'hybrid_stateA.gro'))
             copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+            # Copy topol.top from templates folder
+            templates_topol = os.path.join(os.path.dirname(__file__), '..', 'templates', 'topol.top')
+            if os.path.exists(templates_topol):
+                copyfile(templates_topol, os.path.join(lambda_dir, 'topol.top'))
 
             # Ligand-only B_to_A lambda directories
             lambda_dir = os.path.join(ligand_b_to_a, lambda_val)
             copyfile(hybrid_groB, os.path.join(lambda_dir, 'hybrid_stateB.gro'))
             copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+            # Copy topol.top from templates folder
+            if os.path.exists(templates_topol):
+                copyfile(templates_topol, os.path.join(lambda_dir, 'topol.top'))
 
             # Protein complex A_to_B lambda directories
             lambda_dir = os.path.join(protein_a_to_b, lambda_val)
@@ -572,9 +579,9 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
 
     print("Output written to:")
     print(f"  {ligand_only_dir}/")
-    print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp")
+    print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp, topol.top")
     print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
-    print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp")
+    print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp, topol.top")
     print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"  {protein_complex_dir}/")
     print(f"    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
@@ -582,6 +589,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
     print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
     print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"Total: 84 lambda directories created (21 per transition type)")
+    print(f"Note: topol.top copied from templates/ to all ligand_only lambda directories")
 
 
 # --- Hybrid topology creation (inspired by make_hybrid.py) ---
