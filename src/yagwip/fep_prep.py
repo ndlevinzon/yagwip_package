@@ -514,16 +514,21 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
                 f.write(f"{num_atoms:>5}\n")
 
                 for i, line in enumerate(atom_lines, 1):
-                    # Extract coordinates from PDB format
-                    x = float(line[30:38])
-                    y = float(line[38:46])
-                    z = float(line[46:54])
+                    # Extract coordinates from PDB format (in Angstroms)
+                    x_angstroms = float(line[30:38])
+                    y_angstroms = float(line[38:46])
+                    z_angstroms = float(line[46:54])
                     atom_name = line[12:16].strip()
                     res_name = line[17:20].strip()
 
+                    # Convert from Angstroms to nanometers (1 nm = 10 Å)
+                    x_nm = x_angstroms / 10.0
+                    y_nm = y_angstroms / 10.0
+                    z_nm = z_angstroms / 10.0
+
                     # Write GRO format line: resnum(5) resname(5) atomname(5) atomnum(5) x(8) y(8) z(8)
                     # Format: resnum(5) resname(5) atomname(5) atomnum(5) x(8.3f) y(8.3f) z(8.3f)
-                    f.write(f"{1:>5}{res_name:>5}{atom_name:>5}{i:>5}{x:>8.3f}{y:>8.3f}{z:>8.3f}\n")
+                    f.write(f"{1:>5}{res_name:>5}{atom_name:>5}{i:>5}{x_nm:>8.3f}{y_nm:>8.3f}{z_nm:>8.3f}\n")
 
                 # Add box vectors (default 10nm cubic box)
                 f.write("   10.00000   10.00000   10.00000\n")
