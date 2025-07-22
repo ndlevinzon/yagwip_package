@@ -17,6 +17,31 @@ class Editor(LoggingMixin):
         self.ffnonbonded_itp = ffnonbonded_itp
         self.logger = None
 
+    def _get_ffnonbonded_path(self, itp_file=None):
+        """
+        Determine the correct ffnonbonded.itp path based on the context.
+        For FEP cases, the amber14sb.ff directory is in the same directory as the ITP file.
+        For regular cases, use the default path.
+        """
+        if itp_file is None:
+            itp_file = self.ligand_itp
+
+        # Check if this is a FEP case (hybrid.itp in A_to_B or B_to_A directory)
+        itp_dir = os.path.dirname(os.path.abspath(itp_file))
+        itp_basename = os.path.basename(itp_file)
+
+        # If it's hybrid.itp and we're in a FEP directory structure
+        if itp_basename == "hybrid.itp" and ("A_to_B" in itp_dir or "B_to_A" in itp_dir):
+            # The amber14sb.ff should be in the same directory as the hybrid.itp
+            fep_ff_path = os.path.join(itp_dir, "amber14sb.ff", "ffnonbonded.itp")
+            if os.path.exists(fep_ff_path):
+                return fep_ff_path
+            else:
+                self._log(f"[WARNING] FEP forcefield path not found: {fep_ff_path}")
+
+        # Default to the original path
+        return self.ffnonbonded_itp
+
     def append_ligand_atomtypes_to_forcefield(self, itp_file=None, ligand_name=None):
         """
         Append the [ atomtypes ] section from a ligand .itp file to the forcefield ffnonbonded.itp,
