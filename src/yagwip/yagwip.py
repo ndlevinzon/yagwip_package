@@ -652,9 +652,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
         found = False
+        base = None
         for fname in ligand_pdb_files:
             if os.path.isfile(fname):
                 found = True
+                base = fname
                 break
         if not found:
             self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
@@ -669,7 +671,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     with open(gmx_top, 'r') as f:
                         content = f.read()
 
-                    # Remove the position restraints block
                     # Remove the entire POSRES_LIG block
                     content = re.sub(
                         r'; Ligand position restraints\s*\n#ifdef POSRES_LIG\s*\n#include "posre_[^"]*\.itp"\s*\n#endif\s*\n',
@@ -681,11 +682,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Replace ligandX with LIG in the [ molecules ] section
                     content = re.sub(r'ligand[A-Z]\s+\d+', 'LIG              1', content)
 
+                    # Add forcefield include after ligand include
+                    content = re.sub(r'(#include "ligand[A-Z]\.itp")', r'\1\n#include "./amber14sb.ff/forcefield.itp"',
+                                     content)
+
                     # Write the modified content to topol.top
                     with open("topol.top", 'w') as f:
                         f.write(content)
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
+                    self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=f"{base}.itp")
             else:
                 self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
                 return
