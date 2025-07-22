@@ -83,7 +83,7 @@ class Builder(YagwipBase):
         grompp_opts = ""
         ion_pipe_input = (
             PIPE_INPUTS["genion_lig"]
-            if base.startswith("ligand")
+            if base.startswith("ligand") or base.startswith("hybrid")
             else PIPE_INPUTS["genion_prot"]
             if base.endswith("protein")
             else PIPE_INPUTS["genion_complex"]
