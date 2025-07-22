@@ -589,7 +589,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 print(e.stdout)
             if e.stderr:
                 print(e.stderr)
-        self.editor.append_ligand_atomtypes_to_forcefield("hybrid.itp", "hybrid")
 
     def do_pdb2gmx(self, arg):
         """
@@ -618,20 +617,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_error(f"Failed to copy amber14sb.ff files: {e}")
         else:
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
-
+        # First, run pdb2gmx on the protein component
+        protein_pdb = "protein"
+        output_gro = f"{protein_pdb}.gro"
+        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx"))
+        if not os.path.isfile(output_gro):
+            self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
+            return
         # FEP: Check for A/B complex/water directories
         fep_dirs = ["ligand_only", "protein_complex"]
         fep_present = all(os.path.isdir(d) for d in fep_dirs)
         if fep_present:
             self._pdb2gmx_fep(fep_dirs)
         else:
-            # First, run pdb2gmx on the protein component
-            protein_pdb = "protein"
-            output_gro = f"{protein_pdb}.gro"
-            self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx"))
-            if not os.path.isfile(output_gro):
-                self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
-                return
             # Check for ligand presence
             ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile("ligand.pdb")
             if ligand_present:
@@ -663,7 +661,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
-                            self._pdb2gmx_ligand()  # lambda_dirs, output_gro
+                            self._pdb2gmx_ligand()
                         finally:
                             os.chdir(original_cwd)
 
@@ -697,8 +695,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     if os.path.isdir(lambda_dir):
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
-                        protein_pdb = "protein"
-                        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx"))
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
@@ -759,7 +755,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
 
         # Protein + ligand case
-        if ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
+        if self.ligand_pdb_path and ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
                 ligand_pdb_file) > 0:
             self._log_info(f"Processing protein-ligand system with {ligand_pdb_file}...")
             # Add ligand coordinates to protein gro and update topology
