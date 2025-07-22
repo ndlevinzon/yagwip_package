@@ -545,9 +545,26 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
             copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
-        # Define templates_topol path using files("templates")
-        template_dir = files("templates")
-        templates_topol = str(template_dir / "topol.top")
+        # Define topol.top template content
+        topol_template = """; Hybrid Ligand-Solvent Simulation Topology File
+
+; Include forcefield parameters
+#include "../../../amber14sb.ff/forcefield.itp"
+; Include hybrid ligand topology
+#include "hybrid.itp"
+; Include water topology
+#include "../../../amber14sb.ff/spce.itp"
+; Include topology for ions
+#include "../../../amber14sb.ff/ions.itp"
+
+
+[ system ]
+ Hybrid Ligand-Solvent System
+
+[ molecules ]
+; Compound        nmols
+ LIG          1
+"""
 
         # Copy files to all lambda subdirectories
         for lambda_val in lambda_values:
@@ -555,21 +572,17 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             lambda_dir = os.path.join(ligand_a_to_b, lambda_val)
             copyfile(hybrid_groA, os.path.join(lambda_dir, 'hybrid_stateA.gro'))
             copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            # Copy topol.top from templates folder
-            if os.path.exists(templates_topol):
-                copyfile(templates_topol, os.path.join(lambda_dir, 'topol.top'))
-            else:
-                print(f"Warning: templates_topol not found at {templates_topol}")
+            # Write topol.top directly
+            with open(os.path.join(lambda_dir, 'topol.top'), 'w') as f:
+                f.write(topol_template)
 
             # Ligand-only B_to_A lambda directories
             lambda_dir = os.path.join(ligand_b_to_a, lambda_val)
             copyfile(hybrid_groB, os.path.join(lambda_dir, 'hybrid_stateB.gro'))
             copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            # Copy topol.top from templates folder
-            if os.path.exists(templates_topol):
-                copyfile(templates_topol, os.path.join(lambda_dir, 'topol.top'))
-            else:
-                print(f"Warning: templates_topol not found at {templates_topol}")
+            # Write topol.top directly
+            with open(os.path.join(lambda_dir, 'topol.top'), 'w') as f:
+                f.write(topol_template)
 
             # Protein complex A_to_B lambda directories
             lambda_dir = os.path.join(protein_a_to_b, lambda_val)
