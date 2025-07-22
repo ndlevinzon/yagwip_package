@@ -652,11 +652,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
         found = False
-        found_fname = None
         for fname in ligand_pdb_files:
             if os.path.isfile(fname):
                 found = True
-                found_fname = fname
                 break
         if not found:
             self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
@@ -669,9 +667,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 lig_gro = os.path.join(acpype_dir, f"ligand{c}_GMX.gro")
                 if os.path.isfile(gmx_top):
                     shutil.copy2(gmx_top, "topol.top")
-                    self._log_success(f"Copied {gmx_top} to topol.top")
+                    self._log_success(f"Copied {gmx_top} to current directory")
                     shutil.copy2(lig_gro, "ligand.gro")
-                    self._log_success(f"Copied {lig_gro}")
+                    self._log_success(f"Copied {lig_gro} to current directory")
                     break
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
@@ -689,26 +687,28 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         # Determine which system to solvate
         if self.ligand_pdb_path and os.path.isfile("complex.gro"):
-            complex_pdb = "complex"
+            base = "complex"
         elif not os.path.isfile("protein.gro"):
             # Ligand-only: look for ligandX.gro
             ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
             found = None
+            base = None
             for fname in ligand_gro_files:
                 if os.path.isfile(fname):
                     found = fname[:-4]  # strip .gro
+                    base = fname
                     break
             if found:
-                complex_pdb = found
+                base = found
             else:
                 self._log_error("No protein.gro or ligand_*.gro found for solvation.")
                 return
         else:
-            complex_pdb = "protein"
+            base = "protein"
         if not self._require_pdb():
             return
         self.builder.run_solvate(
-            complex_pdb, custom_command=self.custom_cmds.get("solvate")
+            base, custom_command=self.custom_cmds.get("solvate")
         )
 
     def do_genions(self, arg):
