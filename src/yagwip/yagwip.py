@@ -681,7 +681,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 if os.path.exists(hybrid_itp_path):
                     self._log_info(f"Processing hybrid.itp in {fep_dir}")
                     try:
-                        self._process_ligand_itp(hybrid_itp_path, "LIG")
+                        # Create a new Editor instance for this FEP directory
+                        # This ensures the Editor uses the correct paths for this context
+                        fep_editor = Editor(
+                            ligand_itp=hybrid_itp_path,
+                            ffnonbonded_itp=os.path.join(fep_dir, "amber14sb.ff", "ffnonbonded.itp")
+                        )
+
+                        # Process the hybrid.itp with the FEP-specific Editor
+                        fep_editor.append_ligand_atomtypes_to_forcefield(hybrid_itp_path, "LIG")
+                        fep_editor.ligand_itp = hybrid_itp_path
+                        fep_editor.modify_improper_dihedrals_in_ligand_itp()
+                        fep_editor.rename_residue_in_itp_atoms_section()
+
                         self._log_success(f"Processed hybrid.itp in {fep_dir}")
                     except Exception as e:
                         self._log_error(f"Failed to process hybrid.itp in {fep_dir}: {e}")
