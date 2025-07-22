@@ -627,7 +627,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
 
         # FEP: Check for A/B complex/water directories
-        fep_dirs = ["A_complex", "A_water", "B_complex", "B_water"]
+        fep_dirs = ["ligand_only", "protein_complex"]
         fep_present = all(os.path.isdir(d) for d in fep_dirs)
         if fep_present:
             self._pdb2gmx_fep(fep_dirs)
@@ -639,23 +639,127 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _pdb2gmx_fep(self, fep_dirs):
         """
-        Run pdb2gmx for FEP workflow (A/B complex/water directories).
+        Run pdb2gmx for FEP workflow (ligand_only and protein_complex directories with lambda windows).
         """
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
-        # TODO: Implement FEP-specific pdb2gmx logic here
-        self._log_info("[FEP] pdb2gmx workflow not yet implemented.")
+
+        # Generate lambda values from 0.00 to 1.00 in increments of 0.05
+        lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
+
+        # Process ligand_only directories
+        ligand_only_dir = "ligand_only"
+        if os.path.isdir(ligand_only_dir):
+            self._log_info(f"Processing {ligand_only_dir} directories...")
+
+            # Process A_to_B lambda windows
+            a_to_b_dir = os.path.join(ligand_only_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
+                        # Change to lambda directory and run _pdb2gmx_ligand
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            self._pdb2gmx_ligand(None, None)  # lambda_dirs, output_gro
+                        finally:
+                            os.chdir(original_cwd)
+
+            # Process B_to_A lambda windows
+            b_to_a_dir = os.path.join(ligand_only_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
+                        # Change to lambda directory and run _pdb2gmx_ligand
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            self._pdb2gmx_ligand(None, None)  # lambda_dirs, output_gro
+                        finally:
+                            os.chdir(original_cwd)
+
+        # Process protein_complex directories
+        protein_complex_dir = "protein_complex"
+        if os.path.isdir(protein_complex_dir):
+            self._log_info(f"Processing {protein_complex_dir} directories...")
+
+            # Process A_to_B lambda windows
+            a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
+                        # Change to lambda directory and run _pdb2gmx_protein_ligand
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            self._pdb2gmx_protein_ligand(None)  # Dummy arg for now
+                        finally:
+                            os.chdir(original_cwd)
+
+            # Process B_to_A lambda windows
+            b_to_a_dir = os.path.join(protein_complex_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running pdb2gmx for {lambda_dir}")
+                        # Change to lambda directory and run _pdb2gmx_protein_ligand
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            self._pdb2gmx_protein_ligand(None)  # Dummy arg for now
+                        finally:
+                            os.chdir(original_cwd)
+
+        self._log_success("FEP pdb2gmx workflow completed for all lambda windows.")
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
-        """Handle the protein-ligand and protein-only workflows for pdb2gmx."""
-        ligand_pdb_file = "ligandA.pdb"
-        ligand_itp_file = "ligandA.itp"
+        # Determine ligand PDB file (regular ligand or hybrid)
+        ligand_pdb_file = None
+        ligand_itp_file = None
+
+        # Check for hybrid files first (FEP case)
+        hybrid_pdb_files = ["hybrid_stateA.pdb", "hybrid_stateB.pdb"]
+        for hybrid_file in hybrid_pdb_files:
+            if os.path.exists(hybrid_file) and os.path.getsize(hybrid_file) > 0:
+                ligand_pdb_file = hybrid_file
+                ligand_itp_file = "hybrid.itp"
+                self._log_info(f"Found hybrid file: {ligand_pdb_file}")
+                break
+
+        # If no hybrid files, check for regular ligand files
+        if ligand_pdb_file is None:
+            ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
+            for fname in ligand_pdb_files:
+                if os.path.exists(fname) and os.path.getsize(fname) > 0:
+                    ligand_pdb_file = fname
+                    ligand_itp_file = fname.replace('.pdb', '.itp')
+                    self._log_info(f"Found regular ligand file: {ligand_pdb_file}")
+                    break
+
+        # Check if we found any ligand file
+        if ligand_pdb_file is None:
+            self._log_error("No ligand PDB file found. Expected hybrid_stateA/B.pdb or ligandX.pdb")
+            return
+
+        # Check if corresponding ITP file exists
+        if ligand_itp_file is None or not os.path.exists(ligand_itp_file):
+            self._log_error(f"Ligand ITP file not found: {ligand_itp_file}")
+            return
 
         # Protein + ligand case
-        if self.ligand_pdb_path and os.path.exists(ligand_pdb_file) and os.path.getsize(ligand_pdb_file) > 0:
-            if not os.path.exists(ligand_itp_file):
-                self._log_error(f"Ligand ITP file not found: {ligand_itp_file}")
-                return
-            self._log_info("Processing protein-ligand system...")
+        if self.ligand_pdb_path and ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
+                ligand_pdb_file) > 0:
+            self._log_info(f"Processing protein-ligand system with {ligand_pdb_file}...")
             # Add ligand coordinates to protein gro and update topology
             self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
             self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
@@ -663,7 +767,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def _pdb2gmx_ligand(self, lambda_dirs, output_gro):
         """
         Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.pdb in the current directory.
+        If hybrid files are found, do nothing (skip processing).
         """
+        # Check for hybrid files first (FEP case) - if found, do nothing
+        hybrid_gro_files = ["hybrid_stateA.gro", "hybrid_stateB.gro"]
+        for hybrid_file in hybrid_gro_files:
+            if os.path.isfile(hybrid_file):
+                self._log_info(f"Found hybrid file {hybrid_file} - skipping pdb2gmx processing")
+                return
+
+        # If no hybrid files, proceed with regular ligand processing
         ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
         found = False
         base = None
