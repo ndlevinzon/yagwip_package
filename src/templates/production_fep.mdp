@@ -1,63 +1,54 @@
-; Production MD for FEP
-integrator              = md
-dt                      = 0.002
-nsteps                  = 50000000           ; 100 ns
-nstxout-compressed      = 50000
-nstxout                 = 0
-nstvout                 = 0
-nstfout                 = 0
-nstcalcenergy           = 100
-nstenergy               = 1000
-nstlog                  = 1000
+; ============================================================
+;  Production MD  --  Single‑topology FEP, λ = XXX
+; ============================================================
+integrator           = md
+dt                   = 0.002
+nsteps               = 2500000      ; 5 ns  (scale as needed)
 
-; Neighbor searching and cutoffs
-cutoff-scheme           = Verlet
-nstlist                 = 20
-vdwtype                 = Cut-off
-vdw-modifier            = None
-DispCorr                = EnerPres
-rvdw                    = 1.0
-rlist                   = 1.0
-rcoulomb                = 0.9
-coulombtype             = PME
+; --------- Free‑energy collection ---------------------------
+free-energy          = yes
+init-lambda-state    = XXX
+delta-lambda         = 0            ; single λ point
+nstdhdl              = 100          ; write ΔHdl every 100 steps
+dhdl-print-energy    = yes
+couple-moltype       = LIG
+couple-lambda0       = vdw-q
+couple-lambda1       = none
+couple-intramol      = no
+sc-alpha             = 0.5
+sc-power             = 1
+sc-sigma             = 0.3
 
-; Temperature coupling
-tcoupl                  = v-rescale
-tc_grps                 = SOLU SOLV
-tau_t                   = 1.0 1.0
-ref_t                   = 300 300
+; --------- Temperature --------------------------------------
+tcoupl               = V-rescale
+tc-grps              = System
+tau-t                = 0.5
+ref-t                = 300
 
-; Pressure coupling
-pcoupl                  = C-rescale
-pcoupltype              = isotropic
-tau_p                   = 5.0
-compressibility         = 4.5e-5
-ref_p                   = 1.0
+; --------- Pressure -----------------------------------------
+pcoupl               = Parrinello-Rahman
+pcoupltype           = isotropic
+tau-p                = 2.0
+ref-p                = 1.0
+compressibility      = 4.5e-5
 
-; Constraints
-constraints             = h-bonds
-constraint_algorithm    = LINCS
-continuation            = yes
+; --------- Cut‑offs / PME -----------------------------------
+cutoff-scheme        = Verlet
+nstlist              = 20
+rlist                = 1.0
+coulombtype          = PME
+rcoulomb             = 1.0
+vdw‑type             = cut-off
+rvdw                 = 1.0
 
-; Center-of-mass motion removal
-nstcomm                 = 100
-comm_mode               = linear
-comm_grps               = SOLU SOLV
+; --------- Trajectory / energy output -----------------------
+nstxout-compressed   = 5000    ; every 10 ps
+nstenergy            = 1000
+nstlog               = 1000
+nstfout              = 0
 
-; ===== Free Energy Settings =====
-free-energy              = yes
-; init_lambda_state        0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15   16   17   18   19   20
-fep_lambdas              = 0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00
-vdw-lambdas              = 0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00
-mass-lambdas             = 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.00
-init-lambda-state        = __LAMBDA__       ; <--- Replace or script this value (e.g., 0, 1, 2...)
-delta-lambda             = 0
-calc-lambda-neighbors    = -1
-couple-lambda0           = vdw-q
-couple-lambda1           = none
-couple-intramol          = yes
-sc-alpha                 = 0.5
-sc-coul                  = yes
-sc-power                 = 1
-sc-sigma                 = 0.3
-nstdhdl                  = 100
+; --------- Misc ---------------------------------------------
+constraints          = h-bonds
+constraint-algorithm = lincs
+continuation         = yes
+gen-vel              = no

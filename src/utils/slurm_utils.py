@@ -119,7 +119,7 @@ class SlurmWriter(YagwipBase):
             return
 
         # Copy only relevant .mdp files
-        exclude = "production.mdp" if sim_type == "tremd" else "remd_template.mdp"
+        exclude = "production.mdp" if sim_type == "tremd" else "production_remd.mdp"
         for f in self.template_dir.iterdir():
             if f.name.endswith(".mdp") and f.name != exclude:
                 shutil.copy(str(f), os.getcwd())
