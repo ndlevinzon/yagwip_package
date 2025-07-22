@@ -695,7 +695,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         f.write(content)
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
-                    self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=f"{base}.itp")
+                    self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=None)
                 else:
                     self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
                     return
