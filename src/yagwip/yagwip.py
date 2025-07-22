@@ -866,13 +866,33 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         1) Protein-only: solvates protein.gro
         2) Protein + single ligand: solvates complex.gro
         3) Ligand-only: solvates ligandX.gro in current directory
-        4) Lambda subdirectories: solvates hybrid_complex_XX.gro in each lambda directory
+        4) FEP lambda subdirectories: solvates files in each lambda directory
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-        # Determine which system to solvate
+        # FEP: Check for A/B complex/water directories
+        fep_dirs = ["ligand_only", "protein_complex"]
+        fep_present = all(os.path.isdir(d) for d in fep_dirs)
+        if fep_present:
+            self._do_solvate_fep(fep_dirs)
+        else:
+            # Regular workflow
+            base = self._determine_solvate_base()
+            if base is None:
+                return
+            if not self._require_pdb():
+                return
+            self.builder.run_solvate(
+                base, custom_command=self.custom_cmds.get("solvate")
+            )
+
+    def _determine_solvate_base(self):
+        """
+        Determine which system to solvate based on available files.
+        Returns the base name for solvation or None if no suitable files found.
+        """
         if self.ligand_pdb_path and os.path.isfile("complex.gro"):
-            base = "complex"
+            return "complex"
         elif not os.path.isfile("protein.gro"):
             # Ligand-only: look for ligandX.gro
             ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
@@ -882,17 +902,113 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     found = fname[:-4]  # strip .gro
                     break
             if found:
-                base = found
+                return found
             else:
                 self._log_error("No protein.gro or ligand_*.gro found for solvation.")
-                return
+                return None
         else:
-            base = "protein"
-        if not self._require_pdb():
-            return
-        self.builder.run_solvate(
-            base, custom_command=self.custom_cmds.get("solvate")
-        )
+            return "protein"
+
+    def _do_solvate_fep(self, fep_dirs):
+        """
+        Run solvate for FEP workflow (ligand_only and protein_complex directories with lambda windows).
+        """
+        self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
+
+        # Generate lambda values from 0.00 to 1.00 in increments of 0.05
+        lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
+
+        # Process ligand_only directories
+        ligand_only_dir = "ligand_only"
+        if os.path.isdir(ligand_only_dir):
+            self._log_info(f"Processing {ligand_only_dir} directories...")
+
+            # Process A_to_B lambda windows
+            a_to_b_dir = os.path.join(ligand_only_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running solvate for {lambda_dir}")
+                        # Change to lambda directory and run solvate
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            base = self._determine_solvate_base()
+                            if base is not None:
+                                self.builder.run_solvate(
+                                    base, custom_command=self.custom_cmds.get("solvate")
+                                )
+                        finally:
+                            os.chdir(original_cwd)
+
+            # Process B_to_A lambda windows
+            b_to_a_dir = os.path.join(ligand_only_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running solvate for {lambda_dir}")
+                        # Change to lambda directory and run solvate
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            base = self._determine_solvate_base()
+                            if base is not None:
+                                self.builder.run_solvate(
+                                    base, custom_command=self.custom_cmds.get("solvate")
+                                )
+                        finally:
+                            os.chdir(original_cwd)
+
+        # Process protein_complex directories
+        protein_complex_dir = "protein_complex"
+        if os.path.isdir(protein_complex_dir):
+            self._log_info(f"Processing {protein_complex_dir} directories...")
+
+            # Process A_to_B lambda windows
+            a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
+            if os.path.isdir(a_to_b_dir):
+                self._log_info(f"Processing {a_to_b_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(a_to_b_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running solvate for {lambda_dir}")
+                        # Change to lambda directory and run solvate
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            base = self._determine_solvate_base()
+                            if base is not None:
+                                self.builder.run_solvate(
+                                    base, custom_command=self.custom_cmds.get("solvate")
+                                )
+                        finally:
+                            os.chdir(original_cwd)
+
+            # Process B_to_A lambda windows
+            b_to_a_dir = os.path.join(protein_complex_dir, "B_to_A")
+            if os.path.isdir(b_to_a_dir):
+                self._log_info(f"Processing {b_to_a_dir} lambda windows...")
+                for lambda_val in lambda_values:
+                    lambda_dir = os.path.join(b_to_a_dir, lambda_val)
+                    if os.path.isdir(lambda_dir):
+                        self._log_info(f"Running solvate for {lambda_dir}")
+                        # Change to lambda directory and run solvate
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(lambda_dir)
+                            base = self._determine_solvate_base()
+                            if base is not None:
+                                self.builder.run_solvate(
+                                    base, custom_command=self.custom_cmds.get("solvate")
+                                )
+                        finally:
+                            os.chdir(original_cwd)
+
+        self._log_success("FEP solvate workflow completed for all lambda windows.")
 
     def do_genions(self, arg):
         """
