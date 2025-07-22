@@ -668,8 +668,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 if os.path.isfile(gmx_top):
                     shutil.copy2(gmx_top, "topol.top")
                     self._log_success(f"Copied {gmx_top} to current directory")
-                    shutil.copy2(lig_gro, "ligand.gro")
-                    self._log_success(f"Copied {lig_gro} to current directory")
+                    # shutil.copy2(lig_gro, "ligand.gro")
+                    # self._log_success(f"Copied {lig_gro} to current directory")
                     break
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
@@ -692,11 +692,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             # Ligand-only: look for ligandX.gro
             ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
             found = None
-            base = None
             for fname in ligand_gro_files:
                 if os.path.isfile(fname):
                     found = fname[:-4]  # strip .gro
-                    base = fname
                     break
             if found:
                 base = found
@@ -722,13 +720,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Other Options: use "set genions" to override defaults
         """
 
-        def run_genions_and_capture(basename, custom_command=None, fep_mode=False):
+        def run_genions_and_capture(basename, custom_command=None):
             error_message = ""
             success = False
             # Patch: capture stderr/stdout
             with StringIO() as buf, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                 try:
-                    self.builder.run_genions(basename, custom_command=custom_command, fep_mode=fep_mode)
+                    self.builder.run_genions(basename, custom_command=custom_command)
                     output = buf.getvalue()
                     # Check for error pattern
                     if re.search(r"ERROR 1 \[file topol\\.top, line \\d+\]", output):
@@ -743,7 +741,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         # Determine which system to add ions to
         if self.ligand_pdb_path and os.path.isfile("complex.gro"):
-            solvated_pdb = "complex"
+            solvated_base = "complex"
         elif not os.path.isfile("protein.gro"):
             # Ligand-only: look for ligandX.gro
             ligand_gro_files = [f"ligand{c}.gro" for c in string.ascii_uppercase]
@@ -753,24 +751,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     found = fname[:-4]  # strip .gro
                     break
             if found:
-                solvated_pdb = found
+                solvated_base = found
             else:
                 self._log_error("No protein.gro or ligand_*.gro found for genions.")
                 return
         else:
-            solvated_pdb = "protein"
+            solvated_base = "protein"
         if not self._require_pdb():
             return
         # First attempt
         success, error_message = run_genions_and_capture(
-            solvated_pdb, custom_command=self.custom_cmds.get("genions")
+            solvated_base, custom_command=self.custom_cmds.get("genions")
         )
         if success:
-            self._log_success(f"Added ions to {solvated_pdb}.solv.gro")
+            self._log_success(f"Added ions to {solvated_base}.solv.gro")
         elif "[file topol.top, line" in error_message:
             def rerun():
                 return run_genions_and_capture(
-                    solvated_pdb, custom_command=self.custom_cmds.get("genions")
+                    solvated_base, custom_command=self.custom_cmds.get("genions")
                 )
 
             self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
