@@ -446,31 +446,89 @@ def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
     return aligned_ligB_gro
 
 
-def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
-    out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
-    out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
-    for d in out_dirs_full:
+def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files=None):
+    """
+    Organize files into new directory structure:
+    - ligand_only/
+      - A_to_B/ (hybrid_stateA.gro, hybrid.itp)
+      - B_to_A/ (hybrid_stateB.gro, hybrid.itp)
+    - protein_complex/
+      - A_to_B/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
+      - B_to_A/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
+    """
+    # Create main directories
+    ligand_only_dir = os.path.join(out_dir, 'ligand_only')
+    protein_complex_dir = os.path.join(out_dir, 'protein_complex')
+
+    # Create subdirectories
+    ligand_a_to_b = os.path.join(ligand_only_dir, 'A_to_B')
+    ligand_b_to_a = os.path.join(ligand_only_dir, 'B_to_A')
+    protein_a_to_b = os.path.join(protein_complex_dir, 'A_to_B')
+    protein_b_to_a = os.path.join(protein_complex_dir, 'B_to_A')
+
+    for d in [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]:
         os.makedirs(d, exist_ok=True)
-    # A_water: use GRO files
-    copyfile(args.ligA_gro, os.path.join(out_dirs_full[0], 'ligandA.gro'))
-    copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
-    # A_complex: use PDB files
-    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
-    copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
-    copyfile("protein.pdb", os.path.join(out_dirs_full[1], 'protein.pdb'))
-    # B_water: use aligned GRO files
-    copyfile(aligned_ligB_gro, os.path.join(out_dirs_full[2], 'ligandB.gro'))
-    copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
-    # B_complex: use aligned PDB files
-    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
-    copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
-    copyfile("protein.pdb", os.path.join(out_dirs_full[3], 'protein.pdb'))
-    print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
+
+    # Copy hybrid files if available
+    if hybrid_files:
+        hybrid_itp, hybrid_pdbA, hybrid_pdbB = hybrid_files
+
+        # Convert PDB to GRO for ligand-only directories
+        def pdb_to_gro(pdb_file, gro_file):
+            """Convert PDB to GRO format"""
+            with open(pdb_file, 'r') as f:
+                lines = f.readlines()
+
+            # Count atoms (skip REMARK and END lines)
+            atom_lines = [line for line in lines if line.startswith('HETATM') or line.startswith('ATOM')]
+            num_atoms = len(atom_lines)
+
+            with open(gro_file, 'w') as f:
+                f.write("Hybrid structure for FEP\n")
+                f.write(f"{num_atoms}\n")
+
+                for i, line in enumerate(atom_lines, 1):
+                    # Extract coordinates from PDB format
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    atom_name = line[12:16].strip()
+                    res_name = line[17:20].strip()
+
+                    # Write GRO format line
+                    f.write(f"{res_name:>5}{atom_name:>5}{i:>5}{x:>8.3f}{y:>8.3f}{z:>8.3f}\n")
+
+                # Add box vectors (default 10nm cubic box)
+                f.write("   10.00000   10.00000   10.00000\n")
+
+        # Ligand-only directories
+        hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
+        hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
+
+        pdb_to_gro(hybrid_pdbA, hybrid_groA)
+        pdb_to_gro(hybrid_pdbB, hybrid_groB)
+
+        copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
+        copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
+
+        # Protein complex directories
+        copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
+        copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
+        copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
+        copyfile(hybrid_itp, os.path.join(protein_b_to_a, 'hybrid.itp'))
+
+        # Copy protein.pdb if it exists
+        if os.path.exists("protein.pdb"):
+            copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
+            copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
+
     print("Output written to:")
-    for d in out_dirs_full:
-        print(f"  {d}/")
-        for f in os.listdir(d):
-            print(f"    {f}")
+    print(f"  {ligand_only_dir}/")
+    print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp")
+    print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp")
+    print(f"  {protein_complex_dir}/")
+    print(f"    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
+    print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
 
 
 # --- Hybrid topology creation (inspired by make_hybrid.py) ---
@@ -773,15 +831,17 @@ def main():
     align_ligandB_gro(args.ligA_gro, args.ligB_gro, atom_map_file, aligned_ligB_gro)
 
     # 5. Create hybrid topology if requested
+    hybrid_files = None
     if args.create_hybrid:
         hybrid_itp = os.path.join(out_dir, 'hybrid.itp')
         hybrid_pdbA = os.path.join(out_dir, 'hybrid_stateA.pdb')
         hybrid_pdbB = os.path.join(out_dir, 'hybrid_stateB.pdb')
         create_hybrid_topology(args.ligA_mol2, aligned_ligB_mol2, args.ligA_itp, args.ligB_itp,
                                atom_map_file, hybrid_itp, hybrid_pdbA, hybrid_pdbB)
+        hybrid_files = (hybrid_itp, hybrid_pdbA, hybrid_pdbB)
 
     # 6. Organize files into subdirectories
-    organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro)
+    organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
 
 
 if __name__ == '__main__':
