@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 from shutil import copyfile
 from collections import defaultdict
+from importlib.resources import files
 
 
 # --- MOL2 parsing ---
@@ -544,8 +545,9 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
             copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
-        # Define templates_topol path once before the loop
-        templates_topol = os.path.join(os.path.dirname(__file__), '..', 'templates', 'topol.top')
+        # Define templates_topol path using files("templates")
+        template_dir = files("templates")
+        templates_topol = str(template_dir / "topol.top")
 
         # Copy files to all lambda subdirectories
         for lambda_val in lambda_values:
