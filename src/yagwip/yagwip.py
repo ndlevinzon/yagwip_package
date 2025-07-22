@@ -671,6 +671,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     with open(gmx_top, 'r') as f:
                         content = f.read()
 
+                    # Remove the [ defaults ] block
+                    content = re.sub(r'\[ defaults \]\s*\n; nbfunc\s+comb-rule\s+gen-pairs\s+fudgeLJ fudgeQQ\s*\n\d+\s+\d+\s+\w+\s+[\d\.]+\s+[\d\.]+\s*\n',
+                                     '', content)
+
                     # Remove the entire POSRES_LIG block
                     content = re.sub(
                         r'; Ligand position restraints\s*\n#ifdef POSRES_LIG\s*\n#include "posre_[^"]*\.itp"\s*\n#endif\s*\n',
