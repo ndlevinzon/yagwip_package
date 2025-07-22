@@ -682,8 +682,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     # Replace ligandX with LIG in the [ molecules ] section
                     content = re.sub(r'ligand[A-Z]\s+\d+', 'LIG              1', content)
 
-                    # Add forcefield include after ligand include
-                    content = re.sub(r'(#include "ligand[A-Z]\.itp")', r'\1\n#include "./amber14sb.ff/forcefield.itp"',
+                    # Add forcefield include before ligand include
+                    content = re.sub(r'(#include "ligand[A-Z]\.itp")', r'#include "./amber14sb.ff/forcefield.itp"\n\1',
                                      content)
 
                     # Write the modified content to topol.top
@@ -692,9 +692,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
                     self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=f"{base}.itp")
-            else:
-                self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
-                return
+                else:
+                    self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
+                    return
 
     def do_solvate(self, arg):
         """
