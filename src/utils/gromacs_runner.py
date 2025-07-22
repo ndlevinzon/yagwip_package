@@ -12,7 +12,7 @@ from yagwip.base import YagwipBase
 from utils.log_utils import auto_monitor
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n"}
+PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n", "genion_lig": "4\n"}
 
 
 class Builder(YagwipBase):
@@ -82,7 +82,9 @@ class Builder(YagwipBase):
         ion_options = "-pname NA -nname CL -conc 0.150 -neutral"
         grompp_opts = ""
         ion_pipe_input = (
-            PIPE_INPUTS["genion_prot"]
+            PIPE_INPUTS["genion_lig"]
+            if base.startswith("ligand")
+            else PIPE_INPUTS["genion_prot"]
             if base.endswith("protein")
             else PIPE_INPUTS["genion_complex"]
         )
