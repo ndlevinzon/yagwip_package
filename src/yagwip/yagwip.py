@@ -566,12 +566,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
         self._log_info("  4. Align ligandB.gro to ligandA.gro")
         self._log_info("  5. Create hybrid topology for FEP simulations")
-        self._log_info("  6. Organize all files into subdirectories")
+        self._log_info("  6. Organize files into ligand_only/ and protein_complex/ directories")
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             self._log_success("FEP preparation complete.")
-            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, hybrid.itp, hybrid_stateA.pdb, hybrid_stateB.pdb, and subdirectories.")
+            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, hybrid.itp, hybrid_stateA.pdb, hybrid_stateB.pdb")
+            self._log_info("Directory structure:")
+            self._log_info("  ligand_only/")
+            self._log_info("    A_to_B/ - hybrid_stateA.gro, hybrid.itp")
+            self._log_info("    B_to_A/ - hybrid_stateB.gro, hybrid.itp")
+            self._log_info("  protein_complex/")
+            self._log_info("    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
+            self._log_info("    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
             if result.stdout:
                 print(result.stdout)
             if result.stderr:
