@@ -53,6 +53,37 @@ def write_aligned_pdb(atom_lines, coords, out_file):
             newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
             f.write(newline)
 
+# --- GRO parsing ---
+def parse_gro_coords(filename):
+    coords = {}
+    names = {}
+    atom_lines = []
+    with open(filename) as f:
+        lines = f.readlines()
+    # Skip title and atom count lines
+    for i, line in enumerate(lines[2:], 2):
+        if len(line.strip()) == 0:
+            break
+        if len(line) >= 44:  # GRO format: atom index, residue name, atom name, coordinates
+            try:
+                atom_idx = int(line[15:20])
+                atom_name = line[10:15].strip()
+                x = float(line[20:28])
+                y = float(line[28:36])
+                z = float(line[36:44])
+                coords[atom_idx] = (x, y, z)
+                names[atom_idx] = atom_name
+                atom_lines.append(line)
+            except (ValueError, IndexError):
+                continue
+    return coords, names, atom_lines, lines
+
+def write_aligned_gro(atom_lines, coords, out_file):
+    with open(out_file, 'w') as f:
+        for line, (x, y, z) in zip(atom_lines, coords):
+            newline = line[:20] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[44:]
+            f.write(newline)
+
 # --- Atom and Bond classes for MolGraph ---
 class Atom:
     def __init__(self, idx, element):
@@ -369,18 +400,49 @@ def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
     print(f"Aligned ligandB.pdb to ligandA.pdb and saved to {aligned_ligB_pdb}")
     return aligned_ligB_pdb
 
-def organize_files(args, out_dir, aligned_ligB_pdb):
+def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
+    mapping = load_atom_map(atom_map_file)
+    if not mapping:
+        raise RuntimeError("No atom mapping found for GRO alignment.")
+    coordsA, namesA, atom_linesA, _ = parse_gro_coords(ligA_gro)
+    coordsB, namesB, atom_linesB, _ = parse_gro_coords(ligB_gro)
+    # Extract coordinates for mapped atoms
+    mapped_coords_A = []
+    mapped_coords_B = []
+    for idxA, idxB in mapping.items():
+        if idxA in coordsA and idxB in coordsB:
+            mapped_coords_A.append(coordsA[idxA])
+            mapped_coords_B.append(coordsB[idxB])
+    if len(mapped_coords_A) < 3:
+        print("Not enough mapped atoms (need at least 3) for alignment.")
+        return None
+    coords_A = np.array(mapped_coords_A)
+    coords_B = np.array(mapped_coords_B)
+    aligned_coords_B, rotation_matrix, translation = kabsch_align(coords_A, coords_B)
+    # Apply transform to all atoms in ligandB.gro
+    allB_indices = sorted(coordsB.keys())
+    allB_coords = np.array([coordsB[i] for i in allB_indices])
+    centered_allB = allB_coords - np.mean(coords_B, axis=0)
+    transformed_allB = (centered_allB @ rotation_matrix) + np.mean(coords_A, axis=0)
+    write_aligned_gro(atom_linesB, transformed_allB, aligned_ligB_gro)
+    print(f"Aligned ligandB.gro to ligandA.gro and saved to {aligned_ligB_gro}")
+    return aligned_ligB_gro
+
+def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro):
     out_dirs = ['A_water', 'A_complex', 'B_water', 'B_complex']
     out_dirs_full = [os.path.join(out_dir, d) for d in out_dirs]
     for d in out_dirs_full:
         os.makedirs(d, exist_ok=True)
-    copyfile(args.ligA_pdb, os.path.join(out_dirs_full[0], 'ligandA.pdb'))
+    # A_water: use GRO files
+    copyfile(args.ligA_gro, os.path.join(out_dirs_full[0], 'ligandA.gro'))
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[0], 'ligandA.itp'))
+    # A_complex: use PDB files
     copyfile(args.ligA_pdb, os.path.join(out_dirs_full[1], 'ligandA.pdb'))
     copyfile(args.ligA_itp, os.path.join(out_dirs_full[1], 'ligandA.itp'))
-    # Copy aligned ligandB.pdb instead of the original
-    copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[2], 'ligandB.pdb'))
+    # B_water: use aligned GRO files
+    copyfile(aligned_ligB_gro, os.path.join(out_dirs_full[2], 'ligandB.gro'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[2], 'ligandB.itp'))
+    # B_complex: use aligned PDB files
     copyfile(aligned_ligB_pdb, os.path.join(out_dirs_full[3], 'ligandB.pdb'))
     copyfile(args.ligB_itp, os.path.join(out_dirs_full[3], 'ligandB.itp'))
     print('TODO: Run pdb2gmx, solvate, genion for each system using YAGWIP utilities.')
@@ -396,8 +458,10 @@ def main():
     parser.add_argument('--ligA_mol2', required=True)
     parser.add_argument('--ligB_mol2', required=True)
     parser.add_argument('--ligA_pdb', required=True)
+    parser.add_argument('--ligA_gro', required=True)
     parser.add_argument('--ligA_itp', required=True)
     parser.add_argument('--ligB_pdb', required=True)
+    parser.add_argument('--ligB_gro', required=True)
     parser.add_argument('--ligB_itp', required=True)
     args = parser.parse_args()
 
@@ -420,8 +484,12 @@ def main():
     aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
     align_ligandB_pdb(args.ligA_pdb, args.ligB_pdb, atom_map_file, aligned_ligB_pdb)
 
-    # 4. Organize files into subdirectories
-    organize_files(args, out_dir, aligned_ligB_pdb)
+    # 4. Align ligandB.gro to ligandA.gro using atom_map.txt
+    aligned_ligB_gro = os.path.join(out_dir, 'ligandB_aligned.gro')
+    align_ligandB_gro(args.ligA_gro, args.ligB_gro, atom_map_file, aligned_ligB_gro)
+
+    # 5. Organize files into subdirectories
+    organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro)
 
 if __name__ == '__main__':
     main()
