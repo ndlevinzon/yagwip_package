@@ -574,37 +574,32 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
  LIG          1
 """
 
-        # Copy files to all lambda subdirectories
-        for lambda_val in lambda_values:
-            # Ligand-only A_to_B lambda directories
-            lambda_dir = os.path.join(ligand_a_to_b, lambda_val)
-            copyfile(hybrid_groA, os.path.join(lambda_dir, 'hybrid_stateA.gro'))
-            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            # Write topol.top directly
-            with open(os.path.join(lambda_dir, 'topol.top'), 'w') as f:
-                f.write(topol_template)
+        # Copy files to A_to_B and B_to_A level (not to individual lambda directories)
+        # Ligand-only A_to_B
+        copyfile(hybrid_groA, os.path.join(ligand_a_to_b, 'hybrid_stateA.gro'))
+        copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
+        # Write topol.top directly
+        with open(os.path.join(ligand_a_to_b, 'topol.top'), 'w') as f:
+            f.write(topol_template)
 
-            # Ligand-only B_to_A lambda directories
-            lambda_dir = os.path.join(ligand_b_to_a, lambda_val)
-            copyfile(hybrid_groB, os.path.join(lambda_dir, 'hybrid_stateB.gro'))
-            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            # Write topol.top directly
-            with open(os.path.join(lambda_dir, 'topol.top'), 'w') as f:
-                f.write(topol_template)
+        # Ligand-only B_to_A
+        copyfile(hybrid_groB, os.path.join(ligand_b_to_a, 'hybrid_stateB.gro'))
+        copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
+        # Write topol.top directly
+        with open(os.path.join(ligand_b_to_a, 'topol.top'), 'w') as f:
+            f.write(topol_template)
 
-            # Protein complex A_to_B lambda directories
-            lambda_dir = os.path.join(protein_a_to_b, lambda_val)
-            copyfile(hybrid_pdbA, os.path.join(lambda_dir, 'hybrid_stateA.pdb'))
-            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            if os.path.exists("protein.pdb"):
-                copyfile("protein.pdb", os.path.join(lambda_dir, 'protein.pdb'))
+        # Protein complex A_to_B
+        copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
+        copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
+        if os.path.exists("protein.pdb"):
+            copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
 
-            # Protein complex B_to_A lambda directories
-            lambda_dir = os.path.join(protein_b_to_a, lambda_val)
-            copyfile(hybrid_pdbB, os.path.join(lambda_dir, 'hybrid_stateB.pdb'))
-            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
-            if os.path.exists("protein.pdb"):
-                copyfile("protein.pdb", os.path.join(lambda_dir, 'protein.pdb'))
+        # Protein complex B_to_A
+        copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
+        copyfile(hybrid_itp, os.path.join(protein_b_to_a, 'hybrid.itp'))
+        if os.path.exists("protein.pdb"):
+            copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
     print("Output written to:")
     print(f"  {ligand_only_dir}/")
@@ -618,7 +613,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
     print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
     print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"Total: 84 lambda directories created (21 per transition type)")
-    print(f"Note: topol.top copied from templates/ to all ligand_only lambda directories")
+    print(f"Note: Files are placed at A_to_B and B_to_A level for building, then copied to lambda directories")
 
 
 # --- Hybrid topology creation (inspired by make_hybrid.py) ---
