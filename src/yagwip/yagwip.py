@@ -688,9 +688,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
                     # Replace the ligand GMX itp include line with forcefield include
                     content = re.sub(r'#include "ligand[A-Z]\.itp"\s*\n',
-                                     '#include "./amber14sb.ff/forcefield.itp"\n; '
-                                     '\nInclude water topology\n#include "./amber14sb.ff/spce.itp"\n;  '
-                                     '\nInclude topology for ions\n#include "./amber14sb.ff/ions.itp"\n',
+                                     '#include "./amber14sb.ff/forcefield.itp"\n '
+                                     ';Include water topology\n#include "./amber14sb.ff/spce.itp"\n'
+                                     ';Include topology for ions\n#include "./amber14sb.ff/ions.itp"\n',
                                      content)
 
                     # Write the modified content to topol.top
