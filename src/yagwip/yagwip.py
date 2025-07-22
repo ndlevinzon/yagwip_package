@@ -648,17 +648,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _pdb2gmx_ligand(self, lambda_dirs, output_gro):
         """
-        Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.gro in the current directory.
+        Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.pdb in the current directory.
         """
         ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
         found = False
+        found_fname = None
         for fname in ligand_pdb_files:
             if os.path.isfile(fname):
                 found = True
-                self.builder.run_pdb2gmx(os.path.splitext(os.path.basename(fname))[0], custom_command=self.custom_cmds.get("pdb2gmx"))
+                found_fname = fname
                 break
         if not found:
-            self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
+            self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
             return
         # Find the first ligandX.acpype directory and copy the topology
         for c in string.ascii_uppercase:
@@ -672,6 +673,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
             return
+        # Run pdb2gmx on the found ligand
+        ligand_basename = os.path.splitext(os.path.basename(found_fname))[0]
+        self.builder.run_pdb2gmx(ligand_basename, custom_command=self.custom_cmds.get("pdb2gmx"))
 
     def do_solvate(self, arg):
         """
