@@ -28,6 +28,7 @@ import string
 import subprocess
 import random
 import argparse
+import shutil
 import contextlib
 import importlib.metadata
 import multiprocessing as mp
@@ -659,8 +660,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not found:
             self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_gro_files)}")
             return
-
-
+        # Find the first ligandX.acpype directory and copy the topology
+        for c in string.ascii_uppercase:
+            acpype_dir = f"ligand{c}.acpype"
+            if os.path.isdir(acpype_dir):
+                gmx_top = os.path.join(acpype_dir, f"ligand{c}_GMX.top")
+                if os.path.isfile(gmx_top):
+                    shutil.copy2(gmx_top, "topol.top")
+                    self._log_success(f"Copied {gmx_top} to topol.top")
+                    break
+        else:
+            self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
+            return
 
     def do_solvate(self, arg):
         """
