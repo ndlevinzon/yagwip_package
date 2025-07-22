@@ -558,18 +558,20 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "--ligB_pdb", "ligandB.pdb",
             "--ligB_gro", "ligandB.gro",
             "--ligB_itp", "ligandB.itp",
+            "--create_hybrid",  # Add hybrid topology creation
         ]
         self._log_info("FEP prep workflow:")
         self._log_info("  1. Find MCS and write atom_map.txt")
         self._log_info("  2. Align ligandB.mol2 to ligandA.mol2")
         self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
         self._log_info("  4. Align ligandB.gro to ligandA.gro")
-        self._log_info("  5. Organize all files into subdirectories")
+        self._log_info("  5. Create hybrid topology for FEP simulations")
+        self._log_info("  6. Organize all files into subdirectories")
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             self._log_success("FEP preparation complete.")
-            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, and subdirectories.")
+            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, hybrid.itp, hybrid_stateA.pdb, hybrid_stateB.pdb, and subdirectories.")
             if result.stdout:
                 print(result.stdout)
             if result.stderr:
