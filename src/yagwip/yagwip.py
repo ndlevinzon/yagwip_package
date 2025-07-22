@@ -686,9 +686,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         f.write(content)
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
-        else:
-            self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
-            return
+            else:
+                self._log_error("No ligandX.acpype directory with ligandX_GMX.top found.")
+                return
 
     def do_solvate(self, arg):
         """
