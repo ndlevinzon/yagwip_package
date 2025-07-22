@@ -557,13 +557,13 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         topol_template = """; Hybrid Ligand-Solvent Simulation Topology File
 
 ; Include forcefield parameters
-#include "../../../amber14sb.ff/forcefield.itp"
+#include "./amber14sb.ff/forcefield.itp"
 ; Include hybrid ligand topology
-#include "hybrid.itp"
+#include "./hybrid.itp"
 ; Include water topology
-#include "../../../amber14sb.ff/spce.itp"
+#include "./amber14sb.ff/spce.itp"
 ; Include topology for ions
-#include "../../../amber14sb.ff/ions.itp"
+#include "./amber14sb.ff/ions.itp"
 
 
 [ system ]
