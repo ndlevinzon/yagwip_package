@@ -597,7 +597,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not os.path.isfile("protein.pdb"):
             self._log_info("protein.pdb not found. Switching to ligand-only workflow.")
             # Call _pdb2gmx_ligand with dummy args (lambda_dirs=None, output_gro=None) for now
-            self._pdb2gmx_ligand(lambda_dirs=None, output_gro=None)
+            self._pdb2gmx_ligand()
             return
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
@@ -681,10 +681,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         finally:
                             os.chdir(original_cwd)
 
-        # Process protein_complex directories
+                # Process protein_complex directories
         protein_complex_dir = "protein_complex"
         if os.path.isdir(protein_complex_dir):
             self._log_info(f"Processing {protein_complex_dir} directories...")
+
+            # Check if protein.gro exists in current working directory
+            protein_gro_source = "protein.gro"
+            if not os.path.exists(protein_gro_source):
+                self._log_error(f"protein.gro not found in current directory: {protein_gro_source}")
+                return
 
             # Process A_to_B lambda windows
             a_to_b_dir = os.path.join(protein_complex_dir, "A_to_B")
@@ -693,12 +699,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 for lambda_val in lambda_values:
                     lambda_dir = os.path.join(a_to_b_dir, lambda_val)
                     if os.path.isdir(lambda_dir):
+                        # Copy protein.gro to lambda directory
+                        protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
+                        shutil.copy2(protein_gro_source, protein_gro_dest)
+                        self._log_info(f"Copied protein.gro to {lambda_dir}")
+
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
-                            self._pdb2gmx_protein_ligand(None)  # Dummy arg for now
+                            self._pdb2gmx_protein_ligand(
+                                "protein.gro")  # Now we have protein.gro in the lambda directory
                         finally:
                             os.chdir(original_cwd)
 
@@ -709,12 +721,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 for lambda_val in lambda_values:
                     lambda_dir = os.path.join(b_to_a_dir, lambda_val)
                     if os.path.isdir(lambda_dir):
+                        # Copy protein.gro to lambda directory
+                        protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
+                        shutil.copy2(protein_gro_source, protein_gro_dest)
+                        self._log_info(f"Copied protein.gro to {lambda_dir}")
+
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
-                            self._pdb2gmx_protein_ligand(None)  # Dummy arg for now
+                            self._pdb2gmx_protein_ligand(
+                                "protein.gro")  # Now we have protein.gro in the lambda directory
                         finally:
                             os.chdir(original_cwd)
 
