@@ -450,11 +450,27 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
     """
     Organize files into new directory structure:
     - ligand_only/
-      - A_to_B/ (hybrid_stateA.gro, hybrid.itp)
-      - B_to_A/ (hybrid_stateB.gro, hybrid.itp)
+      - A_to_B/
+        - lambda_0.00/ (hybrid_stateA.gro, hybrid.itp)
+        - lambda_0.05/ (hybrid_stateA.gro, hybrid.itp)
+        - ...
+        - lambda_1.00/ (hybrid_stateA.gro, hybrid.itp)
+      - B_to_A/
+        - lambda_0.00/ (hybrid_stateB.gro, hybrid.itp)
+        - lambda_0.05/ (hybrid_stateB.gro, hybrid.itp)
+        - ...
+        - lambda_1.00/ (hybrid_stateB.gro, hybrid.itp)
     - protein_complex/
-      - A_to_B/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
-      - B_to_A/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
+      - A_to_B/
+        - lambda_0.00/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
+        - lambda_0.05/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
+        - ...
+        - lambda_1.00/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
+      - B_to_A/
+        - lambda_0.00/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
+        - lambda_0.05/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
+        - ...
+        - lambda_1.00/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
     """
     # Create main directories
     ligand_only_dir = os.path.join(out_dir, 'ligand_only')
@@ -466,8 +482,15 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
     protein_a_to_b = os.path.join(protein_complex_dir, 'A_to_B')
     protein_b_to_a = os.path.join(protein_complex_dir, 'B_to_A')
 
-    for d in [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]:
-        os.makedirs(d, exist_ok=True)
+    # Generate lambda values from 0.00 to 1.00 in increments of 0.05
+    lambda_values = [f"lambda_{i*0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
+
+    # Create all lambda subdirectories
+    for base_dir in [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]:
+        os.makedirs(base_dir, exist_ok=True)
+        for lambda_val in lambda_values:
+            lambda_dir = os.path.join(base_dir, lambda_val)
+            os.makedirs(lambda_dir, exist_ok=True)
 
     # Copy hybrid files if available
     if hybrid_files:
@@ -501,7 +524,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
                 # Add box vectors (default 10nm cubic box)
                 f.write("   10.00000   10.00000   10.00000\n")
 
-        # Ligand-only directories
+        # Create files in main directories first
         hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
         hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
 
@@ -511,7 +534,6 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
         copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
 
-        # Protein complex directories
         copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
         copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
         copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
@@ -522,13 +544,44 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
             copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
+        # Copy files to all lambda subdirectories
+        for lambda_val in lambda_values:
+            # Ligand-only A_to_B lambda directories
+            lambda_dir = os.path.join(ligand_a_to_b, lambda_val)
+            copyfile(hybrid_groA, os.path.join(lambda_dir, 'hybrid_stateA.gro'))
+            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+
+            # Ligand-only B_to_A lambda directories
+            lambda_dir = os.path.join(ligand_b_to_a, lambda_val)
+            copyfile(hybrid_groB, os.path.join(lambda_dir, 'hybrid_stateB.gro'))
+            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+
+            # Protein complex A_to_B lambda directories
+            lambda_dir = os.path.join(protein_a_to_b, lambda_val)
+            copyfile(hybrid_pdbA, os.path.join(lambda_dir, 'hybrid_stateA.pdb'))
+            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+            if os.path.exists("protein.pdb"):
+                copyfile("protein.pdb", os.path.join(lambda_dir, 'protein.pdb'))
+
+            # Protein complex B_to_A lambda directories
+            lambda_dir = os.path.join(protein_b_to_a, lambda_val)
+            copyfile(hybrid_pdbB, os.path.join(lambda_dir, 'hybrid_stateB.pdb'))
+            copyfile(hybrid_itp, os.path.join(lambda_dir, 'hybrid.itp'))
+            if os.path.exists("protein.pdb"):
+                copyfile("protein.pdb", os.path.join(lambda_dir, 'protein.pdb'))
+
     print("Output written to:")
     print(f"  {ligand_only_dir}/")
     print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"  {protein_complex_dir}/")
     print(f"    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
     print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
+    print(f"Total: 84 lambda directories created (21 per transition type)")
 
 
 # --- Hybrid topology creation (inspired by make_hybrid.py) ---
