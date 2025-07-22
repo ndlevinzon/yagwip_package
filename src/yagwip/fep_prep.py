@@ -574,32 +574,11 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
  LIG          1
 """
 
-        # Copy files to A_to_B and B_to_A level (not to individual lambda directories)
-        # Ligand-only A_to_B
-        copyfile(hybrid_groA, os.path.join(ligand_a_to_b, 'hybrid_stateA.gro'))
-        copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
-        # Write topol.top directly
+        # Write topol.top files to A_to_B and B_to_A level
         with open(os.path.join(ligand_a_to_b, 'topol.top'), 'w') as f:
             f.write(topol_template)
-
-        # Ligand-only B_to_A
-        copyfile(hybrid_groB, os.path.join(ligand_b_to_a, 'hybrid_stateB.gro'))
-        copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
-        # Write topol.top directly
         with open(os.path.join(ligand_b_to_a, 'topol.top'), 'w') as f:
             f.write(topol_template)
-
-        # Protein complex A_to_B
-        copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
-        copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
-        if os.path.exists("protein.pdb"):
-            copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
-
-        # Protein complex B_to_A
-        copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
-        copyfile(hybrid_itp, os.path.join(protein_b_to_a, 'hybrid.itp'))
-        if os.path.exists("protein.pdb"):
-            copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
 
     print("Output written to:")
     print(f"  {ligand_only_dir}/")
