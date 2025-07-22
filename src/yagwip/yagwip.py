@@ -697,6 +697,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     if os.path.isdir(lambda_dir):
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
+                        protein_pdb = "protein"
+                        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx"))
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(lambda_dir)
