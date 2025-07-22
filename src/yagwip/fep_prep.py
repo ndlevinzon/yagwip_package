@@ -508,8 +508,10 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
             num_atoms = len(atom_lines)
 
             with open(gro_file, 'w') as f:
+                # Write header (title line)
                 f.write("Hybrid structure for FEP\n")
-                f.write(f"{num_atoms}\n")
+                # Write number of atoms
+                f.write(f"{num_atoms:>5}\n")
 
                 for i, line in enumerate(atom_lines, 1):
                     # Extract coordinates from PDB format
@@ -519,8 +521,9 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
                     atom_name = line[12:16].strip()
                     res_name = line[17:20].strip()
 
-                    # Write GRO format line
-                    f.write(f"{res_name:>5}{atom_name:>5}{i:>5}{x:>8.3f}{y:>8.3f}{z:>8.3f}\n")
+                    # Write GRO format line: resnum(5) resname(5) atomname(5) atomnum(5) x(8) y(8) z(8)
+                    # Format: resnum(5) resname(5) atomname(5) atomnum(5) x(8.3f) y(8.3f) z(8.3f)
+                    f.write(f"{1:>5}{res_name:>5}{atom_name:>5}{i:>5}{x:>8.3f}{y:>8.3f}{z:>8.3f}\n")
 
                 # Add box vectors (default 10nm cubic box)
                 f.write("   10.00000   10.00000   10.00000\n")
