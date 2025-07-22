@@ -681,15 +681,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         finally:
                             os.chdir(original_cwd)
 
-                # Process protein_complex directories
+        # Process protein_complex directories
         protein_complex_dir = "protein_complex"
         if os.path.isdir(protein_complex_dir):
             self._log_info(f"Processing {protein_complex_dir} directories...")
 
-            # Check if protein.gro exists in current working directory
+            # Check if protein.gro and topol.top exist in current working directory
             protein_gro_source = "protein.gro"
+            topol_top_source = "topol.top"
             if not os.path.exists(protein_gro_source):
                 self._log_error(f"protein.gro not found in current directory: {protein_gro_source}")
+                return
+            if not os.path.exists(topol_top_source):
+                self._log_error(f"topol.top not found in current directory: {topol_top_source}")
                 return
 
             # Process A_to_B lambda windows
@@ -703,6 +707,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
                         shutil.copy2(protein_gro_source, protein_gro_dest)
                         self._log_info(f"Copied protein.gro to {lambda_dir}")
+
+                        # Copy topol.top to lambda directory
+                        topol_top_dest = os.path.join(lambda_dir, "topol.top")
+                        shutil.copy2(topol_top_source, topol_top_dest)
+                        self._log_info(f"Copied topol.top to {lambda_dir}")
 
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
@@ -725,6 +734,11 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         protein_gro_dest = os.path.join(lambda_dir, "protein.gro")
                         shutil.copy2(protein_gro_source, protein_gro_dest)
                         self._log_info(f"Copied protein.gro to {lambda_dir}")
+
+                        # Copy topol.top to lambda directory
+                        topol_top_dest = os.path.join(lambda_dir, "topol.top")
+                        shutil.copy2(topol_top_source, topol_top_dest)
+                        self._log_info(f"Copied topol.top to {lambda_dir}")
 
                         self._log_info(f"Running pdb2gmx for {lambda_dir}")
                         # Change to lambda directory and run _pdb2gmx_protein_ligand
@@ -773,7 +787,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
 
         # Protein + ligand case
-        if self.ligand_pdb_path and ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
+        if ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
                 ligand_pdb_file) > 0:
             self._log_info(f"Processing protein-ligand system with {ligand_pdb_file}...")
             # Add ligand coordinates to protein gro and update topology
