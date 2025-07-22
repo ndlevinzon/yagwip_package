@@ -641,8 +641,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
 
-        # Copy amber14sb.ff to all FEP directories
-        amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
+        # Copy amber14sb.ff from current working directory to all FEP directories
+        amber_ff_source = "amber14sb.ff"
+
+        # Check if amber14sb.ff exists in current working directory
+        if not os.path.exists(amber_ff_source):
+            self._log_error(f"amber14sb.ff not found in current working directory: {amber_ff_source}")
+            return
 
         # Define the 4 FEP directories that need amber14sb.ff
         fep_amber_dirs = [
@@ -657,15 +662,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             if os.path.isdir(fep_dir):
                 amber_ff_dest = os.path.join(fep_dir, "amber14sb.ff")
                 if not os.path.exists(amber_ff_dest):
-                    os.makedirs(amber_ff_dest)
-                    self._log_info(f"Created amber14sb.ff in {fep_dir}")
+                    self._log_info(f"Copying amber14sb.ff to {fep_dir}")
                     try:
-                        for item in Path(amber_ff_source).iterdir():
-                            if item.is_file():
-                                content = item.read_text(encoding="utf-8")
-                                dest_file = os.path.join(amber_ff_dest, item.name)
-                                with open(dest_file, "w", encoding="utf-8") as f:
-                                    f.write(content)
+                        # Use shutil.copytree to copy the entire directory
+                        shutil.copytree(amber_ff_source, amber_ff_dest)
                         self._log_success(f"Copied amber14sb.ff to {fep_dir}")
                     except Exception as e:
                         self._log_error(f"Failed to copy amber14sb.ff to {fep_dir}: {e}")
