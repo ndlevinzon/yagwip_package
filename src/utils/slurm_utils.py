@@ -1,5 +1,10 @@
 """
 slurm_utils.py -- Utilities for generating and customizing SLURM job scripts for YAGWIP
+
+Handles three simulation types with two hardware options each:
+- MD simulations: CPU and GPU
+- TREMD simulations: CPU and GPU
+- FEP simulations: CPU and GPU
 """
 
 # === Standard Library Imports ===
@@ -14,7 +19,14 @@ from yagwip.base import YagwipBase
 
 class SlurmWriter(YagwipBase):
     """
-    Handles generation and writing of SLURM job scripts for GROMACS and TREMD workflows.
+    Handles generation and writing of SLURM job scripts for GROMACS workflows.
+
+    Supports three simulation types:
+    1. MD (Molecular Dynamics) - regular protein/ligand simulations
+    2. TREMD (Temperature Replica Exchange MD) - temperature ladder simulations
+    3. FEP (Free Energy Perturbation) - lambda window simulations
+
+    Each type supports both CPU and GPU hardware configurations.
     """
 
     def __init__(self, template_pkg="templates", logger=None, debug=False):
@@ -25,160 +37,295 @@ class SlurmWriter(YagwipBase):
     def write_slurm_scripts(self, sim_type, hardware, basename, ligand_pdb_path=None):
         """
         Generate and write SLURM scripts for the given simulation type and hardware.
+
         Args:
             sim_type (str): 'md', 'tremd', or 'fep'
             hardware (str): 'cpu' or 'gpu'
             basename (str): Project base name for substitution
             ligand_pdb_path (str or None): If present, use complex.solv.ions, else protein.solv.ions
         """
-        if sim_type == "fep":
-            # Define the vdw_lambdas array (should match your simulation setup)
-            vdw_lambdas = [
-                "0.00",
-                "0.05",
-                "0.10",
-                "0.15",
-                "0.20",
-                "0.25",
-                "0.30",
-                "0.35",
-                "0.40",
-                "0.45",
-                "0.50",
-                "0.55",
-                "0.60",
-                "0.65",
-                "0.70",
-                "0.75",
-                "0.80",
-                "0.85",
-                "0.90",
-                "0.95",
-                "1.00",
-            ]
-            # For FEP, process each lambda directory
-            lambda_dirs = [
-                d
-                for d in os.listdir(".")
-                if d.startswith("lambda_") and os.path.isdir(d)
-            ]
-            mdp_templates = [
-                "em_fep.mdp",
-                "nvt_fep.mdp",
-                "npt_fep.mdp",
-                "production_fep.mdp",
-            ]
-            for lam_dir in sorted(lambda_dirs):
+        # Validate inputs
+        if sim_type not in ['md', 'tremd', 'fep']:
+            self._log_error(f"Invalid simulation type: {sim_type}. Must be 'md', 'tremd', or 'fep'")
+            return
+
+        if hardware not in ['cpu', 'gpu']:
+            self._log_error(f"Invalid hardware type: {hardware}. Must be 'cpu' or 'gpu'")
+            return
+
+        self._log_info(f"Generating SLURM scripts for {sim_type.upper()} simulation on {hardware.upper()}")
+
+        # Route to appropriate handler based on simulation type
+        if sim_type == "md":
+            self._handle_md_slurm(hardware, basename, ligand_pdb_path)
+        elif sim_type == "tremd":
+            self._handle_tremd_slurm(hardware, basename)
+        elif sim_type == "fep":
+            self._handle_fep_slurm(hardware, basename)
+        else:
+            self._log_error(f"Unknown simulation type: {sim_type}")
+
+    def _handle_md_slurm(self, hardware, basename, ligand_pdb_path=None):
+        """
+        Handle MD (Molecular Dynamics) SLURM script generation.
+
+        Args:
+            hardware (str): 'cpu' or 'gpu'
+            basename (str): Project base name
+            ligand_pdb_path (str or None): Determines if this is a complex or protein-only simulation
+        """
+        self._log_info("Processing MD simulation SLURM scripts")
+
+        # Copy MD-specific MDP files (exclude TREMD-specific files)
+        self._copy_mdp_files(exclude_files=["production_remd.mdp"])
+
+        # Determine initialization file name
+        init_name = "complex" if ligand_pdb_path else "protein"
+
+        # Copy and customize SLURM scripts
+        if hardware == "cpu":
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_md_min_cpu.slurm",
+                output_name="run_gmx_md_min_cpu.slurm",
+                basename=basename,
+                init_name=init_name
+            )
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_md_cpu.slurm",
+                output_name="run_gmx_md_cpu.slurm",
+                basename=basename,
+                init_name=init_name
+            )
+        elif hardware == "gpu":
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_md_min_gpu.slurm",
+                output_name="run_gmx_md_min_gpu.slurm",
+                basename=basename,
+                init_name=init_name
+            )
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_md_gpu.slurm",
+                output_name="run_gmx_md_gpu.slurm",
+                basename=basename,
+                init_name=init_name
+            )
+
+    def _handle_tremd_slurm(self, hardware, basename):
+        """
+        Handle TREMD (Temperature Replica Exchange MD) SLURM script generation.
+
+        Args:
+            hardware (str): 'cpu' or 'gpu'
+            basename (str): Project base name
+        """
+        self._log_info("Processing TREMD simulation SLURM scripts")
+
+        # Copy TREMD-specific MDP files (exclude regular production files)
+        self._copy_mdp_files(exclude_files=["production.mdp"])
+
+        # Copy and customize SLURM scripts
+        if hardware == "cpu":
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_tremd_min_cpu.slurm",
+                output_name="run_gmx_tremd_min_cpu.slurm",
+                basename=basename,
+                init_name="complex"  # TREMD typically uses complex
+            )
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_tremd_cpu.slurm",
+                output_name="run_gmx_tremd_cpu.slurm",
+                basename=basename,
+                init_name="complex"
+            )
+        elif hardware == "gpu":
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_tremd_min_gpu.slurm",
+                output_name="run_gmx_tremd_min_gpu.slurm",
+                basename=basename,
+                init_name="complex"
+            )
+            self._copy_and_customize_slurm_script(
+                template_name="run_gmx_tremd_gpu.slurm",
+                output_name="run_gmx_tremd_gpu.slurm",
+                basename=basename,
+                init_name="complex"
+            )
+
+    def _handle_fep_slurm(self, hardware, basename):
+        """
+        Handle FEP (Free Energy Perturbation) SLURM script generation.
+
+        Args:
+            hardware (str): 'cpu' or 'gpu'
+            basename (str): Project base name
+        """
+        self._log_info("Processing FEP simulation SLURM scripts")
+
+        # Define lambda values for FEP (0.00 to 1.00 in 0.05 increments)
+        vdw_lambdas = [
+            "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45", "0.50",
+            "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+        ]
+
+        # Find lambda directories
+        lambda_dirs = [
+            d for d in os.listdir(".")
+            if d.startswith("lambda_") and os.path.isdir(d)
+        ]
+
+        if not lambda_dirs:
+            self._log_warning("No lambda directories found for FEP. Creating SLURM scripts in current directory.")
+            lambda_dirs = ["."]  # Process current directory
+
+        # FEP MDP templates to copy
+        fep_mdp_templates = [
+            "em_fep.mdp",
+            "nvt_fep.mdp",
+            "npt_fep.mdp",
+            "production_fep.mdp"
+        ]
+
+        # Process each lambda directory
+        for lam_dir in sorted(lambda_dirs):
+            self._log_info(f"Processing lambda directory: {lam_dir}")
+
+            # Extract lambda value and find index
+            if lam_dir == ".":
+                lam_value = "0.00"  # Default for current directory
+                lambda_index = 0
+            else:
                 lam_value = lam_dir.replace("lambda_", "")
-                # Find the index of this lambda value in vdw_lambdas
                 try:
                     lambda_index = vdw_lambdas.index(lam_value)
                 except ValueError:
-                    self._log_warning(
-                        f"Lambda value {lam_value} not found in vdw_lambdas array!"
-                    )
+                    self._log_warning(f"Lambda value {lam_value} not found in vdw_lambdas array!")
                     lambda_index = lam_value  # fallback to value
-                # Copy and patch .mdp files
-                for mdp_name in mdp_templates:
-                    src_path = self.template_dir / mdp_name
-                    if not src_path.is_file():
-                        self._log_warning(
-                            f"Template {mdp_name} not found in {self.template_dir}"
-                        )
-                        continue
-                    with open(str(src_path), "r", encoding="utf-8") as f:
-                        content = f.read().replace("__LAMBDA__", str(lambda_index))
-                    dest_path = os.path.join(lam_dir, mdp_name)
-                    with open(dest_path, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    self._log_success(
-                        f"Wrote {mdp_name} to {lam_dir} with lambda index {lambda_index}"
-                    )
-                    # If hardware is cpu, also copy SLURM scripts to each lambda directory
-                    # If hardware is cpu, also copy SLURM scripts to current directory
-                    if hardware == "cpu":
-                        slurm_files = [
-                            "run_gmx_fep_min_cpu.slurm",
-                            "run_gmx_fep_cpu.slurm",
-                        ]
-                        for slurm_name in slurm_files:
-                            src_slurm = self.template_dir / slurm_name
-                            if not src_slurm.is_file():
-                                self._log_warning(
-                                    f"SLURM template {slurm_name} not found in {self.template_dir}"
-                                )
-                                continue
-                            dest_slurm = os.path.join(os.getcwd(), slurm_name)
-                            with open(str(src_slurm), "r", encoding="utf-8") as f:
-                                content = f.read()
-                            with open(dest_slurm, "w", encoding="utf-8") as f:
-                                f.write(content)
-                            self._log_success(
-                                f"Copied {slurm_name} to {dest_slurm} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})"
-                            )
+
+            # Copy and patch MDP files for this lambda
+            self._copy_fep_mdp_files(lam_dir, fep_mdp_templates, lambda_index)
+
+            # Copy SLURM scripts (only for CPU currently, as per original logic)
+            if hardware == "cpu":
+                self._copy_fep_slurm_scripts(lam_dir, lam_value, lambda_index)
+            elif hardware == "gpu":
+                self._log_info(f"GPU FEP SLURM scripts not yet implemented for {lam_dir}")
+
+    def _copy_mdp_files(self, exclude_files=None):
+        """
+        Copy MDP files from templates, excluding specified files.
+
+        Args:
+            exclude_files (list): List of MDP files to exclude from copying
+        """
+        if exclude_files is None:
+            exclude_files = []
+
+        copied_count = 0
+        for f in self.template_dir.iterdir():
+            if f.name.endswith(".mdp") and f.name not in exclude_files:
+                try:
+                    shutil.copy(str(f), os.getcwd())
+                    copied_count += 1
+                except Exception as e:
+                    self._log_error(f"Failed to copy {f.name}: {e}")
+
+        self._log_success(f"Copied {copied_count} MDP files (excluded: {exclude_files})")
+
+    def _copy_and_customize_slurm_script(self, template_name, output_name, basename, init_name):
+        """
+        Copy and customize a SLURM script template.
+
+        Args:
+            template_name (str): Name of template file in templates directory
+            output_name (str): Name of output file
+            basename (str): Project base name for substitution
+            init_name (str): Initialization file name for substitution
+        """
+        template_path = self.template_dir / template_name
+
+        if not template_path.is_file():
+            self._log_warning(f"SLURM template {template_name} not found in {self.template_dir}")
             return
 
-        # Copy only relevant .mdp files
-        exclude = "production.mdp" if sim_type == "tremd" else "production_remd.mdp"
-        for f in self.template_dir.iterdir():
-            if f.name.endswith(".mdp") and f.name != exclude:
-                shutil.copy(str(f), os.getcwd())
-        self._log_info(f"Copied .mdp templates for {sim_type} (excluded: {exclude})")
+        try:
+            # Read template content
+            with open(str(template_path), "r", encoding="utf-8") as f:
+                content = f.read()
 
-        # Copy minimization and main SLURM files for md
-        if sim_type == "md":
-            min_slurm = self.template_dir / "run_gmx_md_min_cpu.slurm"
-            main_slurm = self.template_dir / "run_gmx_md_cpu.slurm"
-            for slurm_path in [min_slurm, main_slurm]:
-                if slurm_path.is_file():
-                    try:
-                        with open(str(slurm_path), "r", encoding="utf-8") as f:
-                            slurm_content = f.read()
-                        # Replace BASE and INIT variables
-                        slurm_content = re.sub(
-                            r"__BASE__", basename or "PLACEHOLDER", slurm_content
-                        )
-                        # Use 'complex' if ligand_pdb_path is present, else 'protein'
-                        init_name = "complex" if ligand_pdb_path else "protein"
-                        slurm_content = re.sub(
-                            r"__INIT__", init_name, slurm_content
-                        )
-                        out_slurm = os.path.basename(slurm_path)
-                        with open(out_slurm, "w", encoding="utf-8") as f:
-                            f.write(slurm_content)
-                        self._log_success(
-                            f"Customized SLURM script written: {out_slurm}"
-                        )
-                    except (OSError, IOError) as e:
-                        self._log_error(f"Failed to configure SLURM script: {e}")
-                else:
-                    self._log_warning(
-                        f"{os.path.basename(slurm_path)} not found in template directory."
-                    )
+            # Replace placeholders
+            content = re.sub(r"__BASE__", basename or "PLACEHOLDER", content)
+            content = re.sub(r"__INIT__", init_name, content)
 
-        # Copy minimization SLURM file for tremd
-        if sim_type == "tremd":
-            min_slurm = self.template_dir / "run_gmx_tremd_min_cpu.slurm"
-            if min_slurm.is_file():
-                try:
-                    with open(str(min_slurm), "r", encoding="utf-8") as f:
-                        min_content = f.read()
-                    # Replace BASE variable in SLURM script with basename
-                    min_content = re.sub(
-                        r"__BASE__", basename or "PLACEHOLDER", min_content
-                    )
-                    min_content = re.sub(
-                        r"__INIT__", "complex" or "PLACEHOLDER", min_content
-                    )
-                    out_min_slurm = "run_gmx_tremd_min_cpu.slurm"
-                    with open(out_min_slurm, "w", encoding="utf-8") as f:
-                        f.write(min_content)
-                    self._log_success(
-                        f"Customized SLURM script written: {out_min_slurm}"
-                    )
-                except (OSError, IOError) as e:
-                    self._log_error(f"Failed to configure SLURM script: {e}")
-            else:
-                self._log_warning(
-                    "run_gmx_tremd_min_cpu.slurm not found in template directory."
-                )
+            # Write customized script
+            with open(output_name, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            self._log_success(f"Customized SLURM script written: {output_name}")
+
+        except Exception as e:
+            self._log_error(f"Failed to configure SLURM script {template_name}: {e}")
+
+    def _copy_fep_mdp_files(self, lambda_dir, mdp_templates, lambda_index):
+        """
+        Copy and patch FEP MDP files for a specific lambda directory.
+
+        Args:
+            lambda_dir (str): Lambda directory path
+            mdp_templates (list): List of MDP template names
+            lambda_index (int): Lambda index for substitution
+        """
+        for mdp_name in mdp_templates:
+            src_path = self.template_dir / mdp_name
+
+            if not src_path.is_file():
+                self._log_warning(f"FEP template {mdp_name} not found in {self.template_dir}")
+                continue
+
+            try:
+                # Read and patch template
+                with open(str(src_path), "r", encoding="utf-8") as f:
+                    content = f.read().replace("__LAMBDA__", str(lambda_index))
+
+                # Write to lambda directory
+                dest_path = os.path.join(lambda_dir, mdp_name)
+                with open(dest_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                self._log_success(f"Wrote {mdp_name} to {lambda_dir} with lambda index {lambda_index}")
+
+            except Exception as e:
+                self._log_error(f"Failed to copy FEP MDP file {mdp_name} to {lambda_dir}: {e}")
+
+    def _copy_fep_slurm_scripts(self, lambda_dir, lam_value, lambda_index):
+        """
+        Copy FEP SLURM scripts for a specific lambda directory.
+
+        Args:
+            lambda_dir (str): Lambda directory path
+            lam_value (str): Lambda value string
+            lambda_index (int): Lambda index
+        """
+        slurm_files = [
+            "run_gmx_fep_min_cpu.slurm",
+            "run_gmx_fep_cpu.slurm"
+        ]
+
+        for slurm_name in slurm_files:
+            src_slurm = self.template_dir / slurm_name
+
+            if not src_slurm.is_file():
+                self._log_warning(f"FEP SLURM template {slurm_name} not found in {self.template_dir}")
+                continue
+
+            try:
+                # Copy to current working directory (not lambda directory, as per original logic)
+                dest_slurm = os.path.join(os.getcwd(), slurm_name)
+                with open(str(src_slurm), "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(dest_slurm, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                self._log_success(f"Copied {slurm_name} for FEP CPU workflow (lambda {lam_value}, index {lambda_index})")
+
+            except Exception as e:
+                self._log_error(f"Failed to copy FEP SLURM script {slurm_name}: {e}")
