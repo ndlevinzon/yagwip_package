@@ -4,7 +4,10 @@
 #include "./amber14sb.ff/forcefield.itp"
 ; Include hybrid ligand topology
 #include "./hybrid.itp"
-
+; Include water topology
+#include "./amber14sb.ff/spce.itp"
+; Include topology for ions
+#include "./amber14sb.ff/ions.itp"
 
 [ system ]
  Hybrid Ligand-Solvent System
