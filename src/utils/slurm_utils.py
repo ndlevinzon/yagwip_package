@@ -161,54 +161,55 @@ class SlurmWriter(YagwipBase):
         """
         self._log_info("Processing FEP simulation SLURM scripts")
 
-        # Define lambda values for FEP (0.00 to 1.00 in 0.05 increments)
-        vdw_lambdas = [
-            "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45", "0.50",
-            "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+        # Step 1: Prepare FEP directories using Editor
+        try:
+            from utils.pipeline_utils import Editor
+            editor = Editor()
+            editor.prepare_fep_directories()
+            self._log_success("FEP directory preparation completed")
+        except Exception as e:
+            self._log_error(f"Failed to prepare FEP directories: {e}")
+            return
+
+        # Step 2: Copy FEP SLURM scripts to current working directory
+        if hardware == "cpu":
+            self._copy_fep_slurm_scripts_cwd("cpu")
+        elif hardware == "gpu":
+            self._copy_fep_slurm_scripts_cwd("gpu")
+        else:
+            self._log_error(f"Unsupported hardware type for FEP: {hardware}")
+
+    def _copy_fep_slurm_scripts_cwd(self, hardware):
+        """
+        Copy FEP SLURM scripts to current working directory.
+
+        Args:
+            hardware (str): 'cpu' or 'gpu'
+        """
+        slurm_templates = [
+            f"run_gmx_fep_min_{hardware}.slurm",
+            f"run_gmx_fep_{hardware}.slurm"
         ]
 
-        # Find lambda directories
-        lambda_dirs = [
-            d for d in os.listdir(".")
-            if d.startswith("lambda_") and os.path.isdir(d)
-        ]
+        for slurm_name in slurm_templates:
+            src_slurm = self.template_dir / slurm_name
 
-        if not lambda_dirs:
-            self._log_warning("No lambda directories found for FEP. Creating SLURM scripts in current directory.")
-            lambda_dirs = ["."]  # Process current directory
+            if not src_slurm.is_file():
+                self._log_warning(f"FEP SLURM template {slurm_name} not found in {self.template_dir}")
+                continue
 
-        # FEP MDP templates to copy
-        fep_mdp_templates = [
-            "em_fep.mdp",
-            "nvt_fep.mdp",
-            "npt_fep.mdp",
-            "production_fep.mdp"
-        ]
+            try:
+                # Copy to current working directory
+                dest_slurm = os.path.join(os.getcwd(), slurm_name)
+                with open(str(src_slurm), "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(dest_slurm, "w", encoding="utf-8") as f:
+                    f.write(content)
 
-        # Process each lambda directory
-        for lam_dir in sorted(lambda_dirs):
-            self._log_info(f"Processing lambda directory: {lam_dir}")
+                self._log_success(f"Copied {slurm_name} to current working directory")
 
-            # Extract lambda value and find index
-            if lam_dir == ".":
-                lam_value = "0.00"  # Default for current directory
-                lambda_index = 0
-            else:
-                lam_value = lam_dir.replace("lambda_", "")
-                try:
-                    lambda_index = vdw_lambdas.index(lam_value)
-                except ValueError:
-                    self._log_warning(f"Lambda value {lam_value} not found in vdw_lambdas array!")
-                    lambda_index = lam_value  # fallback to value
-
-            # Copy and patch MDP files for this lambda
-            self._copy_fep_mdp_files(lam_dir, fep_mdp_templates, lambda_index)
-
-            # Copy SLURM scripts (only for CPU currently, as per original logic)
-            if hardware == "cpu":
-                self._copy_fep_slurm_scripts(lam_dir, lam_value, lambda_index)
-            elif hardware == "gpu":
-                self._log_info(f"GPU FEP SLURM scripts not yet implemented for {lam_dir}")
+            except Exception as e:
+                self._log_error(f"Failed to copy FEP SLURM script {slurm_name}: {e}")
 
     def _copy_mdp_files(self, exclude_files=None, exclude_patterns=None):
         """
