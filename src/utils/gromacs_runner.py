@@ -63,7 +63,7 @@ class Builder(YagwipBase):
             return
 
         default_cmds = [
-            f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{default_box}",
+            f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro {default_box}",
             f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {default_water} -o {base}.solv.gro -p {topol_path}",
         ]
         if custom_command:
