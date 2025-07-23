@@ -837,14 +837,25 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     def _pdb2gmx_ligand(self):
         """
         Handle the lambda directory workflow for pdb2gmx. Checks for ligandX.pdb in the current directory.
-        If hybrid files are found, do nothing (skip processing).
+        If hybrid files are found, create topol.top for FEP workflow.
         """
-        # Check for hybrid files first (FEP case) - if found, do nothing
+        # Check for hybrid files first (FEP case)
         hybrid_gro_files = ["hybrid_stateA.gro", "hybrid_stateB.gro"]
+        hybrid_found = False
         for hybrid_file in hybrid_gro_files:
             if os.path.isfile(hybrid_file):
-                self._log_info(f"Found hybrid file {hybrid_file} - skipping pdb2gmx processing")
-                return
+                hybrid_found = True
+                self._log_info(f"Found hybrid file {hybrid_file} - processing FEP workflow")
+                break
+
+        if hybrid_found:
+            # For FEP case, the topol.top template already includes hybrid.itp
+            if os.path.exists("hybrid.itp") and os.path.exists("topol.top"):
+                self._log_info("FEP workflow detected - topol.top template already includes hybrid.itp")
+                self._log_success("topol.top is ready for FEP workflow")
+            else:
+                self._log_warning("hybrid.itp or topol.top not found for FEP workflow")
+            return
 
         # If no hybrid files, proceed with regular ligand processing
         ligand_pdb_files = [f"ligand{c}.pdb" for c in string.ascii_uppercase]
@@ -856,7 +867,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 base = fname
                 break
         if not found:
-            self._log_error(f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
+            self._log_error(
+                f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
             return
         # Find the first ligandX.acpype directory and copy the topology
         for c in string.ascii_uppercase:
@@ -869,8 +881,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         content = f.read()
 
                     # Remove the [ defaults ] block
-                    content = re.sub(r'\[ defaults \]\s*\n; nbfunc\s+comb-rule\s+gen-pairs\s+fudgeLJ fudgeQQ\s*\n\d+\s+\d+\s+\w+\s+[\d\.]+\s+[\d\.]+\s*\n',
-                                     '', content)
+                    content = re.sub(
+                        r'\[ defaults \]\s*\n; nbfunc\s+comb-rule\s+gen-pairs\s+fudgeLJ fudgeQQ\s*\n\d+\s+\d+\s+\w+\s+[\d\.]+\s+[\d\.]+\s*\n',
+                        '', content)
 
                     # Remove the entire POSRES_LIG block
                     content = re.sub(
