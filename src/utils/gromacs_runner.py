@@ -55,9 +55,16 @@ class Builder(YagwipBase):
             return
         default_box = " -c -d 1.0 -bt cubic"
         default_water = "spc216.gro"
+
+        # Use the topol.top file in the current working directory
+        topol_path = "topol.top"
+        if not os.path.exists(topol_path):
+            self._log_error(f"topol.top not found in current directory: {os.getcwd()}")
+            return
+
         default_cmds = [
             f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro{default_box}",
-            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {default_water} -o {base}.solv.gro -p topol.top",
+            f"{self.gmx_path} solvate -cp {base}.newbox.gro -cs {default_water} -o {base}.solv.gro -p {topol_path}",
         ]
         if custom_command:
             self._log_info("Using custom solvate command")
