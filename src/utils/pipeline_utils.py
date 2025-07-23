@@ -1,6 +1,8 @@
 # === Standard Library Imports ===
 import os
 import re
+import shutil
+from importlib.resources import files
 
 # === Third-Party Imports ===
 import numpy as np
@@ -284,7 +286,6 @@ class Editor(LoggingMixin):
         Returns:
             True if genions succeeds, False otherwise
         """
-        import re
         attempt = 0
         while attempt < max_retries:
             match = re.search(r"\[file topol\\.top, line (\d+)\]", error_message)
@@ -379,6 +380,179 @@ class Editor(LoggingMixin):
             f.writelines(new_lines)
 
         self._log(f"Included {ligand_itp_path} and {ligand_name} entry in {topol_top}")
+
+    def prepare_fep_directories(self):
+        """
+        Prepare FEP directories for SLURM FEP workflows.
+
+        This function:
+        1. Enters ligand_only/A_to_B and ligand_only/B_to_A directories
+        2. Modifies topol.top include paths to be one level deeper
+        3. Copies modified topol.top to each lambda directory
+        4. Copies and patches MDP files with lambda indices
+        5. Copies appropriate .solv.ions.gro files to each lambda directory
+        6. Repeats the same procedure for protein_complex directories
+        """
+
+        # Define lambda values and their indices
+        lambda_values = [
+            "0.00", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.45", "0.50",
+            "0.55", "0.60", "0.65", "0.70", "0.75", "0.80", "0.85", "0.90", "0.95", "1.00"
+        ]
+
+        # FEP MDP templates to copy
+        fep_mdp_templates = [
+            "em_fep.mdp",
+            "nvt_fep.mdp",
+            "npt_fep.mdp",
+            "production_fep.mdp"
+        ]
+
+        # Store original working directory
+        original_cwd = os.getcwd()
+
+        try:
+            # Process ligand_only directories
+            if os.path.isdir("ligand_only"):
+                self._log_info("Processing ligand_only FEP directories...")
+
+                # Process A_to_B directory
+                a_to_b_dir = os.path.join("ligand_only", "A_to_B")
+                if os.path.isdir(a_to_b_dir):
+                    self._log_info(f"Processing {a_to_b_dir}...")
+                    os.chdir(a_to_b_dir)
+                    self._prepare_fep_subdirectory("hybrid_stateA", lambda_values, fep_mdp_templates)
+                    os.chdir(original_cwd)
+
+                # Process B_to_A directory
+                b_to_a_dir = os.path.join("ligand_only", "B_to_A")
+                if os.path.isdir(b_to_a_dir):
+                    self._log_info(f"Processing {b_to_a_dir}...")
+                    os.chdir(b_to_a_dir)
+                    self._prepare_fep_subdirectory("hybrid_stateB", lambda_values, fep_mdp_templates)
+                    os.chdir(original_cwd)
+
+            # Process protein_complex directories
+            if os.path.isdir("protein_complex"):
+                self._log_info("Processing protein_complex FEP directories...")
+
+                # Process A_to_B directory
+                a_to_b_dir = os.path.join("protein_complex", "A_to_B")
+                if os.path.isdir(a_to_b_dir):
+                    self._log_info(f"Processing {a_to_b_dir}...")
+                    os.chdir(a_to_b_dir)
+                    self._prepare_fep_subdirectory("complex", lambda_values, fep_mdp_templates)
+                    os.chdir(original_cwd)
+
+                # Process B_to_A directory
+                b_to_a_dir = os.path.join("protein_complex", "B_to_A")
+                if os.path.isdir(b_to_a_dir):
+                    self._log_info(f"Processing {b_to_a_dir}...")
+                    os.chdir(b_to_a_dir)
+                    self._prepare_fep_subdirectory("complex", lambda_values, fep_mdp_templates)
+                    os.chdir(original_cwd)
+
+            self._log_success("FEP directory preparation completed successfully")
+
+        except Exception as e:
+            self._log_error(f"Error during FEP directory preparation: {e}")
+            os.chdir(original_cwd)
+            raise
+
+    def _prepare_fep_subdirectory(self, gro_base_name, lambda_values, fep_mdp_templates):
+        """
+        Prepare a single FEP subdirectory (A_to_B or B_to_A).
+
+        Args:
+            gro_base_name (str): Base name for .solv.ions.gro file (hybrid_stateA, hybrid_stateB, or complex)
+            lambda_values (list): List of lambda value strings
+            fep_mdp_templates (list): List of MDP template names
+        """
+        # Step 1: Modify topol.top include paths to be one level deeper
+        if os.path.exists("topol.top"):
+            self._log_info("Modifying topol.top include paths...")
+            self._modify_topol_paths("topol.top")
+
+        # Step 2: Copy modified topol.top to each lambda directory
+        for i, lambda_val in enumerate(lambda_values):
+            lambda_dir = f"lambda_{lambda_val}"
+            if os.path.isdir(lambda_dir):
+                self._log_info(f"Processing {lambda_dir} (index {i})...")
+
+                # Copy modified topol.top
+                if os.path.exists("topol.top"):
+                    shutil.copy2("topol.top", os.path.join(lambda_dir, "topol.top"))
+
+                # Step 3: Copy and patch MDP files
+                self._copy_and_patch_mdp_files(lambda_dir, fep_mdp_templates, i)
+
+                # Step 4: Copy appropriate .solv.ions.gro file
+                gro_file = f"{gro_base_name}.solv.ions.gro"
+                if os.path.exists(gro_file):
+                    shutil.copy2(gro_file, os.path.join(lambda_dir, gro_file))
+                    self._log_info(f"Copied {gro_file} to {lambda_dir}")
+                else:
+                    self._log_warning(f"{gro_file} not found for {lambda_dir}")
+
+    def _modify_topol_paths(self, topol_file):
+        """
+        Modify include paths in topol.top to be one level deeper.
+
+        Args:
+            topol_file (str): Path to topol.top file
+        """
+        with open(topol_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Replace include paths to be one level deeper
+        # From: #include "./amber14sb.ff/..."
+        # To:   #include "../amber14sb.ff/..."
+        modified_content = content.replace(
+            '#include "./amber14sb.ff/',
+            '#include "../amber14sb.ff/'
+        )
+
+        with open(topol_file, "w", encoding="utf-8") as f:
+            f.write(modified_content)
+
+        self._log_info(f"Modified include paths in {topol_file}")
+
+    def _copy_and_patch_mdp_files(self, lambda_dir, mdp_templates, lambda_index):
+        """
+        Copy and patch MDP files for a specific lambda directory.
+
+        Args:
+            lambda_dir (str): Lambda directory path
+            mdp_templates (list): List of MDP template names
+            lambda_index (int): Lambda index for substitution
+        """
+
+        template_dir = files("templates")
+
+        for mdp_name in mdp_templates:
+            src_path = template_dir / mdp_name
+
+            if not src_path.is_file():
+                self._log_warning(f"MDP template {mdp_name} not found in templates")
+                continue
+
+            try:
+                # Read template content
+                with open(str(src_path), "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Replace XXX with lambda index
+                content = content.replace("XXX", str(lambda_index))
+
+                # Write to lambda directory
+                dest_path = os.path.join(lambda_dir, mdp_name)
+                with open(dest_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                self._log_info(f"Wrote {mdp_name} to {lambda_dir} with lambda index {lambda_index}")
+
+            except Exception as e:
+                self._log_error(f"Failed to copy MDP file {mdp_name} to {lambda_dir}: {e}")
 
 
 class LigandUtils(LoggingMixin):
