@@ -76,8 +76,8 @@ class SlurmWriter(YagwipBase):
         """
         self._log_info("Processing MD simulation SLURM scripts")
 
-        # Copy MD-specific MDP files (exclude TREMD-specific files)
-        self._copy_mdp_files(exclude_files=["production_remd.mdp"])
+        # Copy MD-specific MDP files (exclude TREMD-specific files and FEP-specific files)
+        self._copy_mdp_files(exclude_files=["production_remd.mdp"], exclude_patterns=["*_fep.mdp"])
 
         # Determine initialization file name
         init_name = "complex" if ligand_pdb_path else "protein"
@@ -120,8 +120,8 @@ class SlurmWriter(YagwipBase):
         """
         self._log_info("Processing TREMD simulation SLURM scripts")
 
-        # Copy TREMD-specific MDP files (exclude regular production files)
-        self._copy_mdp_files(exclude_files=["production.mdp"])
+        # Copy TREMD-specific MDP files (exclude regular production files and FEP-specific files)
+        self._copy_mdp_files(exclude_files=["production.mdp"], exclude_patterns=["*_fep.mdp"])
 
         # Copy and customize SLURM scripts
         if hardware == "cpu":
@@ -210,26 +210,50 @@ class SlurmWriter(YagwipBase):
             elif hardware == "gpu":
                 self._log_info(f"GPU FEP SLURM scripts not yet implemented for {lam_dir}")
 
-    def _copy_mdp_files(self, exclude_files=None):
+    def _copy_mdp_files(self, exclude_files=None, exclude_patterns=None):
         """
-        Copy MDP files from templates, excluding specified files.
+        Copy MDP files from templates, excluding specified files and patterns.
 
         Args:
             exclude_files (list): List of MDP files to exclude from copying
+            exclude_patterns (list): List of glob patterns to exclude from copying
         """
         if exclude_files is None:
             exclude_files = []
+        if exclude_patterns is None:
+            exclude_patterns = []
 
         copied_count = 0
         for f in self.template_dir.iterdir():
-            if f.name.endswith(".mdp") and f.name not in exclude_files:
-                try:
-                    shutil.copy(str(f), os.getcwd())
-                    copied_count += 1
-                except Exception as e:
-                    self._log_error(f"Failed to copy {f.name}: {e}")
+            if not f.name.endswith(".mdp"):
+                continue
 
-        self._log_success(f"Copied {copied_count} MDP files (excluded: {exclude_files})")
+            # Check if file should be excluded by name
+            if f.name in exclude_files:
+                continue
+
+            # Check if file should be excluded by pattern
+            excluded_by_pattern = False
+            for pattern in exclude_patterns:
+                if pattern.startswith("*") and pattern.endswith(".mdp"):
+                    suffix = pattern[1:]  # Remove the "*" prefix
+                    if f.name.endswith(suffix):
+                        excluded_by_pattern = True
+                        break
+                elif pattern == f.name:
+                    excluded_by_pattern = True
+                    break
+
+            if excluded_by_pattern:
+                continue
+
+            try:
+                shutil.copy(str(f), os.getcwd())
+                copied_count += 1
+            except Exception as e:
+                self._log_error(f"Failed to copy {f.name}: {e}")
+
+        self._log_success(f"Copied {copied_count} MDP files (excluded: {exclude_files}, patterns: {exclude_patterns})")
 
     def _copy_and_customize_slurm_script(self, template_name, output_name, basename, init_name):
         """
