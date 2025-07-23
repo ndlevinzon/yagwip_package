@@ -509,7 +509,11 @@ class Editor(LoggingMixin):
         # To:   #include "../amber14sb.ff/..."
         modified_content = content.replace(
             '#include "./amber14sb.ff/',
-            '#include "../amber14sb.ff/'
+            '#include "/../amber14sb.ff/'
+        )
+        modified_content = content.replace(
+            '#include "./hybrid.itp',
+            '#include "/../hybrid.itp'
         )
 
         with open(topol_file, "w", encoding="utf-8") as f:
