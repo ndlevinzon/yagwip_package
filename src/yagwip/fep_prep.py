@@ -1743,7 +1743,7 @@ def main():
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
 
 
-def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=0.2):
+def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=2):
     """
     Optimize MCS by ensuring all atoms are within max_distance of each other.
     Remove atoms that are too far from other MCS atoms.
