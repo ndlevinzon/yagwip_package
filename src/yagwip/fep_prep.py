@@ -1419,7 +1419,90 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
 
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
-    """Write hybrid PDB file for specified state with intelligent dummy placement."""
+    """Write hybrid PDB file for specified state using PMX method."""
+    with open(out_file, 'w') as f:
+        f.write("REMARK Hybrid structure for FEP (PMX Method)\n")
+        f.write(f"REMARK State: {state}\n")
+        f.write("REMARK MCS atoms use state coordinates, dummy atoms use opposite state coordinates\n")
+
+        # Generate coordinates using PMX method
+        hybrid_coords = generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state)
+
+        for atom in hybrid_atoms:
+            atom_idx = atom['index']
+            if atom_idx in hybrid_coords:
+                x, y, z = hybrid_coords[atom_idx]
+                atom_name = atom['name'] if atom['mapped'] else 'DUM'
+                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+            else:
+                # Fallback to centroid if placement failed
+                x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+                atom_name = 'DUM'
+                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+
+        f.write("END\n")
+
+
+def generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state):
+    """
+    Generate hybrid coordinates using PMX method.
+
+    PMX Method:
+    - MCS atoms: Use coordinates from the current state
+    - Dummy atoms: Use coordinates from the opposite state (where they exist)
+    - Both hybrids have identical atom indices and connectivity
+    - Only coordinates differ between states
+
+    Args:
+        hybrid_atoms: List of hybrid atom dictionaries
+        coordsA: Coordinates for ligand A
+        coordsB_aligned: Aligned coordinates for ligand B
+        mapping: Atom mapping dictionary
+        state: 'A' or 'B'
+
+    Returns:
+        Dictionary mapping atom index to (x, y, z) coordinates
+    """
+    hybrid_coords = {}
+
+    # Identify MCS atoms (mapped atoms) and dummy atoms
+    mcs_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
+    dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+
+    # Step 1: Position MCS atoms using current state coordinates
+    for atom in mcs_atoms:
+        if state == 'A' and atom['origA_idx'] in coordsA:
+            # State A: MCS atoms use ligand A coordinates
+            hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
+        elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+            # State B: MCS atoms use ligand B coordinates
+            hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
+        else:
+            # Fallback to centroid
+            hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+
+    # Step 2: Position dummy atoms using opposite state coordinates
+    for atom in dummy_atoms:
+        if state == 'A':
+            # State A: Dummy atoms use ligand B coordinates (opposite state)
+            if atom['origB_idx'] in coordsB_aligned:
+                hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
+            else:
+                # Fallback: place near MCS centroid
+                hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+        else:  # state == 'B'
+            # State B: Dummy atoms use ligand A coordinates (opposite state)
+            if atom['origA_idx'] in coordsA:
+                hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
+            else:
+                # Fallback: place near MCS centroid
+                hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+
+    return hybrid_coords
+
+
+def write_hybrid_gro(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
+    """Write hybrid GRO file for specified state with intelligent dummy placement."""
     with open(out_file, 'w') as f:
         f.write("REMARK Hybrid structure for FEP\n")
         f.write(f"REMARK State: {state}\n")
@@ -1433,12 +1516,12 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
             if atom_idx in hybrid_coords:
                 x, y, z = hybrid_coords[atom_idx]
                 atom_name = atom['name'] if atom['mapped'] else 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+                f.write(f"{atom_name:<5s} {atom_idx:5d} {x:8.3f}{y:8.3f}{z:8.3f}\n")
             else:
                 # Fallback to centroid if placement failed
                 x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
                 atom_name = 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+                f.write(f"{atom_name:<5s} {atom_idx:5d} {x:8.3f}{y:8.3f}{z:8.3f}\n")
 
         f.write("END\n")
 
