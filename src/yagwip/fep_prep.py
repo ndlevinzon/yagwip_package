@@ -1217,21 +1217,25 @@ def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, lig
             }
 
             if dihedral_exists_in_B and dihedralB_params is not None:
-                # Dihedral exists in both A and B
+                # Dihedral exists in both A and B - use consistent multiplicity
+                mult_A = dihedralA.get('mult', 3)
+                mult_B = dihedralB_params.get('mult', 3)
+
+                # Use the higher multiplicity to ensure proper sampling
+                consistent_mult = max(mult_A, mult_B)
+
                 hybrid_dihedral['phiA'] = dihedralA.get('phi', 180.0)
                 hybrid_dihedral['fcA'] = dihedralA.get('fc', 2.0)
-                hybrid_dihedral['multA'] = dihedralA.get('mult', 3)
+                hybrid_dihedral['mult'] = consistent_mult  # Single multiplicity for both states
                 hybrid_dihedral['phiB'] = dihedralB_params.get('phi', 180.0)
                 hybrid_dihedral['fcB'] = dihedralB_params.get('fc', 2.0)
-                hybrid_dihedral['multB'] = dihedralB_params.get('mult', 3)
             else:
                 # Dihedral exists only in A
                 hybrid_dihedral['phiA'] = dihedralA.get('phi', 180.0)
                 hybrid_dihedral['fcA'] = dihedralA.get('fc', 2.0)
-                hybrid_dihedral['multA'] = dihedralA.get('mult', 3)
+                hybrid_dihedral['mult'] = dihedralA.get('mult', 3)  # Single multiplicity
                 hybrid_dihedral['phiB'] = 180.0  # Dummy value
                 hybrid_dihedral['fcB'] = 0.0  # Zero force
-                hybrid_dihedral['multB'] = 2  # Dummy multiplicity
 
             hybrid_dihedrals.append(hybrid_dihedral)
 
@@ -1274,10 +1278,9 @@ def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, lig
                     'funct': dihedralB['funct'],
                     'phiA': 180.0,  # Dummy value
                     'fcA': 0.0,  # Zero force
-                    'multA': 2,  # Dummy multiplicity
+                    'mult': dihedralB.get('mult', 3),  # Single multiplicity
                     'phiB': dihedralB.get('phi', 180.0),
-                    'fcB': dihedralB.get('fc', 2.0),
-                    'multB': dihedralB.get('mult', 3)
+                    'fcB': dihedralB.get('fc', 2.0)
                 }
                 hybrid_dihedrals.append(hybrid_dihedral)
 
@@ -1326,10 +1329,9 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
                         'funct': 1,
                         'phiA': 180.0,  # Normal dihedral in state A
                         'fcA': 2.0,
-                        'multA': 3,
+                        'mult': 3,  # Consistent multiplicity
                         'phiB': 180.0,  # Dummy dihedral in state B
-                        'fcB': 0.0,
-                        'multB': 2
+                        'fcB': 0.0
                     }
                 else:
                     # This is a unique B atom (dummy in state A)
@@ -1341,10 +1343,9 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
                         'funct': 1,
                         'phiA': 180.0,  # Dummy dihedral in state A
                         'fcA': 0.0,
-                        'multA': 2,
+                        'mult': 3,  # Consistent multiplicity
                         'phiB': 180.0,  # Normal dihedral in state B
-                        'fcB': 2.0,
-                        'multB': 3
+                        'fcB': 2.0
                     }
 
                 existing_dihedrals.append(new_dihedral)
@@ -1397,12 +1398,12 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
         # Add dihedral section with dual-state parameters
         if hybrid_dihedrals:
             f.write("[ dihedrals ]\n")
-            f.write("; ai    aj    ak    al funct  phiA  fcA  multA  phiB  fcB  multB\n")
+            f.write("; ai    aj    ak    al funct  phiA  fcA  mult   phiB  fcB\n")
             for dih in hybrid_dihedrals:
-                if 'phiA' in dih and 'fcA' in dih and 'multA' in dih and 'phiB' in dih and 'fcB' in dih and 'multB' in dih:
+                if 'phiA' in dih and 'fcA' in dih and 'mult' in dih and 'phiB' in dih and 'fcB' in dih:
                     f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d} "
-                            f"{dih['phiA']:6.1f} {dih['fcA']:5.1f} {dih['multA']:5d} "
-                            f"{dih['phiB']:6.1f} {dih['fcB']:5.1f} {dih['multB']:5d}\n")
+                            f"{dih['phiA']:6.1f} {dih['fcA']:5.1f} {dih['mult']:5d} "
+                            f"{dih['phiB']:6.1f} {dih['fcB']:5.1f}\n")
                 else:
                     f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
             f.write("\n")
