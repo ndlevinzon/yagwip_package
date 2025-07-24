@@ -632,6 +632,12 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     atomsA = parse_itp_atoms(ligA_itp)
     atomsB = parse_itp_atoms(ligB_itp)
 
+    # Parse exclusions and pairs from ITP files
+    exclusionsA = parse_itp_exclusions(ligA_itp)
+    exclusionsB = parse_itp_exclusions(ligB_itp)
+    pairsA = parse_itp_pairs(ligA_itp)
+    pairsB = parse_itp_pairs(ligB_itp)
+
     # Create hybrid atoms
     hybrid_atoms = []
     atom_counter = 1
@@ -705,8 +711,13 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     # Create hybrid dihedrals
     hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
+    # Filter exclusions and pairs based on best practices
+    hybrid_exclusions = filter_exclusions_for_hybrid(exclusionsA, exclusionsB, hybrid_atoms, coordsA, coordsB_aligned)
+    hybrid_pairs = filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_aligned)
+
     # Write hybrid topology
-    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
+    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_exclusions,
+                     hybrid_pairs)
 
     # Write hybrid PDB files for both states
     write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A')
@@ -716,6 +727,8 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     print(f"  - {len([a for a in hybrid_atoms if a['mapped']])} mapped atoms")
     print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origA_idx']])} unique A atoms")
     print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origB_idx']])} unique B atoms")
+    print(f"  - {len(hybrid_exclusions)} filtered exclusions")
+    print(f"  - {len(hybrid_pairs)} filtered pairs")
 
 
 def parse_itp_atoms(itp_file):
@@ -1353,7 +1366,8 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
     return existing_dihedrals
 
 
-def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
+def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_exclusions,
+                     hybrid_pairs):
     """Write hybrid topology file with dual-state parameters."""
     with open(out_file, 'w') as f:
         f.write("; Hybrid topology for FEP\n")
@@ -1417,6 +1431,25 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
                 f.write(f"{atom['index']:4d}     1   1000    1000    1000\n")
             f.write("\n")
 
+        # Add exclusions section
+        if hybrid_exclusions:
+            f.write("[ exclusions ]\n")
+            f.write("; ai    aj\n")
+            for excl in hybrid_exclusions:
+                f.write(f"{excl['ai']:5d} {excl['aj']:5d}\n")
+            f.write("\n")
+
+        # Add pairs section
+        if hybrid_pairs:
+            f.write("[ pairs ]\n")
+            f.write("; ai    aj funct  param\n")
+            for pair in hybrid_pairs:
+                if 'funct' in pair and 'param' in pair:
+                    f.write(f"{pair['ai']:5d} {pair['aj']:5d} {pair['funct']:5d} {pair['param']:8.3f}\n")
+                else:
+                    f.write(f"{pair['ai']:5d} {pair['aj']:5d} {pair['funct']:5d}\n")
+            f.write("\n")
+
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
     """Write hybrid PDB file for specified state."""
@@ -1458,6 +1491,258 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
             f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
 
         f.write("END\n")
+
+
+def parse_itp_exclusions(itp_file):
+    """Parse exclusion section from ITP file."""
+    exclusions = []
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_exclusions = False
+    for line in lines:
+        if line.strip() == '[ exclusions ]':
+            in_exclusions = True
+            continue
+        elif in_exclusions and line.strip().startswith('['):
+            break
+        elif in_exclusions and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 2:
+                exclusion = {
+                    'ai': int(parts[0]),
+                    'aj': int(parts[1])
+                }
+                exclusions.append(exclusion)
+
+    return exclusions
+
+
+def parse_itp_pairs(itp_file):
+    """Parse pairs section from ITP file."""
+    pairs = []
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_pairs = False
+    for line in lines:
+        if line.strip() == '[ pairs ]':
+            in_pairs = True
+            continue
+        elif in_pairs and line.strip().startswith('['):
+            break
+        elif in_pairs and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 2:
+                pair = {
+                    'ai': int(parts[0]),
+                    'aj': int(parts[1])
+                }
+                # Add pair parameters if present
+                if len(parts) >= 4:
+                    pair['funct'] = int(parts[2])
+                    pair['param'] = float(parts[3])
+                pairs.append(pair)
+
+    return pairs
+
+
+def filter_exclusions_for_hybrid(exclusionsA, exclusionsB, hybrid_atoms, coordsA, coordsB_aligned, rlist=1.1):
+    """
+    Filter exclusions based on hybrid topology best practices.
+
+    Rules:
+    1. Only keep exclusions for atoms that exist in both states
+    2. Filter by distance (within rlist) in both lambda states
+    3. Exclude dummy atoms from exclusions
+    """
+    import math
+
+    def calculate_distance(coord1, coord2):
+        """Calculate Euclidean distance between two 3D coordinates."""
+        dx = coord1[0] - coord2[0]
+        dy = coord1[1] - coord2[1]
+        dz = coord1[2] - coord2[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    # Create mapping from original atom indices to hybrid indices
+    orig_to_hybrid_A = {}
+    orig_to_hybrid_B = {}
+
+    for atom in hybrid_atoms:
+        if atom['origA_idx'] is not None:
+            orig_to_hybrid_A[atom['origA_idx']] = atom['index']
+        if atom['origB_idx'] is not None:
+            orig_to_hybrid_B[atom['origB_idx']] = atom['index']
+
+    filtered_exclusions = []
+
+    # Process exclusions from ligand A
+    for excl in exclusionsA:
+        ai_A, aj_A = excl['ai'], excl['aj']
+
+        # Check if both atoms exist in hybrid topology
+        if ai_A in orig_to_hybrid_A and aj_A in orig_to_hybrid_A:
+            ai_hybrid = orig_to_hybrid_A[ai_A]
+            aj_hybrid = orig_to_hybrid_A[aj_A]
+
+            # Check if both atoms are mapped (not dummy)
+            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
+            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
+
+            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
+                # Check distance in both states
+                if (ai_A in coordsA and aj_A in coordsA and
+                        ai_A in coordsB_aligned and aj_A in coordsB_aligned):
+
+                    dist_A = calculate_distance(coordsA[ai_A], coordsA[aj_A])
+                    dist_B = calculate_distance(coordsB_aligned[ai_A], coordsB_aligned[aj_A])
+
+                    # Only keep if close in both states
+                    if dist_A < rlist and dist_B < rlist:
+                        filtered_exclusions.append({
+                            'ai': ai_hybrid,
+                            'aj': aj_hybrid
+                        })
+
+    # Process exclusions from ligand B (avoid duplicates)
+    for excl in exclusionsB:
+        ai_B, aj_B = excl['ai'], excl['aj']
+
+        # Check if both atoms exist in hybrid topology
+        if ai_B in orig_to_hybrid_B and aj_B in orig_to_hybrid_B:
+            ai_hybrid = orig_to_hybrid_B[ai_B]
+            aj_hybrid = orig_to_hybrid_B[aj_B]
+
+            # Check if both atoms are mapped (not dummy)
+            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
+            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
+
+            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
+                # Check if this exclusion was already added from ligand A
+                already_exists = any(
+                    (e['ai'] == ai_hybrid and e['aj'] == aj_hybrid) or
+                    (e['ai'] == aj_hybrid and e['aj'] == ai_hybrid)
+                    for e in filtered_exclusions
+                )
+
+                if not already_exists:
+                    # Check distance in both states
+                    if (ai_B in coordsA and aj_B in coordsA and
+                            ai_B in coordsB_aligned and aj_B in coordsB_aligned):
+
+                        dist_A = calculate_distance(coordsA[ai_B], coordsA[aj_B])
+                        dist_B = calculate_distance(coordsB_aligned[ai_B], coordsB_aligned[aj_B])
+
+                        # Only keep if close in both states
+                        if dist_A < rlist and dist_B < rlist:
+                            filtered_exclusions.append({
+                                'ai': ai_hybrid,
+                                'aj': aj_hybrid
+                            })
+
+    return filtered_exclusions
+
+
+def filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_aligned, rlist=1.1):
+    """
+    Filter pairs based on hybrid topology best practices.
+
+    Rules:
+    1. Only keep pairs for atoms that exist in the relevant state
+    2. Filter by distance (within rlist)
+    3. Exclude dummy atoms from pairs
+    """
+    import math
+
+    def calculate_distance(coord1, coord2):
+        """Calculate Euclidean distance between two 3D coordinates."""
+        dx = coord1[0] - coord2[0]
+        dy = coord1[1] - coord2[1]
+        dz = coord1[2] - coord2[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    # Create mapping from original atom indices to hybrid indices
+    orig_to_hybrid_A = {}
+    orig_to_hybrid_B = {}
+
+    for atom in hybrid_atoms:
+        if atom['origA_idx'] is not None:
+            orig_to_hybrid_A[atom['origA_idx']] = atom['index']
+        if atom['origB_idx'] is not None:
+            orig_to_hybrid_B[atom['origB_idx']] = atom['index']
+
+    filtered_pairs = []
+
+    # Process pairs from ligand A
+    for pair in pairsA:
+        ai_A, aj_A = pair['ai'], pair['aj']
+
+        # Check if both atoms exist in hybrid topology
+        if ai_A in orig_to_hybrid_A and aj_A in orig_to_hybrid_A:
+            ai_hybrid = orig_to_hybrid_A[ai_A]
+            aj_hybrid = orig_to_hybrid_A[aj_A]
+
+            # Check if both atoms are mapped (not dummy)
+            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
+            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
+
+            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
+                # Check distance in state A
+                if ai_A in coordsA and aj_A in coordsA:
+                    dist_A = calculate_distance(coordsA[ai_A], coordsA[aj_A])
+
+                    # Only keep if close in state A
+                    if dist_A < rlist:
+                        filtered_pair = {
+                            'ai': ai_hybrid,
+                            'aj': aj_hybrid
+                        }
+                        if 'funct' in pair:
+                            filtered_pair['funct'] = pair['funct']
+                        if 'param' in pair:
+                            filtered_pair['param'] = pair['param']
+                        filtered_pairs.append(filtered_pair)
+
+    # Process pairs from ligand B (avoid duplicates)
+    for pair in pairsB:
+        ai_B, aj_B = pair['ai'], pair['aj']
+
+        # Check if both atoms exist in hybrid topology
+        if ai_B in orig_to_hybrid_B and aj_B in orig_to_hybrid_B:
+            ai_hybrid = orig_to_hybrid_B[ai_B]
+            aj_hybrid = orig_to_hybrid_B[aj_B]
+
+            # Check if both atoms are mapped (not dummy)
+            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
+            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
+
+            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
+                # Check if this pair was already added from ligand A
+                already_exists = any(
+                    (p['ai'] == ai_hybrid and p['aj'] == aj_hybrid) or
+                    (p['ai'] == aj_hybrid and p['aj'] == ai_hybrid)
+                    for p in filtered_pairs
+                )
+
+                if not already_exists:
+                    # Check distance in state B
+                    if ai_B in coordsB_aligned and aj_B in coordsB_aligned:
+                        dist_B = calculate_distance(coordsB_aligned[ai_B], coordsB_aligned[aj_B])
+
+                        # Only keep if close in state B
+                        if dist_B < rlist:
+                            filtered_pair = {
+                                'ai': ai_hybrid,
+                                'aj': aj_hybrid
+                            }
+                            if 'funct' in pair:
+                                filtered_pair['funct'] = pair['funct']
+                            if 'param' in pair:
+                                filtered_pair['param'] = pair['param']
+                            filtered_pairs.append(filtered_pair)
+
+    return filtered_pairs
 
 
 # --- Main script ---
