@@ -477,14 +477,14 @@ class Editor(LoggingMixin):
         for i, lambda_val in enumerate(lambda_values):
             lambda_dir = f"lambda_{lambda_val}"
             if os.path.isdir(lambda_dir):
-                self._log_info(f"Processing {lambda_dir} (index {i})...")
+                self._log_info(f"Processing {lambda_dir} (lambda value {lambda_val})...")
 
                 # Copy modified topol.top
                 if os.path.exists("topol.top"):
                     shutil.copy2("topol.top", os.path.join(lambda_dir, "topol.top"))
 
                 # Step 3: Copy and patch MDP files
-                self._copy_and_patch_mdp_files(lambda_dir, fep_mdp_templates, i)
+                self._copy_and_patch_mdp_files(lambda_dir, fep_mdp_templates, lambda_val)
 
                 # Step 4: Copy appropriate .solv.ions.gro file
                 gro_file = f"{gro_base_name}.solv.ions.gro"
@@ -521,14 +521,14 @@ class Editor(LoggingMixin):
 
         self._log_info(f"Modified include paths in {topol_file}")
 
-    def _copy_and_patch_mdp_files(self, lambda_dir, mdp_templates, lambda_index):
+    def _copy_and_patch_mdp_files(self, lambda_dir, mdp_templates, lambda_value):
         """
         Copy and patch MDP files for a specific lambda directory.
 
         Args:
             lambda_dir (str): Lambda directory path
             mdp_templates (list): List of MDP template names
-            lambda_index (int): Lambda index for substitution
+            lambda_value (str): Lambda value string (e.g., "0.00", "0.05", etc.)
         """
 
         template_dir = files("templates")
@@ -545,15 +545,15 @@ class Editor(LoggingMixin):
                 with open(str(src_path), "r", encoding="utf-8") as f:
                     content = f.read()
 
-                # Replace XXX with lambda index
-                content = content.replace("XXX", str(lambda_index))
+                # Replace XXX with lambda value
+                content = content.replace("XXX", lambda_value)
 
                 # Write to lambda directory
                 dest_path = os.path.join(lambda_dir, mdp_name)
                 with open(dest_path, "w", encoding="utf-8") as f:
                     f.write(content)
 
-                self._log_info(f"Wrote {mdp_name} to {lambda_dir} with lambda index {lambda_index}")
+                self._log_info(f"Wrote {mdp_name} to {lambda_dir} with lambda value {lambda_value}")
 
             except Exception as e:
                 self._log_error(f"Failed to copy MDP file {mdp_name} to {lambda_dir}: {e}")
