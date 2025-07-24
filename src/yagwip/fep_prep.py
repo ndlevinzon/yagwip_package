@@ -1534,15 +1534,24 @@ def parse_itp_pairs(itp_file):
         elif in_pairs and line.strip() and not line.strip().startswith(';'):
             parts = line.split()
             if len(parts) >= 2:
-                pair = {
-                    'ai': int(parts[0]),
-                    'aj': int(parts[1])
-                }
-                # Add pair parameters if present
-                if len(parts) >= 4:
-                    pair['funct'] = int(parts[2])
-                    pair['param'] = float(parts[3])
-                pairs.append(pair)
+                # Check if the line contains valid numeric data
+                try:
+                    pair = {
+                        'ai': int(parts[0]),
+                        'aj': int(parts[1])
+                    }
+                    # Add pair parameters if present and valid
+                    if len(parts) >= 4:
+                        try:
+                            pair['funct'] = int(parts[2])
+                            pair['param'] = float(parts[3])
+                        except (ValueError, IndexError):
+                            # If parameters can't be parsed, skip them
+                            pass
+                    pairs.append(pair)
+                except (ValueError, IndexError):
+                    # Skip lines that can't be parsed as valid pairs
+                    continue
 
     return pairs
 
