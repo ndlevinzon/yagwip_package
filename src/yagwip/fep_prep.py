@@ -1419,181 +1419,45 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
 
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
-    """
-    Write hybrid PDB file for specified state using simplified placement.
-
-    Simplified strategy:
-    - MCS atoms: Use original coordinates
-    - Dummy atoms: Place within 1 nm of closest MCS atom
-
-    Args:
-        out_file: Output PDB file path
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A (original)
-        coordsB_aligned: Aligned coordinates for ligand B (after Kabsch alignment)
-        mapping: Atom mapping dictionary
-        state: 'A' or 'B' to determine which state to write
-    """
+    """Write hybrid PDB file for specified state."""
     with open(out_file, 'w') as f:
-        f.write("REMARK Hybrid structure for FEP (Simplified Placement)\n")
-        f.write(f"REMARK State: {state}\n")
-        f.write(f"REMARK Dummy atoms placed within 1 nm of closest MCS atom\n")
+        f.write("REMARK Hybrid structure for FEP\n")
 
-        # Generate simplified coordinates
-        hybrid_coords = generate_simplified_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state)
+        # Calculate centroid of MCS atoms for better dummy placement
+        mcs_coords = []
+        for atom in hybrid_atoms:
+            if atom['mapped']:
+                if state == 'A' and atom['origA_idx'] in coordsA:
+                    mcs_coords.append(coordsA[atom['origA_idx']])
+                elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+                    mcs_coords.append(coordsB_aligned[atom['origB_idx']])
+
+        if mcs_coords:
+            centroid = tuple(sum(c[i] for c in mcs_coords) / len(mcs_coords) for i in range(3))
+        else:
+            centroid = (0.0, 0.0, 0.0)
 
         for atom in hybrid_atoms:
-            atom_idx = atom['index']
-            if atom_idx in hybrid_coords:
-                x, y, z = hybrid_coords[atom_idx]
-                atom_name = atom['name'] if atom['mapped'] else 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
-            else:
-                # Fallback to centroid if placement failed
-                x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-                atom_name = 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+            if state == 'A':
+                if atom['origA_idx'] and atom['origA_idx'] in coordsA:
+                    x, y, z = coordsA[atom['origA_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique B atoms in state A, place near MCS centroid
+                    x, y, z = centroid
+                    atom_name = 'DUM'
+            else:  # state == 'B'
+                if atom['origB_idx'] and atom['origB_idx'] in coordsB_aligned:
+                    x, y, z = coordsB_aligned[atom['origB_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique A atoms in state B, place near MCS centroid
+                    x, y, z = centroid
+                    atom_name = 'DUM'
+
+            f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
 
         f.write("END\n")
-
-
-def generate_simplified_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, max_distance=1.0):
-    """
-    Generate simplified hybrid coordinates placing dummy atoms near closest MCS atom.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A
-        coordsB_aligned: Aligned coordinates for ligand B
-        mapping: Atom mapping dictionary
-        state: 'A' or 'B'
-        max_distance: Maximum distance for dummy atom placement (default 1.0 nm)
-
-    Returns:
-        Dictionary mapping atom index to (x, y, z) coordinates
-    """
-    import math
-    import random
-
-    # Initialize coordinates dictionary
-    hybrid_coords = {}
-
-    # Identify MCS atoms (mapped atoms)
-    mcs_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
-    dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
-
-    # Step 1: Position MCS atoms using original coordinates
-    for atom in mcs_atoms:
-        if state == 'A' and atom['origA_idx'] in coordsA:
-            hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
-        elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
-            hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
-        else:
-            # Fallback to centroid
-            hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-
-    # Step 2: Position dummy atoms near closest MCS atom
-    for atom in dummy_atoms:
-        # Find the closest MCS atom
-        closest_mcs_coord = find_closest_mcs_atom(atom['index'], hybrid_coords, mcs_atoms)
-
-        # Place dummy atom within max_distance of closest MCS atom
-        dummy_coord = place_dummy_near_mcs(closest_mcs_coord, max_distance)
-        hybrid_coords[atom['index']] = dummy_coord
-
-    return hybrid_coords
-
-
-def find_closest_mcs_atom(dummy_atom_idx, hybrid_coords, mcs_atoms):
-    """
-    Find the closest MCS atom to a given dummy atom.
-
-    Args:
-        dummy_atom_idx: Index of the dummy atom
-        hybrid_coords: Dictionary of existing coordinates
-        mcs_atoms: List of MCS atom dictionaries
-
-    Returns:
-        Coordinates of the closest MCS atom
-    """
-    if not mcs_atoms:
-        # Fallback to origin if no MCS atoms
-        return (0.0, 0.0, 0.0)
-
-    closest_coord = None
-    min_distance = float('inf')
-
-    for mcs_atom in mcs_atoms:
-        if mcs_atom['index'] in hybrid_coords:
-            mcs_coord = hybrid_coords[mcs_atom['index']]
-            # For simplicity, use the first MCS atom as reference
-            # In practice, you might want to use spatial coordinates
-            if closest_coord is None:
-                closest_coord = mcs_coord
-                break
-
-    return closest_coord
-
-
-def place_dummy_near_mcs(mcs_coord, max_distance):
-    """
-    Place a dummy atom within max_distance of the MCS atom.
-
-    Args:
-        mcs_coord: Coordinates of the MCS atom
-        max_distance: Maximum distance for placement
-
-    Returns:
-        Coordinates for the dummy atom
-    """
-    import math
-    import random
-
-    # Generate random direction
-    theta = random.uniform(0, 2 * math.pi)  # Azimuthal angle
-    phi = random.uniform(0, math.pi)  # Polar angle
-
-    # Generate random distance within max_distance
-    distance = random.uniform(0.5, max_distance)  # Keep some minimum distance
-
-    # Convert spherical coordinates to Cartesian
-    x = mcs_coord[0] + distance * math.sin(phi) * math.cos(theta)
-    y = mcs_coord[1] + distance * math.sin(phi) * math.sin(theta)
-    z = mcs_coord[2] + distance * math.cos(phi)
-
-    return (x, y, z)
-
-
-def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
-    """
-    Calculate centroid of mapped atoms for fallback positioning.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A
-        coordsB_aligned: Aligned coordinates for ligand B
-
-    Returns:
-        Tuple of (x, y, z) coordinates for centroid
-    """
-    mapped_coords = []
-
-    for atom in hybrid_atoms:
-        if atom['mapped']:
-            if atom['origA_idx'] in coordsA:
-                mapped_coords.append(coordsA[atom['origA_idx']])
-            elif atom['origB_idx'] in coordsB_aligned:
-                mapped_coords.append(coordsB_aligned[atom['origB_idx']])
-
-    if not mapped_coords:
-        return (0.0, 0.0, 0.0)
-
-    # Calculate centroid
-    centroid_x = sum(coord[0] for coord in mapped_coords) / len(mapped_coords)
-    centroid_y = sum(coord[1] for coord in mapped_coords) / len(mapped_coords)
-    centroid_z = sum(coord[2] for coord in mapped_coords) / len(mapped_coords)
-
-    return (centroid_x, centroid_y, centroid_z)
 
 
 # --- Main script ---
@@ -1609,37 +1473,16 @@ def main():
     parser.add_argument('--ligB_itp', required=True)
     parser.add_argument('--create_hybrid', action='store_true',
                         help='Create hybrid topology for FEP simulations')
-    parser.add_argument('--min_mcs_size', type=int, default=3,
-                        help='Minimum MCS size (default: 3)')
-    parser.add_argument('--target_mcs_size', type=int, default=10,
-                        help='Target MCS size - stop searching when found (default: 10)')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
 
     # 1. Find MCS and write atom_map.txt
-    print(f"Searching for MCS with target size {args.target_mcs_size}...")
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
     mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
-
-    if mcs_size < args.min_mcs_size or mapping is None:
-        raise RuntimeError(
-            f"Could not find sufficient MCS for alignment (need at least {args.min_mcs_size} atoms, found {mcs_size})")
-
-    print(f"MCS found: {mcs_size} atoms (target was {args.target_mcs_size})")
-
-    # Validate MCS quality and prune if necessary
-    is_valid, filtered_mapping, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size)
-    if not is_valid:
-        raise RuntimeError(f"MCS quality check failed: {reason}")
-
-    if len(filtered_mapping) < len(mapping):
-        print(f"MCS pruned: {reason}")
-        mapping = filtered_mapping  # Use filtered mapping
-    else:
-        print(f"MCS validation passed: {reason}")
-
+    if mcs_size < 3 or mapping is None:
+        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
 
@@ -1667,273 +1510,6 @@ def main():
 
     # 6. Organize files into subdirectories
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
-
-
-# Removed unused spatial validation functions - using simplified pruning approach instead
-
-
-def calculate_distance(coord1, coord2):
-    """
-    Calculate Euclidean distance between two 3D coordinates.
-
-    Args:
-        coord1: First coordinate tuple (x, y, z)
-        coord2: Second coordinate tuple (x, y, z)
-
-    Returns:
-        Distance in nanometers
-    """
-    import math
-    dx = coord1[0] - coord2[0]
-    dy = coord1[1] - coord2[1]
-    dz = coord1[2] - coord2[2]
-    return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-
-def validate_mcs_quality(mapping, gA, gB, min_mcs_size=3, coordsA=None, coordsB_aligned=None):
-    """
-    Validate the quality of the found MCS to ensure it forms a continuous structure.
-    Prune disconnected atoms until we get a valid MCS.
-
-    Args:
-        mapping: Atom mapping dictionary
-        gA: MolGraph for ligand A
-        gB: MolGraph for ligand B
-        min_mcs_size: Minimum required MCS size
-        coordsA: Coordinates for ligand A (for spatial validation)
-        coordsB_aligned: Aligned coordinates for ligand B (for spatial validation)
-
-    Returns:
-        Tuple of (is_valid, filtered_mapping, reason) where is_valid is boolean
-    """
-    if not mapping or len(mapping) < min_mcs_size:
-        return False, {}, f"MCS too small: {len(mapping) if mapping else 0} atoms (minimum {min_mcs_size})"
-
-    # Start with the full mapping and iteratively prune
-    current_mapping = mapping.copy()
-
-    while len(current_mapping) >= min_mcs_size:
-        # Extract MCS subgraphs
-        mcs_atoms_A = set(current_mapping.keys())
-        mcs_atoms_B = set(current_mapping.values())
-
-        # Create MCS subgraphs
-        mcs_gA = gA.subgraph(mcs_atoms_A)
-        mcs_gB = gB.subgraph(mcs_atoms_B)
-
-        # Check connectivity
-        if not is_graph_connected(mcs_gA):
-            # Remove the most isolated atom from ligand A
-            atom_to_remove = find_most_isolated_atom(mcs_gA)
-            if atom_to_remove:
-                current_mapping.pop(atom_to_remove, None)
-                continue
-            else:
-                return False, {}, "Cannot find isolated atom to remove in ligand A"
-
-        if not is_graph_connected(mcs_gB):
-            # Remove the most isolated atom from ligand B
-            atom_to_remove = find_most_isolated_atom(mcs_gB)
-            if atom_to_remove:
-                # Find the corresponding atom in ligand A
-                for a, b in list(current_mapping.items()):
-                    if b == atom_to_remove:
-                        current_mapping.pop(a, None)
-                        break
-                continue
-            else:
-                return False, {}, "Cannot find isolated atom to remove in ligand B"
-
-        # Check diameter constraints
-        diameter_A = calculate_graph_diameter(mcs_gA)
-        diameter_B = calculate_graph_diameter(mcs_gB)
-
-        if diameter_A > len(mcs_atoms_A) or diameter_B > len(mcs_atoms_B):
-            # Remove the atom with highest degree (most connected)
-            atom_to_remove = find_most_connected_atom(mcs_gA, mcs_gB)
-            if atom_to_remove:
-                current_mapping.pop(atom_to_remove, None)
-                continue
-            else:
-                return False, {}, "Cannot find atom to remove for diameter constraint"
-
-        # If we reach here, we have a valid MCS
-        reason = f"Valid MCS: {len(current_mapping)} atoms, diameter A={diameter_A}, B={diameter_B}"
-        return True, current_mapping, reason
-
-    return False, {}, f"Pruning reduced MCS below minimum size: {len(current_mapping)} < {min_mcs_size}"
-
-
-def find_most_isolated_atom(graph):
-    """
-    Find the most isolated atom in a graph (lowest degree).
-
-    Args:
-        graph: MolGraph object
-
-    Returns:
-        Atom index of the most isolated atom, or None if not found
-    """
-    if not graph.atoms:
-        return None
-
-    min_degree = float('inf')
-    most_isolated = None
-
-    for atom_idx, atom in graph.atoms.items():
-        if atom.degree < min_degree:
-            min_degree = atom.degree
-            most_isolated = atom_idx
-
-    return most_isolated
-
-
-def find_most_connected_atom(graph_A, graph_B):
-    """
-    Find the atom with highest total degree across both graphs.
-
-    Args:
-        graph_A: MolGraph for ligand A
-        graph_B: MolGraph for ligand B
-
-    Returns:
-        Atom index of the most connected atom, or None if not found
-    """
-    if not graph_A.atoms or not graph_B.atoms:
-        return None
-
-    max_total_degree = -1
-    most_connected = None
-
-    for atom_idx, atom_A in graph_A.atoms.items():
-        # Find corresponding atom in graph_B
-        atom_B = graph_B.atoms.get(atom_idx)
-        if atom_B:
-            total_degree = atom_A.degree + atom_B.degree
-            if total_degree > max_total_degree:
-                max_total_degree = total_degree
-                most_connected = atom_idx
-
-    return most_connected
-
-
-def calculate_graph_diameter(graph):
-    """
-    Calculate the diameter of a graph (longest shortest path between any two vertices).
-
-    Args:
-        graph: MolGraph object
-
-    Returns:
-        Diameter of the graph
-    """
-    if not graph.atoms:
-        return 0
-
-    max_diameter = 0
-
-    # For each pair of atoms, calculate shortest path length
-    atom_indices = list(graph.atoms.keys())
-    for i, start in enumerate(atom_indices):
-        for end in atom_indices[i + 1:]:
-            path_length = shortest_path_length(graph, start, end)
-            if path_length > max_diameter:
-                max_diameter = path_length
-
-    return max_diameter
-
-
-def shortest_path_length(graph, start, end):
-    """
-    Calculate shortest path length between two atoms using BFS.
-
-    Args:
-        graph: MolGraph object
-        start: Starting atom index
-        end: Ending atom index
-
-    Returns:
-        Length of shortest path, or float('inf') if no path exists
-    """
-    if start == end:
-        return 0
-
-    visited = set()
-    queue = [(start, 0)]  # (atom, distance)
-
-    while queue:
-        current, distance = queue.pop(0)
-        if current == end:
-            return distance
-
-        if current not in visited:
-            visited.add(current)
-            for neighbor in graph.atoms[current].neighbors:
-                if neighbor not in visited:
-                    queue.append((neighbor, distance + 1))
-
-    return float('inf')  # No path found
-
-
-def check_atom_distances_from_center(graph, max_distance_factor=3.0):
-    """
-    Check that no atoms are too far from the center of the MCS.
-
-    Args:
-        graph: MolGraph object
-        max_distance_factor: Maximum allowed distance as factor of graph diameter
-
-    Returns:
-        True if all atoms are reasonably close to center, False otherwise
-    """
-    if not graph.atoms:
-        return True
-
-    # Calculate center of mass (using atom indices as proxy for spatial position)
-    center = sum(graph.atoms.keys()) / len(graph.atoms)
-
-    # Calculate maximum distance from center
-    max_distance = max(abs(atom_idx - center) for atom_idx in graph.atoms.keys())
-
-    # Calculate graph diameter
-    diameter = calculate_graph_diameter(graph)
-
-    # If max distance is too large relative to diameter, it might indicate disconnected fragments
-    if diameter > 0 and max_distance > max_distance_factor * diameter:
-        return False
-
-    return True
-
-
-def is_graph_connected(graph):
-    """
-    Check if a graph is connected using BFS.
-
-    Args:
-        graph: MolGraph object
-
-    Returns:
-        True if graph is connected, False otherwise
-    """
-    if not graph.atoms:
-        return False
-
-    # Start BFS from the first atom
-    start_atom = next(iter(graph.atoms.keys()))
-    visited = set()
-    queue = [start_atom]
-
-    while queue:
-        current = queue.pop(0)
-        if current not in visited:
-            visited.add(current)
-            # Add all unvisited neighbors
-            for neighbor in graph.atoms[current].neighbors:
-                if neighbor not in visited:
-                    queue.append(neighbor)
-
-    # Check if all atoms were visited
-    return len(visited) == len(graph.atoms)
 
 
 if __name__ == '__main__':
