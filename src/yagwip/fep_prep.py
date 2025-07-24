@@ -1445,13 +1445,13 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
 
 def generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state):
     """
-    Generate hybrid coordinates using PMX method.
+    Generate hybrid coordinates using PMX method with proper clustering.
 
-    PMX Method:
+    PMX Method with Clustering:
     - MCS atoms: Use coordinates from the current state
     - Dummy atoms: Use coordinates from the opposite state (where they exist)
-    - Both hybrids have identical atom indices and connectivity
-    - Only coordinates differ between states
+    - All atoms must be within a reasonable distance (max 2.0 nm from MCS centroid)
+    - Fallback positioning uses intelligent clustering around MCS
 
     Args:
         hybrid_atoms: List of hybrid atom dictionaries
@@ -1470,35 +1470,140 @@ def generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapp
     dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
 
     # Step 1: Position MCS atoms using current state coordinates
+    mcs_coords_list = []
     for atom in mcs_atoms:
         if state == 'A' and atom['origA_idx'] in coordsA:
             # State A: MCS atoms use ligand A coordinates
-            hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
+            coord = coordsA[atom['origA_idx']]
+            hybrid_coords[atom['index']] = coord
+            mcs_coords_list.append(coord)
         elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
             # State B: MCS atoms use ligand B coordinates
-            hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
+            coord = coordsB_aligned[atom['origB_idx']]
+            hybrid_coords[atom['index']] = coord
+            mcs_coords_list.append(coord)
         else:
             # Fallback to centroid
-            hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+            coord = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+            hybrid_coords[atom['index']] = coord
+            mcs_coords_list.append(coord)
 
-    # Step 2: Position dummy atoms using opposite state coordinates
+    # Calculate MCS centroid for clustering
+    if mcs_coords_list:
+        mcs_centroid = calculate_centroid(mcs_coords_list)
+    else:
+        mcs_centroid = (0.0, 0.0, 0.0)
+
+    # Step 2: Position dummy atoms using opposite state coordinates with clustering
+    max_distance_from_mcs = 2.0  # Maximum distance from MCS centroid (2.0 nm)
+
     for atom in dummy_atoms:
         if state == 'A':
             # State A: Dummy atoms use ligand B coordinates (opposite state)
             if atom['origB_idx'] in coordsB_aligned:
-                hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
+                coord = coordsB_aligned[atom['origB_idx']]
+                # Check if coordinate is within reasonable distance
+                if calculate_distance(coord, mcs_centroid) <= max_distance_from_mcs:
+                    hybrid_coords[atom['index']] = coord
+                else:
+                    # Place near MCS centroid if too far
+                    hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
             else:
                 # Fallback: place near MCS centroid
-                hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+                hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
         else:  # state == 'B'
             # State B: Dummy atoms use ligand A coordinates (opposite state)
             if atom['origA_idx'] in coordsA:
-                hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
+                coord = coordsA[atom['origA_idx']]
+                # Check if coordinate is within reasonable distance
+                if calculate_distance(coord, mcs_centroid) <= max_distance_from_mcs:
+                    hybrid_coords[atom['index']] = coord
+                else:
+                    # Place near MCS centroid if too far
+                    hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
             else:
                 # Fallback: place near MCS centroid
-                hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+                hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
 
     return hybrid_coords
+
+
+def calculate_centroid(coords_list):
+    """
+    Calculate centroid of a list of coordinates.
+
+    Args:
+        coords_list: List of (x, y, z) coordinate tuples
+
+    Returns:
+        Tuple of (x, y, z) coordinates for centroid
+    """
+    if not coords_list:
+        return (0.0, 0.0, 0.0)
+
+    centroid_x = sum(coord[0] for coord in coords_list) / len(coords_list)
+    centroid_y = sum(coord[1] for coord in coords_list) / len(coords_list)
+    centroid_z = sum(coord[2] for coord in coords_list) / len(coords_list)
+
+    return (centroid_x, centroid_y, centroid_z)
+
+
+def place_near_centroid(centroid, existing_coords, min_distance=0.2, max_distance=1.0):
+    """
+    Place a new atom near the centroid while avoiding overlap with existing atoms.
+
+    Args:
+        centroid: Target centroid coordinates
+        existing_coords: List of existing atom coordinates
+        min_distance: Minimum distance from existing atoms
+        max_distance: Maximum distance from centroid
+
+    Returns:
+        Tuple of (x, y, z) coordinates for new atom
+    """
+    import math
+    import random
+
+    # Try multiple positions to find one that doesn't overlap
+    max_attempts = 50
+
+    for attempt in range(max_attempts):
+        # Generate random direction from centroid
+        theta = random.uniform(0, 2 * math.pi)  # Azimuthal angle
+        phi = random.uniform(0, math.pi)  # Polar angle
+
+        # Generate random distance within max_distance
+        distance = random.uniform(0.1, max_distance)
+
+        # Convert spherical coordinates to Cartesian
+        x = centroid[0] + distance * math.sin(phi) * math.cos(theta)
+        y = centroid[1] + distance * math.sin(phi) * math.sin(theta)
+        z = centroid[2] + distance * math.cos(phi)
+
+        candidate_coord = (x, y, z)
+
+        # Check if this position is far enough from existing atoms
+        too_close = False
+        for existing_coord in existing_coords:
+            dist = calculate_distance(candidate_coord, existing_coord)
+            if dist < min_distance:
+                too_close = True
+                break
+
+        if not too_close:
+            return candidate_coord
+
+    # If we couldn't find a non-overlapping position, place at a random position
+    # but with a smaller distance to avoid extreme positions
+    distance = random.uniform(0.1, max_distance * 0.7)
+    theta = random.uniform(0, 2 * math.pi)
+    phi = random.uniform(0, math.pi)
+
+    x = centroid[0] + distance * math.sin(phi) * math.cos(theta)
+    y = centroid[1] + distance * math.sin(phi) * math.sin(theta)
+    z = centroid[2] + distance * math.cos(phi)
+
+    return (x, y, z)
 
 
 def write_hybrid_gro(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
@@ -1748,15 +1853,7 @@ def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
             elif atom['origB_idx'] in coordsB_aligned:
                 mapped_coords.append(coordsB_aligned[atom['origB_idx']])
 
-    if not mapped_coords:
-        return (0.0, 0.0, 0.0)
-
-    # Calculate centroid
-    centroid_x = sum(coord[0] for coord in mapped_coords) / len(mapped_coords)
-    centroid_y = sum(coord[1] for coord in mapped_coords) / len(mapped_coords)
-    centroid_z = sum(coord[2] for coord in mapped_coords) / len(mapped_coords)
-
-    return (centroid_x, centroid_y, centroid_z)
+    return calculate_centroid(mapped_coords)
 
 
 # --- Main script ---
