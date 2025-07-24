@@ -706,7 +706,7 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
     # Write hybrid topology
-    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, coordsA, coordsB_aligned)
+    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
 
     # Write hybrid PDB files for both states
     write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A')
@@ -1353,137 +1353,8 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
     return existing_dihedrals
 
 
-def create_intelligent_exclusions(hybrid_atoms, coordsA, coordsB_aligned, rlist=1.1):
-    """
-    Create intelligent exclusions based on spatial proximity.
-
-    Only include exclusions for atom pairs that remain close (< rlist)
-    in both lambda states to prevent long-distance exclusion errors.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for state A
-        coordsB_aligned: Aligned coordinates for state B
-        rlist: Distance threshold (default 1.1 nm)
-
-    Returns:
-        List of exclusion dictionaries with 'ai' and 'aj' keys
-    """
-    import math
-
-    exclusions = []
-
-    # Create mapping from hybrid atom indices to coordinates
-    hybrid_coords_A = {}
-    hybrid_coords_B = {}
-
-    for atom in hybrid_atoms:
-        if atom['mapped']:
-            # For mapped atoms, use actual coordinates
-            if atom['origA_idx'] in coordsA:
-                hybrid_coords_A[atom['index']] = coordsA[atom['origA_idx']]
-            if atom['origB_idx'] in coordsB_aligned:
-                hybrid_coords_B[atom['index']] = coordsB_aligned[atom['origB_idx']]
-        else:
-            # For dummy atoms, use centroid of mapped atoms
-            if atom['origA_idx'] is not None:
-                # This is a unique A atom (dummy in state B)
-                hybrid_coords_A[atom['index']] = get_dummy_atom_position(atom, hybrid_atoms, coordsA, 'A')
-                hybrid_coords_B[atom['index']] = get_dummy_atom_position(atom, hybrid_atoms, coordsB_aligned, 'B')
-            else:
-                # This is a unique B atom (dummy in state A)
-                hybrid_coords_A[atom['index']] = get_dummy_atom_position(atom, hybrid_atoms, coordsA, 'A')
-                hybrid_coords_B[atom['index']] = get_dummy_atom_position(atom, hybrid_atoms, coordsB_aligned, 'B')
-
-    # Check all atom pairs for proximity
-    atom_indices = [atom['index'] for atom in hybrid_atoms]
-
-    for i, ai in enumerate(atom_indices):
-        for aj in atom_indices[i + 1:]:  # Avoid duplicates and self-pairs
-            # Calculate distance in both states
-            if ai in hybrid_coords_A and aj in hybrid_coords_A:
-                dist_A = calculate_distance(hybrid_coords_A[ai], hybrid_coords_A[aj])
-            else:
-                dist_A = float('inf')
-
-            if ai in hybrid_coords_B and aj in hybrid_coords_B:
-                dist_B = calculate_distance(hybrid_coords_B[ai], hybrid_coords_B[aj])
-            else:
-                dist_B = float('inf')
-
-            # Only include exclusion if atoms are close in BOTH states
-            if dist_A < rlist and dist_B < rlist:
-                exclusions.append({'ai': ai, 'aj': aj})
-
-    return exclusions
-
-
-def get_dummy_atom_position(dummy_atom, hybrid_atoms, coords, state):
-    """
-    Get position for dummy atom based on proximity to mapped atoms.
-
-    Args:
-        dummy_atom: The dummy atom dictionary
-        hybrid_atoms: List of all hybrid atoms
-        coords: Coordinate dictionary for the state
-        state: 'A' or 'B' to determine which coordinates to use
-
-    Returns:
-        Tuple of (x, y, z) coordinates
-    """
-    # Find mapped atoms to use as reference
-    mapped_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
-
-    if not mapped_atoms:
-        return (0.0, 0.0, 0.0)  # Default position if no mapped atoms
-
-    # Calculate centroid of mapped atoms
-    centroid_x = 0.0
-    centroid_y = 0.0
-    centroid_z = 0.0
-    count = 0
-
-    for atom in mapped_atoms:
-        if state == 'A' and atom['origA_idx'] in coords:
-            x, y, z = coords[atom['origA_idx']]
-            centroid_x += x
-            centroid_y += y
-            centroid_z += z
-            count += 1
-        elif state == 'B' and atom['origB_idx'] in coords:
-            x, y, z = coords[atom['origB_idx']]
-            centroid_x += x
-            centroid_y += y
-            centroid_z += z
-            count += 1
-
-    if count == 0:
-        return (0.0, 0.0, 0.0)
-
-    return (centroid_x / count, centroid_y / count, centroid_z / count)
-
-
-def calculate_distance(coord1, coord2):
-    """
-    Calculate Euclidean distance between two 3D coordinates.
-
-    Args:
-        coord1: Tuple of (x, y, z) coordinates
-        coord2: Tuple of (x, y, z) coordinates
-
-    Returns:
-        Distance in nanometers
-    """
-    import math
-    dx = coord1[0] - coord2[0]
-    dy = coord1[1] - coord2[1]
-    dz = coord1[2] - coord2[2]
-    return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-
-def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, coordsA=None,
-                     coordsB_aligned=None):
-    """Write hybrid topology file with dual-state parameters and intelligent exclusions."""
+def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
+    """Write hybrid topology file with dual-state parameters."""
     with open(out_file, 'w') as f:
         f.write("; Hybrid topology for FEP\n")
         f.write("[ moleculetype ]\n")
@@ -1536,16 +1407,6 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
                 else:
                     f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
             f.write("\n")
-
-        # Add intelligent exclusions based on spatial proximity
-        if coordsA is not None and coordsB_aligned is not None:
-            hybrid_exclusions = create_intelligent_exclusions(hybrid_atoms, coordsA, coordsB_aligned)
-            if hybrid_exclusions:
-                f.write("[ exclusions ]\n")
-                f.write("; ai    aj\n")
-                for exclusion in hybrid_exclusions:
-                    f.write(f"{exclusion['ai']:5d} {exclusion['aj']:5d}\n")
-                f.write("\n")
 
         # Add position restraints for dummy atoms
         dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
