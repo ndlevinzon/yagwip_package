@@ -1491,19 +1491,33 @@ def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_align
         elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
             original_coord = coordsB_aligned[atom['origB_idx']]
 
-        # Find the nearest non-dummy atom to the original position
-        nearest_coord, nearest_distance = find_nearest_non_dummy_atom_to_position(original_coord, hybrid_coords,
-                                                                                  mcs_atoms)
-
-        if nearest_distance <= max_distance:
-            # Dummy is already within acceptable distance, keep original position
-            hybrid_coords[atom['index']] = original_coord
+        # If this dummy doesn't exist in current state, place it near the ligand
+        if original_coord is None:
+            # Find the nearest non-dummy atom to place this dummy near
+            nearest_coord, nearest_distance = find_nearest_non_dummy_atom_to_position(None, hybrid_coords, mcs_atoms)
+            if nearest_coord is not None:
+                # Place dummy within max_distance of nearest non-dummy atom
+                dummy_coord = place_dummy_near_non_dummy(nearest_coord, placed_dummy_coords, max_distance,
+                                                         min_dummy_distance)
+                hybrid_coords[atom['index']] = dummy_coord
+                placed_dummy_coords.append(dummy_coord)
+            else:
+                # Fallback to centroid if no MCS atoms found
+                hybrid_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
         else:
-            # Place dummy within max_distance of nearest non-dummy atom
-            dummy_coord = place_dummy_near_non_dummy(nearest_coord, placed_dummy_coords, max_distance,
-                                                     min_dummy_distance)
-            hybrid_coords[atom['index']] = dummy_coord
-            placed_dummy_coords.append(dummy_coord)
+            # Find the nearest non-dummy atom to the original position
+            nearest_coord, nearest_distance = find_nearest_non_dummy_atom_to_position(original_coord, hybrid_coords,
+                                                                                      mcs_atoms)
+
+            if nearest_distance <= max_distance:
+                # Dummy is already within acceptable distance, keep original position
+                hybrid_coords[atom['index']] = original_coord
+            else:
+                # Place dummy within max_distance of nearest non-dummy atom
+                dummy_coord = place_dummy_near_non_dummy(nearest_coord, placed_dummy_coords, max_distance,
+                                                         min_dummy_distance)
+                hybrid_coords[atom['index']] = dummy_coord
+                placed_dummy_coords.append(dummy_coord)
 
     return hybrid_coords
 
@@ -1513,16 +1527,32 @@ def find_nearest_non_dummy_atom_to_position(position, hybrid_coords, mcs_atoms):
     Find the nearest non-dummy atom to a given position.
 
     Args:
-        position: Coordinates to check from
+        position: Coordinates to check from (can be None)
         hybrid_coords: Dictionary of existing coordinates
         mcs_atoms: List of MCS atom dictionaries
 
     Returns:
         Tuple of (nearest_coord, nearest_distance)
     """
-    if not mcs_atoms or position is None:
-        # Fallback to origin if no MCS atoms or position
+    if not mcs_atoms:
+        # Fallback to origin if no MCS atoms
         return (0.0, 0.0, 0.0), float('inf')
+
+    if position is None:
+        # If no position given, find the centroid of MCS atoms as reference
+        mcs_coords = []
+        for mcs_atom in mcs_atoms:
+            if mcs_atom['index'] in hybrid_coords:
+                mcs_coords.append(hybrid_coords[mcs_atom['index']])
+
+        if not mcs_coords:
+            return (0.0, 0.0, 0.0), float('inf')
+
+        # Calculate centroid of MCS atoms
+        centroid_x = sum(coord[0] for coord in mcs_coords) / len(mcs_coords)
+        centroid_y = sum(coord[1] for coord in mcs_coords) / len(mcs_coords)
+        centroid_z = sum(coord[2] for coord in mcs_coords) / len(mcs_coords)
+        position = (centroid_x, centroid_y, centroid_z)
 
     nearest_coord = None
     min_distance = float('inf')
