@@ -2283,7 +2283,7 @@ def main():
     # if not is_valid:
     #     raise RuntimeError(f"MCS quality check failed: {reason}")
 
-    print(f"MCS validation passed: {reason}")
+    # print(f"MCS validation passed: {reason}")
 
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
