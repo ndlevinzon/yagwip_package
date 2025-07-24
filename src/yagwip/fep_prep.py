@@ -697,13 +697,13 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
             atom_counter += 1
 
     # Create hybrid bonds
-    hybrid_bonds = create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms)
+    hybrid_bonds = create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
     # Create hybrid angles
-    hybrid_angles = create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms)
+    hybrid_angles = create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
     # Create hybrid dihedrals
-    hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms)
+    hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
     # Write hybrid topology
     write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
@@ -749,36 +749,413 @@ def parse_itp_atoms(itp_file):
     return atoms
 
 
-def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms):
-    """Create hybrid bonds between mapped and unique atoms."""
-    # This is a simplified version - in practice you'd need to parse bond sections from ITP files
-    # For now, we'll create bonds based on atom proximity and mapping
+def parse_itp_bonds(itp_file):
+    """Parse bond section from ITP file."""
+    bonds = []
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_bonds = False
+    for line in lines:
+        if line.strip() == '[ bonds ]':
+            in_bonds = True
+            continue
+        elif in_bonds and line.strip().startswith('['):
+            break
+        elif in_bonds and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 3:
+                bond = {
+                    'ai': int(parts[0]),
+                    'aj': int(parts[1]),
+                    'funct': int(parts[2])
+                }
+                # Add bond parameters if present
+                if len(parts) >= 5:
+                    bond['length'] = float(parts[3])
+                    bond['force'] = float(parts[4])
+                bonds.append(bond)
+
+    return bonds
+
+
+def parse_itp_angles(itp_file):
+    """Parse angle section from ITP file."""
+    angles = []
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_angles = False
+    for line in lines:
+        if line.strip() == '[ angles ]':
+            in_angles = True
+            continue
+        elif in_angles and line.strip().startswith('['):
+            break
+        elif in_angles and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 4:
+                angle = {
+                    'ai': int(parts[0]),
+                    'aj': int(parts[1]),
+                    'ak': int(parts[2]),
+                    'funct': int(parts[3])
+                }
+                # Add angle parameters if present
+                if len(parts) >= 6:
+                    angle['theta'] = float(parts[4])
+                    angle['fc'] = float(parts[5])
+                angles.append(angle)
+
+    return angles
+
+
+def parse_itp_dihedrals(itp_file):
+    """Parse dihedral section from ITP file."""
+    dihedrals = []
+    with open(itp_file, 'r') as f:
+        lines = f.readlines()
+
+    in_dihedrals = False
+    for line in lines:
+        if line.strip() == '[ dihedrals ]':
+            in_dihedrals = True
+            continue
+        elif in_dihedrals and line.strip().startswith('['):
+            break
+        elif in_dihedrals and line.strip() and not line.strip().startswith(';'):
+            parts = line.split()
+            if len(parts) >= 5:
+                dihedral = {
+                    'ai': int(parts[0]),
+                    'aj': int(parts[1]),
+                    'ak': int(parts[2]),
+                    'al': int(parts[3]),
+                    'funct': int(parts[4])
+                }
+                # Add dihedral parameters if present
+                if len(parts) >= 8:
+                    dihedral['phi'] = float(parts[5])
+                    dihedral['fc'] = float(parts[6])
+                    dihedral['mult'] = int(parts[7])
+                dihedrals.append(dihedral)
+
+    return dihedrals
+
+
+def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
+    """Create hybrid bonds using the merge strategy."""
+    # Parse bond sections from both ITP files
+    bondsA = parse_itp_bonds(ligA_itp)
+    bondsB = parse_itp_bonds(ligB_itp)
+
+    # Create mapping from original atom indices to hybrid indices
     hybrid_bonds = []
 
-    # Create bonds for mapped atoms
-    for atom in hybrid_atoms:
-        if atom['mapped']:
-            # Find bonds involving this atom in both states
-            # This would require parsing bond sections from ITP files
-            pass
+    # Process bonds from ligand A
+    for bondA in bondsA:
+        ai_A, aj_A = bondA['ai'], bondA['aj']
+
+        # Find corresponding hybrid atom indices
+        ai_hybrid = None
+        aj_hybrid = None
+
+        for atom in hybrid_atoms:
+            if atom['origA_idx'] == ai_A:
+                ai_hybrid = atom['index']
+            if atom['origA_idx'] == aj_A:
+                aj_hybrid = atom['index']
+
+        if ai_hybrid is not None and aj_hybrid is not None:
+            # Check if this bond exists in ligand B
+            bond_exists_in_B = False
+            bondB_params = None
+
+            for bondB in bondsB:
+                if (bondB['ai'] == ai_A and bondB['aj'] == aj_A) or \
+                        (bondB['ai'] == aj_A and bondB['aj'] == ai_A):
+                    bond_exists_in_B = True
+                    bondB_params = bondB
+                    break
+
+            hybrid_bond = {
+                'ai': ai_hybrid,
+                'aj': aj_hybrid,
+                'funct': bondA['funct']
+            }
+
+            if bond_exists_in_B:
+                # Bond exists in both A and B
+                hybrid_bond['lengthA'] = bondA.get('length', 0.14)
+                hybrid_bond['forceA'] = bondA.get('force', 50000)
+                hybrid_bond['lengthB'] = bondB_params.get('length', 0.14)
+                hybrid_bond['forceB'] = bondB_params.get('force', 50000)
+            else:
+                # Bond exists only in A
+                hybrid_bond['lengthA'] = bondA.get('length', 0.14)
+                hybrid_bond['forceA'] = bondA.get('force', 50000)
+                hybrid_bond['lengthB'] = 0.1  # Dummy value
+                hybrid_bond['forceB'] = 0.0  # Zero force
+
+            hybrid_bonds.append(hybrid_bond)
+
+    # Process bonds from ligand B (for bonds that don't exist in A)
+    for bondB in bondsB:
+        ai_B, aj_B = bondB['ai'], bondB['aj']
+
+        # Check if this bond was already processed from ligand A
+        already_processed = False
+        for bondA in bondsA:
+            if (bondA['ai'] == ai_B and bondA['aj'] == aj_B) or \
+                    (bondA['ai'] == aj_B and bondA['aj'] == ai_B):
+                already_processed = True
+                break
+
+        if not already_processed:
+            # Find corresponding hybrid atom indices
+            ai_hybrid = None
+            aj_hybrid = None
+
+            for atom in hybrid_atoms:
+                if atom['origB_idx'] == ai_B:
+                    ai_hybrid = atom['index']
+                if atom['origB_idx'] == aj_B:
+                    aj_hybrid = atom['index']
+
+            if ai_hybrid is not None and aj_hybrid is not None:
+                # Bond exists only in B
+                hybrid_bond = {
+                    'ai': ai_hybrid,
+                    'aj': aj_hybrid,
+                    'funct': bondB['funct'],
+                    'lengthA': 0.1,  # Dummy value
+                    'forceA': 0.0,  # Zero force
+                    'lengthB': bondB.get('length', 0.14),
+                    'forceB': bondB.get('force', 50000)
+                }
+                hybrid_bonds.append(hybrid_bond)
 
     return hybrid_bonds
 
 
-def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms):
-    """Create hybrid angles."""
-    # Simplified - would need to parse angle sections from ITP files
-    return []
+def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
+    """Create hybrid angles using the merge strategy."""
+    # Parse angle sections from both ITP files
+    anglesA = parse_itp_angles(ligA_itp)
+    anglesB = parse_itp_angles(ligB_itp)
+
+    hybrid_angles = []
+
+    # Process angles from ligand A
+    for angleA in anglesA:
+        ai_A, aj_A, ak_A = angleA['ai'], angleA['aj'], angleA['ak']
+
+        # Find corresponding hybrid atom indices
+        ai_hybrid = None
+        aj_hybrid = None
+        ak_hybrid = None
+
+        for atom in hybrid_atoms:
+            if atom['origA_idx'] == ai_A:
+                ai_hybrid = atom['index']
+            if atom['origA_idx'] == aj_A:
+                aj_hybrid = atom['index']
+            if atom['origA_idx'] == ak_A:
+                ak_hybrid = atom['index']
+
+        if ai_hybrid is not None and aj_hybrid is not None and ak_hybrid is not None:
+            # Check if this angle exists in ligand B
+            angle_exists_in_B = False
+            angleB_params = None
+
+            for angleB in anglesB:
+                if (angleB['ai'] == ai_A and angleB['aj'] == aj_A and angleB['ak'] == ak_A):
+                    angle_exists_in_B = True
+                    angleB_params = angleB
+                    break
+
+            hybrid_angle = {
+                'ai': ai_hybrid,
+                'aj': aj_hybrid,
+                'ak': ak_hybrid,
+                'funct': angleA['funct']
+            }
+
+            if angle_exists_in_B:
+                # Angle exists in both A and B
+                hybrid_angle['thetaA'] = angleA.get('theta', 109.5)
+                hybrid_angle['fcA'] = angleA.get('fc', 520)
+                hybrid_angle['thetaB'] = angleB_params.get('theta', 109.5)
+                hybrid_angle['fcB'] = angleB_params.get('fc', 520)
+            else:
+                # Angle exists only in A
+                hybrid_angle['thetaA'] = angleA.get('theta', 109.5)
+                hybrid_angle['fcA'] = angleA.get('fc', 520)
+                hybrid_angle['thetaB'] = 120.0  # Dummy value
+                hybrid_angle['fcB'] = 0.0  # Zero force
+
+            hybrid_angles.append(hybrid_angle)
+
+    # Process angles from ligand B (for angles that don't exist in A)
+    for angleB in anglesB:
+        ai_B, aj_B, ak_B = angleB['ai'], angleB['aj'], angleB['ak']
+
+        # Check if this angle was already processed from ligand A
+        already_processed = False
+        for angleA in anglesA:
+            if (angleA['ai'] == ai_B and angleA['aj'] == aj_B and angleA['ak'] == ak_B):
+                already_processed = True
+                break
+
+        if not already_processed:
+            # Find corresponding hybrid atom indices
+            ai_hybrid = None
+            aj_hybrid = None
+            ak_hybrid = None
+
+            for atom in hybrid_atoms:
+                if atom['origB_idx'] == ai_B:
+                    ai_hybrid = atom['index']
+                if atom['origB_idx'] == aj_B:
+                    aj_hybrid = atom['index']
+                if atom['origB_idx'] == ak_B:
+                    ak_hybrid = atom['index']
+
+            if ai_hybrid is not None and aj_hybrid is not None and ak_hybrid is not None:
+                # Angle exists only in B
+                hybrid_angle = {
+                    'ai': ai_hybrid,
+                    'aj': aj_hybrid,
+                    'ak': ak_hybrid,
+                    'funct': angleB['funct'],
+                    'thetaA': 120.0,  # Dummy value
+                    'fcA': 0.0,  # Zero force
+                    'thetaB': angleB.get('theta', 109.5),
+                    'fcB': angleB.get('fc', 520)
+                }
+                hybrid_angles.append(hybrid_angle)
+
+    return hybrid_angles
 
 
-def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms):
-    """Create hybrid dihedrals."""
-    # Simplified - would need to parse dihedral sections from ITP files
-    return []
+def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
+    """Create hybrid dihedrals using the merge strategy."""
+    # Parse dihedral sections from both ITP files
+    dihedralsA = parse_itp_dihedrals(ligA_itp)
+    dihedralsB = parse_itp_dihedrals(ligB_itp)
+
+    hybrid_dihedrals = []
+
+    # Process dihedrals from ligand A
+    for dihedralA in dihedralsA:
+        ai_A, aj_A, ak_A, al_A = dihedralA['ai'], dihedralA['aj'], dihedralA['ak'], dihedralA['al']
+
+        # Find corresponding hybrid atom indices
+        ai_hybrid = None
+        aj_hybrid = None
+        ak_hybrid = None
+        al_hybrid = None
+
+        for atom in hybrid_atoms:
+            if atom['origA_idx'] == ai_A:
+                ai_hybrid = atom['index']
+            if atom['origA_idx'] == aj_A:
+                aj_hybrid = atom['index']
+            if atom['origA_idx'] == ak_A:
+                ak_hybrid = atom['index']
+            if atom['origA_idx'] == al_A:
+                al_hybrid = atom['index']
+
+        if all(x is not None for x in [ai_hybrid, aj_hybrid, ak_hybrid, al_hybrid]):
+            # Check if this dihedral exists in ligand B
+            dihedral_exists_in_B = False
+            dihedralB_params = None
+
+            for dihedralB in dihedralsB:
+                if (dihedralB['ai'] == ai_A and dihedralB['aj'] == aj_A and
+                        dihedralB['ak'] == ak_A and dihedralB['al'] == al_A):
+                    dihedral_exists_in_B = True
+                    dihedralB_params = dihedralB
+                    break
+
+            hybrid_dihedral = {
+                'ai': ai_hybrid,
+                'aj': aj_hybrid,
+                'ak': ak_hybrid,
+                'al': al_hybrid,
+                'funct': dihedralA['funct']
+            }
+
+            if dihedral_exists_in_B:
+                # Dihedral exists in both A and B
+                hybrid_dihedral['phiA'] = dihedralA.get('phi', 180.0)
+                hybrid_dihedral['fcA'] = dihedralA.get('fc', 2.0)
+                hybrid_dihedral['multA'] = dihedralA.get('mult', 3)
+                hybrid_dihedral['phiB'] = dihedralB_params.get('phi', 180.0)
+                hybrid_dihedral['fcB'] = dihedralB_params.get('fc', 2.0)
+                hybrid_dihedral['multB'] = dihedralB_params.get('mult', 3)
+            else:
+                # Dihedral exists only in A
+                hybrid_dihedral['phiA'] = dihedralA.get('phi', 180.0)
+                hybrid_dihedral['fcA'] = dihedralA.get('fc', 2.0)
+                hybrid_dihedral['multA'] = dihedralA.get('mult', 3)
+                hybrid_dihedral['phiB'] = 180.0  # Dummy value
+                hybrid_dihedral['fcB'] = 0.0  # Zero force
+                hybrid_dihedral['multB'] = 2  # Dummy multiplicity
+
+            hybrid_dihedrals.append(hybrid_dihedral)
+
+    # Process dihedrals from ligand B (for dihedrals that don't exist in A)
+    for dihedralB in dihedralsB:
+        ai_B, aj_B, ak_B, al_B = dihedralB['ai'], dihedralB['aj'], dihedralB['ak'], dihedralB['al']
+
+        # Check if this dihedral was already processed from ligand A
+        already_processed = False
+        for dihedralA in dihedralsA:
+            if (dihedralA['ai'] == ai_B and dihedralA['aj'] == aj_B and
+                    dihedralA['ak'] == ak_B and dihedralA['al'] == al_B):
+                already_processed = True
+                break
+
+        if not already_processed:
+            # Find corresponding hybrid atom indices
+            ai_hybrid = None
+            aj_hybrid = None
+            ak_hybrid = None
+            al_hybrid = None
+
+            for atom in hybrid_atoms:
+                if atom['origB_idx'] == ai_B:
+                    ai_hybrid = atom['index']
+                if atom['origB_idx'] == aj_B:
+                    aj_hybrid = atom['index']
+                if atom['origB_idx'] == ak_B:
+                    ak_hybrid = atom['index']
+                if atom['origB_idx'] == al_B:
+                    al_hybrid = atom['index']
+
+            if all(x is not None for x in [ai_hybrid, aj_hybrid, ak_hybrid, al_hybrid]):
+                # Dihedral exists only in B
+                hybrid_dihedral = {
+                    'ai': ai_hybrid,
+                    'aj': aj_hybrid,
+                    'ak': ak_hybrid,
+                    'al': al_hybrid,
+                    'funct': dihedralB['funct'],
+                    'phiA': 180.0,  # Dummy value
+                    'fcA': 0.0,  # Zero force
+                    'multA': 2,  # Dummy multiplicity
+                    'phiB': dihedralB.get('phi', 180.0),
+                    'fcB': dihedralB.get('fc', 2.0),
+                    'multB': dihedralB.get('mult', 3)
+                }
+                hybrid_dihedrals.append(hybrid_dihedral)
+
+    return hybrid_dihedrals
 
 
 def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
-    """Write hybrid topology file."""
+    """Write hybrid topology file with dual-state parameters."""
     with open(out_file, 'w') as f:
         f.write("; Hybrid topology for FEP\n")
         f.write("[ moleculetype ]\n")
@@ -793,26 +1170,52 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
                     f"{atom['chargeB']:8.4f} {atom['massB']:7.3f}\n")
         f.write("\n")
 
-        # Add bond, angle, dihedral sections if available
+        # Add bond section with dual-state parameters
         if hybrid_bonds:
             f.write("[ bonds ]\n")
-            f.write("; ai    aj funct\n")
+            f.write("; ai    aj funct  lengthA  forceA   lengthB  forceB\n")
             for bond in hybrid_bonds:
-                f.write(f"{bond['ai']:5d} {bond['aj']:5d} {bond['funct']:5d}\n")
+                if 'lengthA' in bond and 'forceA' in bond and 'lengthB' in bond and 'forceB' in bond:
+                    f.write(f"{bond['ai']:5d} {bond['aj']:5d} {bond['funct']:5d} "
+                            f"{bond['lengthA']:8.3f} {bond['forceA']:8.1f} "
+                            f"{bond['lengthB']:8.3f} {bond['forceB']:8.1f}\n")
+                else:
+                    f.write(f"{bond['ai']:5d} {bond['aj']:5d} {bond['funct']:5d}\n")
             f.write("\n")
 
+        # Add angle section with dual-state parameters
         if hybrid_angles:
             f.write("[ angles ]\n")
-            f.write("; ai    aj    ak funct\n")
+            f.write("; ai    aj    ak funct  thetaA  fcA   thetaB  fcB\n")
             for angle in hybrid_angles:
-                f.write(f"{angle['ai']:5d} {angle['aj']:5d} {angle['ak']:5d} {angle['funct']:5d}\n")
+                if 'thetaA' in angle and 'fcA' in angle and 'thetaB' in angle and 'fcB' in angle:
+                    f.write(f"{angle['ai']:5d} {angle['aj']:5d} {angle['ak']:5d} {angle['funct']:5d} "
+                            f"{angle['thetaA']:8.2f} {angle['fcA']:6.1f} "
+                            f"{angle['thetaB']:8.2f} {angle['fcB']:6.1f}\n")
+                else:
+                    f.write(f"{angle['ai']:5d} {angle['aj']:5d} {angle['ak']:5d} {angle['funct']:5d}\n")
             f.write("\n")
 
+        # Add dihedral section with dual-state parameters
         if hybrid_dihedrals:
             f.write("[ dihedrals ]\n")
-            f.write("; ai    aj    ak    al funct\n")
+            f.write("; ai    aj    ak    al funct  phiA  fcA  multA  phiB  fcB  multB\n")
             for dih in hybrid_dihedrals:
-                f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
+                if 'phiA' in dih and 'fcA' in dih and 'multA' in dih and 'phiB' in dih and 'fcB' in dih and 'multB' in dih:
+                    f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d} "
+                            f"{dih['phiA']:6.1f} {dih['fcA']:5.1f} {dih['multA']:5d} "
+                            f"{dih['phiB']:6.1f} {dih['fcB']:5.1f} {dih['multB']:5d}\n")
+                else:
+                    f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
+            f.write("\n")
+
+        # Add position restraints for dummy atoms
+        dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+        if dummy_atoms:
+            f.write("[ position_restraints ]\n")
+            f.write("; ai  funct  fx      fy      fz\n")
+            for atom in dummy_atoms:
+                f.write(f"{atom['index']:4d}     1   1000    1000    1000\n")
             f.write("\n")
 
 
