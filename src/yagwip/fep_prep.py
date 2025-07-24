@@ -1443,8 +1443,8 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
         f.write("END\n")
 
 
-def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, max_distance=0.4,
-                                            min_dummy_distance=0.1):
+def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, max_distance=0.09,
+                                            min_dummy_distance=0.01):
     """
     Generate hybrid coordinates with intelligent dummy atom placement.
 
