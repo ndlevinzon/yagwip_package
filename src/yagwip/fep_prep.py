@@ -204,11 +204,26 @@ def enumerate_connected_subgraphs(graph, size):
     return [set(s) for s in results]
 
 
-def find_mcs(g1, g2):
+def find_mcs(g1, g2, target_size=10):
+    """
+    Find Maximum Common Substructure (MCS) between two molecular graphs.
+    Conservative approach: stop as soon as we find a connected MCS of target_size atoms.
+
+    Args:
+        g1: MolGraph for ligand A
+        g2: MolGraph for ligand B
+        target_size: Target MCS size (default: 10 atoms)
+
+    Returns:
+        Tuple of (mcs_size, mapping, atom_indices1, atom_indices2)
+    """
     # Always use the smaller graph for subgraph enumeration
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
-    for size in range(len(g1.atoms), 2, -1):  # Start from largest, need at least 3 for alignment
+
+    # Start from target_size and work down to minimum size
+    for size in range(target_size, 2, -1):  # Start from target_size, need at least 3 for alignment
+        print(f"Searching for MCS of size {size}...")
         subgraphs1 = enumerate_connected_subgraphs(g1, size)
         if not subgraphs1:
             continue
@@ -232,7 +247,38 @@ def find_mcs(g1, g2):
                 if iso:
                     # Verify MCS connectivity - ensure atoms form a continuous structure
                     if verify_mcs_connectivity(sg1, sg2, mapping):
+                        print(f"Found valid MCS of size {size}!")
                         return size, mapping, atom_indices1, atom_indices2
+
+    # If we didn't find target_size, try smaller sizes
+    for size in range(target_size - 1, 2, -1):
+        print(f"Target size not found, trying size {size}...")
+        subgraphs1 = enumerate_connected_subgraphs(g1, size)
+        if not subgraphs1:
+            continue
+        for atom_indices1 in subgraphs1:
+            sg1 = g1.subgraph(atom_indices1)
+            # Chemical invariant: element counts
+            elem_count1 = defaultdict(int)
+            for a in sg1.atoms.values():
+                elem_count1[a.element] += 1
+            # Find candidate subgraphs in g2 with same element counts
+            subgraphs2 = [
+                s for s in enumerate_connected_subgraphs(g2, size)
+                if all(
+                    sum(g2.atoms[i].element == e for i in s) == c
+                    for e, c in elem_count1.items()
+                )
+            ]
+            for atom_indices2 in subgraphs2:
+                sg2 = g2.subgraph(atom_indices2)
+                iso, mapping = are_isomorphic(sg1, sg2)
+                if iso:
+                    # Verify MCS connectivity - ensure atoms form a continuous structure
+                    if verify_mcs_connectivity(sg1, sg2, mapping):
+                        print(f"Found valid MCS of size {size}!")
+                        return size, mapping, atom_indices1, atom_indices2
+
     return 0, None, None, None
 
 
@@ -2214,18 +2260,23 @@ def main():
                         help='Create hybrid topology for FEP simulations')
     parser.add_argument('--min_mcs_size', type=int, default=3,
                         help='Minimum MCS size (default: 3)')
+    parser.add_argument('--target_mcs_size', type=int, default=10,
+                        help='Target MCS size - stop searching when found (default: 10)')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
 
     # 1. Find MCS and write atom_map.txt
+    print(f"Searching for MCS with target size {args.target_mcs_size}...")
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB, args.target_mcs_size)
 
     if mcs_size < args.min_mcs_size or mapping is None:
         raise RuntimeError(
             f"Could not find sufficient MCS for alignment (need at least {args.min_mcs_size} atoms, found {mcs_size})")
+
+    print(f"MCS found: {mcs_size} atoms (target was {args.target_mcs_size})")
 
     # Validate MCS quality
     is_valid, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size)
