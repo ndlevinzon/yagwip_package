@@ -230,8 +230,162 @@ def find_mcs(g1, g2):
                 sg2 = g2.subgraph(atom_indices2)
                 iso, mapping = are_isomorphic(sg1, sg2)
                 if iso:
-                    return size, mapping, atom_indices1, atom_indices2
+                    # Verify MCS connectivity - ensure atoms form a continuous structure
+                    if verify_mcs_connectivity(sg1, sg2, mapping):
+                        return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
+
+
+def verify_mcs_connectivity(sg1, sg2, mapping):
+    """
+    Verify that MCS atoms form a continuous, connected structure.
+
+    Args:
+        sg1: Subgraph from ligand A
+        sg2: Subgraph from ligand B
+        mapping: Atom mapping between the two subgraphs
+
+    Returns:
+        True if MCS is continuous, False if disconnected fragments exist
+    """
+    # Check connectivity in both subgraphs
+    if not is_graph_connected(sg1) or not is_graph_connected(sg2):
+        return False
+
+    # Additional check: ensure no isolated atoms or small disconnected fragments
+    # Calculate the diameter of the MCS (longest shortest path)
+    diameter1 = calculate_graph_diameter(sg1)
+    diameter2 = calculate_graph_diameter(sg2)
+
+    # If diameter is very large relative to number of atoms, it might indicate disconnected fragments
+    # A reasonable threshold: diameter should be less than number of atoms
+    if diameter1 > len(sg1.atoms) or diameter2 > len(sg2.atoms):
+        return False
+
+    # Check for any atoms that are too far from the center of mass
+    if not check_atom_distances_from_center(sg1) or not check_atom_distances_from_center(sg2):
+        return False
+
+    return True
+
+
+def is_graph_connected(graph):
+    """
+    Check if a graph is connected using BFS.
+
+    Args:
+        graph: MolGraph object
+
+    Returns:
+        True if graph is connected, False otherwise
+    """
+    if not graph.atoms:
+        return False
+
+    # Start BFS from the first atom
+    start_atom = next(iter(graph.atoms.keys()))
+    visited = set()
+    queue = [start_atom]
+
+    while queue:
+        current = queue.pop(0)
+        if current not in visited:
+            visited.add(current)
+            # Add all unvisited neighbors
+            for neighbor in graph.atoms[current].neighbors:
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+    # Check if all atoms were visited
+    return len(visited) == len(graph.atoms)
+
+
+def calculate_graph_diameter(graph):
+    """
+    Calculate the diameter of a graph (longest shortest path between any two vertices).
+
+    Args:
+        graph: MolGraph object
+
+    Returns:
+        Diameter of the graph
+    """
+    if not graph.atoms:
+        return 0
+
+    max_diameter = 0
+
+    # For each pair of atoms, calculate shortest path length
+    atom_indices = list(graph.atoms.keys())
+    for i, start in enumerate(atom_indices):
+        for end in atom_indices[i + 1:]:
+            path_length = shortest_path_length(graph, start, end)
+            if path_length > max_diameter:
+                max_diameter = path_length
+
+    return max_diameter
+
+
+def shortest_path_length(graph, start, end):
+    """
+    Calculate shortest path length between two atoms using BFS.
+
+    Args:
+        graph: MolGraph object
+        start: Starting atom index
+        end: Ending atom index
+
+    Returns:
+        Length of shortest path, or float('inf') if no path exists
+    """
+    if start == end:
+        return 0
+
+    visited = set()
+    queue = [(start, 0)]  # (atom, distance)
+
+    while queue:
+        current, distance = queue.pop(0)
+        if current == end:
+            return distance
+
+        if current not in visited:
+            visited.add(current)
+            for neighbor in graph.atoms[current].neighbors:
+                if neighbor not in visited:
+                    queue.append((neighbor, distance + 1))
+
+    return float('inf')  # No path found
+
+
+def check_atom_distances_from_center(graph, max_distance_factor=3.0):
+    """
+    Check that no atoms are too far from the center of the MCS.
+
+    Args:
+        graph: MolGraph object
+        max_distance_factor: Maximum allowed distance as factor of graph diameter
+
+    Returns:
+        True if all atoms are reasonably close to center, False otherwise
+    """
+    if not graph.atoms:
+        return True
+
+    # Calculate center of mass (using atom indices as proxy for spatial position)
+    center = sum(graph.atoms.keys()) / len(graph.atoms)
+
+    # Calculate maximum distance from center
+    max_distance = max(abs(atom_idx - center) for atom_idx in graph.atoms.keys())
+
+    # Calculate graph diameter
+    diameter = calculate_graph_diameter(graph)
+
+    # If max distance is too large relative to diameter, it might indicate disconnected fragments
+    if diameter > 0 and max_distance > max_distance_factor * diameter:
+        return False
+
+    return True
 
 
 def are_isomorphic(g1, g2):
@@ -1994,6 +2148,57 @@ def filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_align
     return filtered_pairs
 
 
+def validate_mcs_quality(mapping, gA, gB, min_mcs_size=3):
+    """
+    Validate the quality of the found MCS to ensure it forms a continuous structure.
+
+    Args:
+        mapping: Atom mapping dictionary
+        gA: MolGraph for ligand A
+        gB: MolGraph for ligand B
+        min_mcs_size: Minimum required MCS size
+
+    Returns:
+        Tuple of (is_valid, reason) where is_valid is boolean and reason is string
+    """
+    if not mapping or len(mapping) < min_mcs_size:
+        return False, f"MCS too small: {len(mapping) if mapping else 0} atoms (minimum {min_mcs_size})"
+
+    # Extract MCS subgraphs
+    mcs_atoms_A = set(mapping.keys())
+    mcs_atoms_B = set(mapping.values())
+
+    # Create MCS subgraphs
+    mcs_gA = gA.subgraph(mcs_atoms_A)
+    mcs_gB = gB.subgraph(mcs_atoms_B)
+
+    # Check connectivity
+    if not is_graph_connected(mcs_gA):
+        return False, "MCS atoms in ligand A are not connected"
+
+    if not is_graph_connected(mcs_gB):
+        return False, "MCS atoms in ligand B are not connected"
+
+    # Check diameter constraints
+    diameter_A = calculate_graph_diameter(mcs_gA)
+    diameter_B = calculate_graph_diameter(mcs_gB)
+
+    if diameter_A > len(mcs_atoms_A):
+        return False, f"MCS diameter in ligand A too large: {diameter_A} > {len(mcs_atoms_A)}"
+
+    if diameter_B > len(mcs_atoms_B):
+        return False, f"MCS diameter in ligand B too large: {diameter_B} > {len(mcs_atoms_B)}"
+
+    # Check for reasonable spatial distribution
+    if not check_atom_distances_from_center(mcs_gA):
+        return False, "MCS atoms in ligand A are too far apart (disconnected fragments)"
+
+    if not check_atom_distances_from_center(mcs_gB):
+        return False, "MCS atoms in ligand B are too far apart (disconnected fragments)"
+
+    return True, f"Valid MCS: {len(mapping)} atoms, diameter A={diameter_A}, B={diameter_B}"
+
+
 # --- Main script ---
 def main():
     parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
@@ -2007,6 +2212,8 @@ def main():
     parser.add_argument('--ligB_itp', required=True)
     parser.add_argument('--create_hybrid', action='store_true',
                         help='Create hybrid topology for FEP simulations')
+    parser.add_argument('--min_mcs_size', type=int, default=3,
+                        help='Minimum MCS size (default: 3)')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
@@ -2015,8 +2222,18 @@ def main():
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
     mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
-    if mcs_size < 3 or mapping is None:
-        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
+
+    if mcs_size < args.min_mcs_size or mapping is None:
+        raise RuntimeError(
+            f"Could not find sufficient MCS for alignment (need at least {args.min_mcs_size} atoms, found {mcs_size})")
+
+    # Validate MCS quality
+    is_valid, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size)
+    if not is_valid:
+        raise RuntimeError(f"MCS quality check failed: {reason}")
+
+    print(f"MCS validation passed: {reason}")
+
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
 
