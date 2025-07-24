@@ -1623,7 +1623,7 @@ def main():
     print(f"Searching for MCS with target size {args.target_mcs_size}...")
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB, args.target_mcs_size)
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
 
     if mcs_size < args.min_mcs_size or mapping is None:
         raise RuntimeError(
