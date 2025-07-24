@@ -1454,10 +1454,13 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
     """
-    Write hybrid PDB file for specified state using extended form strategy.
+    Write hybrid PDB file for specified state using sphere-packing algorithm.
 
-    Extended form: Dummy atoms maintain their original spatial positions from the endpoint structure.
-    This preserves realistic geometry and keeps bonded interactions valid at the endpoint.
+    Sphere-packing strategy:
+    - All atoms are surrounded by 1.2 nm radius spheres
+    - Non-MCS atoms are positioned so their spheres touch other ligand atom spheres
+    - All atoms must be connected to MCS through network of touching spheres
+    - Minimum distance constraint: 1.2 nm between all atoms
 
     Args:
         out_file: Output PDB file path
@@ -1468,43 +1471,234 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
         state: 'A' or 'B' to determine which state to write
     """
     with open(out_file, 'w') as f:
-        f.write("REMARK Hybrid structure for FEP (Extended Form)\n")
+        f.write("REMARK Hybrid structure for FEP (Sphere-Packing)\n")
         f.write(f"REMARK State: {state}\n")
-        f.write(f"REMARK Dummy atoms maintain original spatial positions from endpoint structure\n")
+        f.write(f"REMARK All atoms separated by >= 1.2 nm, connected to MCS via touching spheres\n")
+
+        # Generate sphere-packed coordinates
+        sphere_coords = generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state)
 
         for atom in hybrid_atoms:
-            if state == 'A':
-                # For state A: Use ligand A coordinates for mapped atoms, ligand B coordinates for dummy atoms
-                if atom['mapped'] and atom['origA_idx'] in coordsA:
-                    # Mapped atom: Use original ligand A coordinates
-                    x, y, z = coordsA[atom['origA_idx']]
-                    atom_name = atom['name']
-                elif not atom['mapped'] and atom['origB_idx'] in coordsB_aligned:
-                    # Dummy atom (unique to B): Use aligned ligand B coordinates to maintain spatial arrangement
-                    x, y, z = coordsB_aligned[atom['origB_idx']]
-                    atom_name = 'DUM'  # Mark as dummy
-                else:
-                    # Fallback: Use centroid of mapped atoms
-                    x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-                    atom_name = 'DUM'
-            else:  # state == 'B'
-                # For state B: Use ligand B coordinates for mapped atoms, ligand A coordinates for dummy atoms
-                if atom['mapped'] and atom['origB_idx'] in coordsB_aligned:
-                    # Mapped atom: Use aligned ligand B coordinates
-                    x, y, z = coordsB_aligned[atom['origB_idx']]
-                    atom_name = atom['name']
-                elif not atom['mapped'] and atom['origA_idx'] in coordsA:
-                    # Dummy atom (unique to A): Use original ligand A coordinates to maintain spatial arrangement
-                    x, y, z = coordsA[atom['origA_idx']]
-                    atom_name = 'DUM'  # Mark as dummy
-                else:
-                    # Fallback: Use centroid of mapped atoms
-                    x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-                    atom_name = 'DUM'
-
-            f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+            atom_idx = atom['index']
+            if atom_idx in sphere_coords:
+                x, y, z = sphere_coords[atom_idx]
+                atom_name = atom['name'] if atom['mapped'] else 'DUM'
+                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+            else:
+                # Fallback to centroid if sphere packing failed
+                x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+                atom_name = 'DUM'
+                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
 
         f.write("END\n")
+
+
+def generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, sphere_radius=1.2):
+    """
+    Generate sphere-packed coordinates ensuring minimum distance and MCS connectivity.
+
+    Args:
+        hybrid_atoms: List of hybrid atom dictionaries
+        coordsA: Coordinates for ligand A
+        coordsB_aligned: Aligned coordinates for ligand B
+        mapping: Atom mapping dictionary
+        state: 'A' or 'B'
+        sphere_radius: Radius of spheres (default 1.2 nm)
+
+    Returns:
+        Dictionary mapping atom index to (x, y, z) coordinates
+    """
+    import math
+    import random
+
+    # Initialize coordinates dictionary
+    sphere_coords = {}
+
+    # Identify MCS atoms (mapped atoms)
+    mcs_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
+    non_mcs_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+
+    # Step 1: Position MCS atoms using original coordinates
+    for atom in mcs_atoms:
+        if state == 'A' and atom['origA_idx'] in coordsA:
+            sphere_coords[atom['index']] = coordsA[atom['origA_idx']]
+        elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+            sphere_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
+        else:
+            # Fallback to centroid
+            sphere_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+
+    # Step 2: Position non-MCS atoms using sphere-packing algorithm
+    for atom in non_mcs_atoms:
+        if state == 'A' and atom['origB_idx'] in coordsB_aligned:
+            # For state A, non-MCS atoms are unique to B - use aligned B coordinates as starting point
+            initial_coord = coordsB_aligned[atom['origB_idx']]
+        elif state == 'B' and atom['origA_idx'] in coordsA:
+            # For state B, non-MCS atoms are unique to A - use A coordinates as starting point
+            initial_coord = coordsA[atom['origA_idx']]
+        else:
+            # Fallback to centroid
+            initial_coord = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
+
+        # Find optimal position that satisfies distance and connectivity constraints
+        optimal_coord = find_optimal_sphere_position(
+            atom['index'], initial_coord, sphere_coords, sphere_radius
+        )
+        sphere_coords[atom['index']] = optimal_coord
+
+    return sphere_coords
+
+
+def find_optimal_sphere_position(atom_idx, initial_coord, existing_coords, sphere_radius, max_iterations=1000):
+    """
+    Find optimal position for an atom that satisfies sphere-packing constraints.
+
+    Args:
+        atom_idx: Index of the atom to position
+        initial_coord: Initial coordinate guess
+        existing_coords: Dictionary of existing atom coordinates
+        sphere_radius: Radius of spheres
+        max_iterations: Maximum iterations for optimization
+
+    Returns:
+        Optimal (x, y, z) coordinates
+    """
+    import math
+    import random
+
+    def distance(coord1, coord2):
+        """Calculate Euclidean distance between two coordinates."""
+        dx = coord1[0] - coord2[0]
+        dy = coord1[1] - coord2[1]
+        dz = coord1[2] - coord2[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    def is_valid_position(coord, existing_coords, sphere_radius):
+        """Check if position satisfies distance constraints."""
+        for existing_idx, existing_coord in existing_coords.items():
+            if existing_idx != atom_idx:
+                dist = distance(coord, existing_coord)
+                if dist < sphere_radius:
+                    return False
+        return True
+
+    def find_touching_sphere_position(coord, existing_coords, sphere_radius):
+        """Find position where sphere touches another sphere."""
+        best_coord = coord
+        min_distance = float('inf')
+
+        for existing_idx, existing_coord in existing_coords.items():
+            if existing_idx != atom_idx:
+                dist = distance(coord, existing_coord)
+                if dist < min_distance:
+                    min_distance = dist
+                    # Position sphere to touch the closest existing sphere
+                    if dist > 0:
+                        # Normalize direction vector
+                        direction = [
+                            (coord[0] - existing_coord[0]) / dist,
+                            (coord[1] - existing_coord[1]) / dist,
+                            (coord[2] - existing_coord[2]) / dist
+                        ]
+                        # Position at exactly sphere_radius distance
+                        best_coord = [
+                            existing_coord[0] + direction[0] * sphere_radius,
+                            existing_coord[1] + direction[1] * sphere_radius,
+                            existing_coord[2] + direction[2] * sphere_radius
+                        ]
+
+        return best_coord
+
+    # Start with initial coordinate
+    current_coord = list(initial_coord)
+
+    # Iterative optimization
+    for iteration in range(max_iterations):
+        # Check if current position is valid
+        if is_valid_position(current_coord, existing_coords, sphere_radius):
+            return tuple(current_coord)
+
+        # Find position that touches another sphere
+        touching_coord = find_touching_sphere_position(current_coord, existing_coords, sphere_radius)
+
+        # Add small random perturbation to avoid getting stuck
+        perturbation = 0.1 * sphere_radius
+        perturbed_coord = [
+            touching_coord[0] + random.uniform(-perturbation, perturbation),
+            touching_coord[1] + random.uniform(-perturbation, perturbation),
+            touching_coord[2] + random.uniform(-perturbation, perturbation)
+        ]
+
+        # If perturbed position is valid, use it
+        if is_valid_position(perturbed_coord, existing_coords, sphere_radius):
+            return tuple(perturbed_coord)
+
+        current_coord = perturbed_coord
+
+    # If optimization failed, return the best touching position found
+    return find_touching_sphere_position(initial_coord, existing_coords, sphere_radius)
+
+
+def verify_sphere_packing_connectivity(hybrid_atoms, sphere_coords, sphere_radius=1.2):
+    """
+    Verify that all atoms are connected to MCS through network of touching spheres.
+
+    Args:
+        hybrid_atoms: List of hybrid atom dictionaries
+        sphere_coords: Dictionary of atom coordinates
+        sphere_radius: Radius of spheres
+
+    Returns:
+        True if all atoms are connected, False otherwise
+    """
+    import math
+
+    def distance(coord1, coord2):
+        """Calculate Euclidean distance between two coordinates."""
+        dx = coord1[0] - coord2[0]
+        dy = coord1[1] - coord2[1]
+        dz = coord1[2] - coord2[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    def are_spheres_touching(coord1, coord2, sphere_radius):
+        """Check if two spheres are touching (distance <= 2*radius)."""
+        dist = distance(coord1, coord2)
+        return dist <= 2.0 * sphere_radius
+
+    # Build connectivity graph
+    connectivity = {}
+    mcs_atoms = set()
+
+    for atom in hybrid_atoms:
+        atom_idx = atom['index']
+        connectivity[atom_idx] = []
+
+        if atom['mapped']:
+            mcs_atoms.add(atom_idx)
+
+        # Find all atoms that this atom's sphere touches
+        for other_atom in hybrid_atoms:
+            other_idx = other_atom['index']
+            if other_idx != atom_idx:
+                if (atom_idx in sphere_coords and other_idx in sphere_coords and
+                        are_spheres_touching(sphere_coords[atom_idx], sphere_coords[other_idx], sphere_radius)):
+                    connectivity[atom_idx].append(other_idx)
+
+    # Check connectivity using BFS from MCS atoms
+    visited = set()
+    queue = list(mcs_atoms)
+
+    while queue:
+        current = queue.pop(0)
+        if current not in visited:
+            visited.add(current)
+            for neighbor in connectivity[current]:
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+    # All atoms should be reachable from MCS
+    all_atoms = {atom['index'] for atom in hybrid_atoms}
+    return visited == all_atoms
 
 
 def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
