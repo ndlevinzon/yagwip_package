@@ -1445,13 +1445,13 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
 
 def generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state):
     """
-    Generate hybrid coordinates using PMX method with proper clustering.
+    Generate hybrid coordinates using PMX method with smart dummy distribution.
 
-    PMX Method with Clustering:
+    PMX Method with Smart Dummy Distribution:
     - MCS atoms: Use coordinates from the current state
     - Dummy atoms: Use coordinates from the opposite state (where they exist)
-    - All atoms must be within a reasonable distance (max 2.0 nm from MCS centroid)
-    - Fallback positioning uses intelligent clustering around MCS
+    - Dummy atoms are distributed near their corresponding MCS atoms to prevent long-distance interactions
+    - Fallback positioning uses intelligent distribution around MCS atoms
 
     Args:
         hybrid_atoms: List of hybrid atom dictionaries
@@ -1488,44 +1488,142 @@ def generate_pmx_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapp
             hybrid_coords[atom['index']] = coord
             mcs_coords_list.append(coord)
 
-    # Calculate MCS centroid for clustering
+    # Calculate MCS centroid for fallback positioning
     if mcs_coords_list:
         mcs_centroid = calculate_centroid(mcs_coords_list)
     else:
         mcs_centroid = (0.0, 0.0, 0.0)
 
-    # Step 2: Position dummy atoms using opposite state coordinates with clustering
-    max_distance_from_mcs = 2.0  # Maximum distance from MCS centroid (2.0 nm)
+    # Step 2: Position dummy atoms using smart distribution
+    max_distance_from_mcs = 1.5  # Maximum distance from MCS centroid (1.5 nm)
+    max_distance_from_nearest_mcs = 0.8  # Maximum distance from nearest MCS atom (0.8 nm)
 
+    # Group dummy atoms by their origin (A or B) for better distribution
+    dummy_atoms_a = [atom for atom in dummy_atoms if atom['origA_idx'] is not None]
+    dummy_atoms_b = [atom for atom in dummy_atoms if atom['origB_idx'] is not None]
+
+    # Distribute dummy atoms near their corresponding MCS atoms
     for atom in dummy_atoms:
         if state == 'A':
             # State A: Dummy atoms use ligand B coordinates (opposite state)
             if atom['origB_idx'] in coordsB_aligned:
                 coord = coordsB_aligned[atom['origB_idx']]
-                # Check if coordinate is within reasonable distance
+                # Check if coordinate is within reasonable distance from MCS centroid
                 if calculate_distance(coord, mcs_centroid) <= max_distance_from_mcs:
                     hybrid_coords[atom['index']] = coord
                 else:
-                    # Place near MCS centroid if too far
-                    hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
+                    # Place near nearest MCS atom if too far from centroid
+                    nearest_mcs_coord = find_nearest_mcs_atom(coord, mcs_coords_list)
+                    hybrid_coords[atom['index']] = place_near_mcs_atom(nearest_mcs_coord, hybrid_coords.values(),
+                                                                       max_distance_from_nearest_mcs)
             else:
-                # Fallback: place near MCS centroid
-                hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
+                # Fallback: place near nearest MCS atom
+                nearest_mcs_coord = find_nearest_mcs_atom(mcs_centroid, mcs_coords_list)
+                hybrid_coords[atom['index']] = place_near_mcs_atom(nearest_mcs_coord, hybrid_coords.values(),
+                                                                   max_distance_from_nearest_mcs)
         else:  # state == 'B'
             # State B: Dummy atoms use ligand A coordinates (opposite state)
             if atom['origA_idx'] in coordsA:
                 coord = coordsA[atom['origA_idx']]
-                # Check if coordinate is within reasonable distance
+                # Check if coordinate is within reasonable distance from MCS centroid
                 if calculate_distance(coord, mcs_centroid) <= max_distance_from_mcs:
                     hybrid_coords[atom['index']] = coord
                 else:
-                    # Place near MCS centroid if too far
-                    hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
+                    # Place near nearest MCS atom if too far from centroid
+                    nearest_mcs_coord = find_nearest_mcs_atom(coord, mcs_coords_list)
+                    hybrid_coords[atom['index']] = place_near_mcs_atom(nearest_mcs_coord, hybrid_coords.values(),
+                                                                       max_distance_from_nearest_mcs)
             else:
-                # Fallback: place near MCS centroid
-                hybrid_coords[atom['index']] = place_near_centroid(mcs_centroid, hybrid_coords.values())
+                # Fallback: place near nearest MCS atom
+                nearest_mcs_coord = find_nearest_mcs_atom(mcs_centroid, mcs_coords_list)
+                hybrid_coords[atom['index']] = place_near_mcs_atom(nearest_mcs_coord, hybrid_coords.values(),
+                                                                   max_distance_from_nearest_mcs)
 
     return hybrid_coords
+
+
+def find_nearest_mcs_atom(target_coord, mcs_coords_list):
+    """
+    Find the nearest MCS atom to a target coordinate.
+
+    Args:
+        target_coord: Target coordinate (x, y, z)
+        mcs_coords_list: List of MCS atom coordinates
+
+    Returns:
+        Tuple of (x, y, z) coordinates of nearest MCS atom
+    """
+    if not mcs_coords_list:
+        return (0.0, 0.0, 0.0)
+
+    nearest_coord = mcs_coords_list[0]
+    min_distance = calculate_distance(target_coord, nearest_coord)
+
+    for coord in mcs_coords_list[1:]:
+        distance = calculate_distance(target_coord, coord)
+        if distance < min_distance:
+            min_distance = distance
+            nearest_coord = coord
+
+    return nearest_coord
+
+
+def place_near_mcs_atom(mcs_coord, existing_coords, max_distance=0.8, min_distance=0.15):
+    """
+    Place a new atom near an MCS atom while avoiding overlap with existing atoms.
+
+    Args:
+        mcs_coord: MCS atom coordinates to place near
+        existing_coords: List of existing atom coordinates
+        max_distance: Maximum distance from MCS atom
+        min_distance: Minimum distance from existing atoms
+
+    Returns:
+        Tuple of (x, y, z) coordinates for new atom
+    """
+    import math
+    import random
+
+    # Try multiple positions to find one that doesn't overlap
+    max_attempts = 30
+
+    for attempt in range(max_attempts):
+        # Generate random direction from MCS atom
+        theta = random.uniform(0, 2 * math.pi)  # Azimuthal angle
+        phi = random.uniform(0, math.pi)  # Polar angle
+
+        # Generate random distance within max_distance
+        distance = random.uniform(0.1, max_distance)
+
+        # Convert spherical coordinates to Cartesian
+        x = mcs_coord[0] + distance * math.sin(phi) * math.cos(theta)
+        y = mcs_coord[1] + distance * math.sin(phi) * math.sin(theta)
+        z = mcs_coord[2] + distance * math.cos(phi)
+
+        candidate_coord = (x, y, z)
+
+        # Check if this position is far enough from existing atoms
+        too_close = False
+        for existing_coord in existing_coords:
+            dist = calculate_distance(candidate_coord, existing_coord)
+            if dist < min_distance:
+                too_close = True
+                break
+
+        if not too_close:
+            return candidate_coord
+
+    # If we couldn't find a non-overlapping position, place at a random position
+    # but with a smaller distance to avoid extreme positions
+    distance = random.uniform(0.1, max_distance * 0.6)
+    theta = random.uniform(0, 2 * math.pi)
+    phi = random.uniform(0, math.pi)
+
+    x = mcs_coord[0] + distance * math.sin(phi) * math.cos(theta)
+    y = mcs_coord[1] + distance * math.sin(phi) * math.sin(theta)
+    z = mcs_coord[2] + distance * math.cos(phi)
+
+    return (x, y, z)
 
 
 def calculate_centroid(coords_list):
@@ -1546,64 +1644,6 @@ def calculate_centroid(coords_list):
     centroid_z = sum(coord[2] for coord in coords_list) / len(coords_list)
 
     return (centroid_x, centroid_y, centroid_z)
-
-
-def place_near_centroid(centroid, existing_coords, min_distance=0.2, max_distance=1.0):
-    """
-    Place a new atom near the centroid while avoiding overlap with existing atoms.
-
-    Args:
-        centroid: Target centroid coordinates
-        existing_coords: List of existing atom coordinates
-        min_distance: Minimum distance from existing atoms
-        max_distance: Maximum distance from centroid
-
-    Returns:
-        Tuple of (x, y, z) coordinates for new atom
-    """
-    import math
-    import random
-
-    # Try multiple positions to find one that doesn't overlap
-    max_attempts = 50
-
-    for attempt in range(max_attempts):
-        # Generate random direction from centroid
-        theta = random.uniform(0, 2 * math.pi)  # Azimuthal angle
-        phi = random.uniform(0, math.pi)  # Polar angle
-
-        # Generate random distance within max_distance
-        distance = random.uniform(0.1, max_distance)
-
-        # Convert spherical coordinates to Cartesian
-        x = centroid[0] + distance * math.sin(phi) * math.cos(theta)
-        y = centroid[1] + distance * math.sin(phi) * math.sin(theta)
-        z = centroid[2] + distance * math.cos(phi)
-
-        candidate_coord = (x, y, z)
-
-        # Check if this position is far enough from existing atoms
-        too_close = False
-        for existing_coord in existing_coords:
-            dist = calculate_distance(candidate_coord, existing_coord)
-            if dist < min_distance:
-                too_close = True
-                break
-
-        if not too_close:
-            return candidate_coord
-
-    # If we couldn't find a non-overlapping position, place at a random position
-    # but with a smaller distance to avoid extreme positions
-    distance = random.uniform(0.1, max_distance * 0.7)
-    theta = random.uniform(0, 2 * math.pi)
-    phi = random.uniform(0, math.pi)
-
-    x = centroid[0] + distance * math.sin(phi) * math.cos(theta)
-    y = centroid[1] + distance * math.sin(phi) * math.sin(theta)
-    z = centroid[2] + distance * math.cos(phi)
-
-    return (x, y, z)
 
 
 def write_hybrid_gro(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
