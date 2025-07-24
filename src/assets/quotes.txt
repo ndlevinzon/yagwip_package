@@ -2,7 +2,7 @@
 “Beware; for I am fearless, and therefore powerful.” — Mary Shelley, Frankenstein
 “The only way out of the labyrinth of suffering is to forgive.” ― John Green, Looking for Alaska
 “I took a deep breath and listened to the old brag of my heart: I am, I am, I am.” — Sylvia Plath, The Bell Jar
-“Love is or it ain’t. Thin love ain’t love at all.” — Toni Morrison, Beloved
+“Love is, or it ain’t. Thin love ain’t love at all.” — Toni Morrison, Beloved
 “We accept the love we think we deserve.” ― Stephen Chbosky, The Perks of Being a Wallflower
 “There are years that ask questions and years that answer.” — Zora Neale Hurston, Their Eyes Were Watching God
 “I am not afraid of storms, for I am learning how to sail my ship.” — Louisa May Alcott, Little Women
@@ -74,3 +74,33 @@
 "Hello, gorgeous." — Fanny Brice, Funny Girl
 "Toga! Toga!" — John "Bluto" Blutarsky, National Lampoon's Animal House
 "Nobody puts Baby in a corner." — Johnny Castle, Dirty Dancing
+"Walking on water and developing software from a specification are easy if both are frozen." — Edward V Berard
+"Talk is cheap. Show me the code." — Linus Torvalds
+"In God we trust. All others must bring data." — W. Edwards Demming
+"In theory, theory and practice are the same. In practice, they’re not." — Yoggi Berra
+"You can’t have great software without a great team, and most software teams behave like dysfunctional families." — Jim McCarthy
+"Most of you are familiar with the virtues of a programmer. There are three, of course: laziness, impatience, and hubris." — Larry Wall
+"Nine people can’t make a baby in a month." (regarding the addition of more programmers to get a project completed faster) — Fred Brooks
+"Any fool can write code that a computer can understand. Good programmers write code that humans can understand." — Martin Fowler
+"Programming is like sex. One mistake, and you have to support it for the rest of your life." — Michael Sinz
+"You can use an eraser on the drafting table or a sledgehammer on the construction site" — Frank Lloyd Wright
+"There are only two kinds of languages: the ones people complain about and the ones nobody uses." — Bjarne Stroustrup
+"It's all talk until the code runs." — Ward Cunningham
+"Given enough eyeballs, all bugs are shallow." — Linus Torvalds
+"A clever person solves a problem. A wise person avoids it." — Albert Einstein
+"Being a good software engineer is 3% talent, 97% not being distracted by the internet." — Unknown
+"Any sufficiently advanced technology is indistinguishable from magic." — Arthur C. Clarke
+"A ship in port is safe, but that's not what ships are built for." — Grace Hopper
+"The imposter syndrome is real. Luckily, it goes away." — Kimber Lockhart
+"Know how to learn. Then, want to learn." — Katherine Johnson
+"Never trust a computer you can’t throw out a window." — Steve Wozniak
+"When in doubt, use brute force." — Ken Thompson
+"Once a new technology starts rolling, if you’re not part of the steamroller, you’re part of the road." — Stewart Brand
+"The most disastrous thing that you can ever learn is your first programming language." — Alan Kay
+"Optimism is an occupational hazard of programming. Feedback is the treatment." — Kent Beck
+What do you call a pony with a cough? A little horse!
+What did one hat say to the other? You wait here, and I’ll go on a head!
+What’s orange and sounds like a carrot? A parrot!
+What is an astronaut’s favorite part on a computer? The space bar!
+What do you call an apology written in dots and dashes? Re-Morse code!
+Did you hear about the guy who invented the knock-knock joke? He won the ‘no-bell’ prize!
