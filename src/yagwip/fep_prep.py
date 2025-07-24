@@ -1702,8 +1702,16 @@ def main():
 
     print(f"Initial MCS found: {mcs_size} atoms")
 
-    # 2. Optimize MCS by checking spatial connectivity
-    optimized_mapping = optimize_mcs_spatial_connectivity(mapping, args.ligA_mol2, args.ligB_mol2, max_distance=0.5)
+    atom_map_file = os.path.join(out_dir, "atom_map.txt")
+    write_atom_map(mapping, atom_map_file)
+
+    # 2. Align ligandB.mol2 to ligandA.mol2 using atom_map.txt
+    aligned_ligB_mol2 = os.path.join(out_dir, 'ligandB_aligned.mol2')
+    align_ligands_with_mapping(args.ligA_mol2, args.ligB_mol2, aligned_ligB_mol2, mapping)
+
+    # 3. Optimize MCS by checking spatial connectivity (AFTER alignment)
+    optimized_mapping = optimize_mcs_spatial_connectivity_after_alignment(mapping, args.ligA_mol2, aligned_ligB_mol2,
+                                                                          max_distance=0.5)
 
     if len(optimized_mapping) < 3:
         raise RuntimeError(f"Spatial optimization reduced MCS below minimum size: {len(optimized_mapping)} atoms")
@@ -1711,15 +1719,9 @@ def main():
     print(
         f"Optimized MCS: {len(optimized_mapping)} atoms (removed {len(mapping) - len(optimized_mapping)} disconnected atoms)")
 
-    # Use the optimized mapping
+    # Update the mapping and atom map file
     mapping = optimized_mapping
-
-    atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
-
-    # 3. Align ligandB.mol2 to ligandA.mol2 using atom_map.txt
-    aligned_ligB_mol2 = os.path.join(out_dir, 'ligandB_aligned.mol2')
-    align_ligands_with_mapping(args.ligA_mol2, args.ligB_mol2, aligned_ligB_mol2, mapping)
 
     # 4. Align ligandB.pdb to ligandA.pdb using atom_map.txt
     aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
@@ -1743,25 +1745,25 @@ def main():
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
 
 
-def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=0.2):
+def optimize_mcs_spatial_connectivity_after_alignment(mapping, ligA_mol2, aligned_ligB_mol2, max_distance=0.5):
     """
     Optimize MCS by ensuring all atoms are within max_distance of each other.
-    Remove atoms that are too far from other MCS atoms.
+    This version works AFTER alignment, so both ligands are in the same coordinate system.
 
     Args:
         mapping: Original atom mapping dictionary
         ligA_mol2: Path to ligand A MOL2 file
-        ligB_mol2: Path to ligand B MOL2 file
-        max_distance: Maximum allowed distance between MCS atoms (default 0.2 nm = 2Å)
+        aligned_ligB_mol2: Path to aligned ligand B MOL2 file
+        max_distance: Maximum allowed distance between MCS atoms (default 0.5 nm = 5Å)
 
     Returns:
         Optimized mapping dictionary with disconnected atoms removed
     """
-    # Parse coordinates from MOL2 files
+    # Parse coordinates from MOL2 files (now both in same coordinate system)
     coordsA, _ = parse_mol2_coords(ligA_mol2)
-    coordsB, _ = parse_mol2_coords(ligB_mol2)
+    coordsB_aligned, _ = parse_mol2_coords(aligned_ligB_mol2)
 
-    print(f"Debug: Parsed {len(coordsA)} coordinates from ligand A, {len(coordsB)} from ligand B")
+    print(f"Debug: Parsed {len(coordsA)} coordinates from ligand A, {len(coordsB_aligned)} from aligned ligand B")
 
     if not mapping:
         return mapping
@@ -1771,12 +1773,10 @@ def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distanc
     mcs_atoms_B = list(mapping.values())
 
     print(f"Debug: MCS atoms A: {len(mcs_atoms_A)}, MCS atoms B: {len(mcs_atoms_B)}")
-    print(f"Debug: Sample MCS atoms A: {mcs_atoms_A[:5]}")
-    print(f"Debug: Sample MCS atoms B: {mcs_atoms_B[:5]}")
 
-    # Check spatial connectivity in both ligands
+    # Check spatial connectivity in both ligands (now in same coordinate system)
     valid_atoms_A = check_mcs_spatial_connectivity(mcs_atoms_A, coordsA, max_distance)
-    valid_atoms_B = check_mcs_spatial_connectivity(mcs_atoms_B, coordsB, max_distance)
+    valid_atoms_B = check_mcs_spatial_connectivity(mcs_atoms_B, coordsB_aligned, max_distance)
 
     print(f"Debug: Valid atoms A: {len(valid_atoms_A)}, Valid atoms B: {len(valid_atoms_B)}")
 
