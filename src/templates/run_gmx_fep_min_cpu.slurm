@@ -31,7 +31,6 @@ for system in ligand_only protein_complex; do
         if [ ! -f "${mini_prefix}.gro" ]; then
           echo "[${lambda_dir}] Running minimization..."
           gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
-          gmx_mpi mdrun -ntomp $SLURM_CPUS_PER_TASK -deffnm ${mini_prefix}
         fi
 
         if [ ! -f "${nvt_prefix}.gro" ]; then
