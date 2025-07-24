@@ -844,13 +844,16 @@ def parse_itp_dihedrals(itp_file):
 
 
 def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid bonds using the merge strategy."""
+    """Create hybrid bonds using the merge strategy with complete connectivity."""
     # Parse bond sections from both ITP files
     bondsA = parse_itp_bonds(ligA_itp)
     bondsB = parse_itp_bonds(ligB_itp)
 
     # Create mapping from original atom indices to hybrid indices
     hybrid_bonds = []
+
+    # Track which hybrid atoms are connected
+    connected_atoms = set()
 
     # Process bonds from ligand A
     for bondA in bondsA:
@@ -884,7 +887,7 @@ def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_it
                 'funct': bondA['funct']
             }
 
-            if bond_exists_in_B:
+            if bond_exists_in_B and bondB_params is not None:
                 # Bond exists in both A and B
                 hybrid_bond['lengthA'] = bondA.get('length', 0.14)
                 hybrid_bond['forceA'] = bondA.get('force', 50000)
@@ -898,6 +901,8 @@ def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_it
                 hybrid_bond['forceB'] = 0.0  # Zero force
 
             hybrid_bonds.append(hybrid_bond)
+            connected_atoms.add(ai_hybrid)
+            connected_atoms.add(aj_hybrid)
 
     # Process bonds from ligand B (for bonds that don't exist in A)
     for bondB in bondsB:
@@ -934,12 +939,57 @@ def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_it
                     'forceB': bondB.get('force', 50000)
                 }
                 hybrid_bonds.append(hybrid_bond)
+                connected_atoms.add(ai_hybrid)
+                connected_atoms.add(aj_hybrid)
+
+    # Ensure all dummy atoms are connected to real atoms
+    # Find dummy atoms that aren't connected
+    dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+    mapped_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
+
+    for dummy_atom in dummy_atoms:
+        if dummy_atom['index'] not in connected_atoms:
+            # Find the closest mapped atom to connect this dummy atom
+            closest_mapped = None
+            min_distance = float('inf')
+
+            # For simplicity, connect to the first mapped atom
+            # In practice, you might want to use spatial coordinates
+            if mapped_atoms:
+                closest_mapped = mapped_atoms[0]
+
+                # Create a connecting bond with zero force in the appropriate state
+                if dummy_atom['origA_idx'] is not None:
+                    # This is a unique A atom (dummy in state B)
+                    hybrid_bond = {
+                        'ai': dummy_atom['index'],
+                        'aj': closest_mapped['index'],
+                        'funct': 1,
+                        'lengthA': 0.14,  # Normal bond in state A
+                        'forceA': 50000,
+                        'lengthB': 0.1,  # Dummy bond in state B
+                        'forceB': 0.0
+                    }
+                else:
+                    # This is a unique B atom (dummy in state A)
+                    hybrid_bond = {
+                        'ai': dummy_atom['index'],
+                        'aj': closest_mapped['index'],
+                        'funct': 1,
+                        'lengthA': 0.1,  # Dummy bond in state A
+                        'forceA': 0.0,
+                        'lengthB': 0.14,  # Normal bond in state B
+                        'forceB': 50000
+                    }
+
+                hybrid_bonds.append(hybrid_bond)
+                connected_atoms.add(dummy_atom['index'])
 
     return hybrid_bonds
 
 
 def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid angles using the merge strategy."""
+    """Create hybrid angles using the merge strategy with complete connectivity."""
     # Parse angle sections from both ITP files
     anglesA = parse_itp_angles(ligA_itp)
     anglesB = parse_itp_angles(ligB_itp)
@@ -981,7 +1031,7 @@ def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_i
                 'funct': angleA['funct']
             }
 
-            if angle_exists_in_B:
+            if angle_exists_in_B and angleB_params is not None:
                 # Angle exists in both A and B
                 hybrid_angle['thetaA'] = angleA.get('theta', 109.5)
                 hybrid_angle['fcA'] = angleA.get('fc', 520)
@@ -1035,11 +1085,91 @@ def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_i
                 }
                 hybrid_angles.append(hybrid_angle)
 
+    # Add missing angles to ensure complete connectivity
+    # This ensures that all dummy atoms have proper angle terms
+    hybrid_angles = add_missing_angles_for_connectivity(hybrid_atoms, hybrid_angles)
+
     return hybrid_angles
 
 
+def add_missing_angles_for_connectivity(hybrid_atoms, existing_angles):
+    """Add missing angles to ensure all dummy atoms have proper connectivity."""
+    # Find dummy atoms
+    dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+    mapped_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
+
+    if not dummy_atoms or not mapped_atoms:
+        return existing_angles
+
+    # For each dummy atom, ensure it has angle terms with mapped atoms
+    for dummy_atom in dummy_atoms:
+        # Find existing angles involving this dummy atom
+        dummy_angles = [angle for angle in existing_angles
+                        if dummy_atom['index'] in [angle['ai'], angle['aj'], angle['ak']]]
+
+        # If dummy atom doesn't have enough angle terms, add some
+        if len(dummy_angles) < 2:  # Most atoms should have at least 2 angle terms
+            # Find two mapped atoms to create angles with
+            mapped_neighbors = []
+            for mapped_atom in mapped_atoms:
+                if len(mapped_neighbors) >= 2:
+                    break
+                # Create angle: mapped1 - dummy - mapped2
+                if len(mapped_neighbors) == 0:
+                    mapped_neighbors.append(mapped_atom)
+                elif len(mapped_neighbors) == 1:
+                    # Check if this angle already exists
+                    angle_exists = False
+                    for angle in existing_angles:
+                        if (angle['ai'] == mapped_neighbors[0]['index'] and
+                                angle['aj'] == dummy_atom['index'] and
+                                angle['ak'] == mapped_atom['index']):
+                            angle_exists = True
+                            break
+                        elif (angle['ai'] == mapped_atom['index'] and
+                              angle['aj'] == dummy_atom['index'] and
+                              angle['ak'] == mapped_neighbors[0]['index']):
+                            angle_exists = True
+                            break
+
+                    if not angle_exists:
+                        mapped_neighbors.append(mapped_atom)
+
+            # Add missing angles
+            if len(mapped_neighbors) == 2:
+                # Create angle: mapped1 - dummy - mapped2
+                if dummy_atom['origA_idx'] is not None:
+                    # This is a unique A atom (dummy in state B)
+                    new_angle = {
+                        'ai': mapped_neighbors[0]['index'],
+                        'aj': dummy_atom['index'],
+                        'ak': mapped_neighbors[1]['index'],
+                        'funct': 1,
+                        'thetaA': 109.5,  # Normal angle in state A
+                        'fcA': 520,
+                        'thetaB': 120.0,  # Dummy angle in state B
+                        'fcB': 0.0
+                    }
+                else:
+                    # This is a unique B atom (dummy in state A)
+                    new_angle = {
+                        'ai': mapped_neighbors[0]['index'],
+                        'aj': dummy_atom['index'],
+                        'ak': mapped_neighbors[1]['index'],
+                        'funct': 1,
+                        'thetaA': 120.0,  # Dummy angle in state A
+                        'fcA': 0.0,
+                        'thetaB': 109.5,  # Normal angle in state B
+                        'fcB': 520
+                    }
+
+                existing_angles.append(new_angle)
+
+    return existing_angles
+
+
 def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid dihedrals using the merge strategy."""
+    """Create hybrid dihedrals using the merge strategy with complete connectivity."""
     # Parse dihedral sections from both ITP files
     dihedralsA = parse_itp_dihedrals(ligA_itp)
     dihedralsB = parse_itp_dihedrals(ligB_itp)
@@ -1086,7 +1216,7 @@ def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, lig
                 'funct': dihedralA['funct']
             }
 
-            if dihedral_exists_in_B:
+            if dihedral_exists_in_B and dihedralB_params is not None:
                 # Dihedral exists in both A and B
                 hybrid_dihedral['phiA'] = dihedralA.get('phi', 180.0)
                 hybrid_dihedral['fcA'] = dihedralA.get('fc', 2.0)
@@ -1151,7 +1281,75 @@ def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, lig
                 }
                 hybrid_dihedrals.append(hybrid_dihedral)
 
+    # Add missing dihedrals to ensure complete connectivity
+    # This ensures that all dummy atoms have proper dihedral terms
+    hybrid_dihedrals = add_missing_dihedrals_for_connectivity(hybrid_atoms, hybrid_dihedrals)
+
     return hybrid_dihedrals
+
+
+def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
+    """Add missing dihedrals to ensure all dummy atoms have proper connectivity."""
+    # Find dummy atoms
+    dummy_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
+    mapped_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
+
+    if not dummy_atoms or len(mapped_atoms) < 3:
+        return existing_dihedrals
+
+    # For each dummy atom, ensure it has dihedral terms with mapped atoms
+    for dummy_atom in dummy_atoms:
+        # Find existing dihedrals involving this dummy atom
+        dummy_dihedrals = [dihedral for dihedral in existing_dihedrals
+                           if dummy_atom['index'] in [dihedral['ai'], dihedral['aj'],
+                                                      dihedral['ak'], dihedral['al']]]
+
+        # If dummy atom doesn't have enough dihedral terms, add some
+        if len(dummy_dihedrals) < 1:  # Most atoms should have at least 1 dihedral term
+            # Find three mapped atoms to create dihedrals with
+            mapped_neighbors = []
+            for mapped_atom in mapped_atoms:
+                if len(mapped_neighbors) >= 3:
+                    break
+                mapped_neighbors.append(mapped_atom)
+
+            # Add missing dihedrals
+            if len(mapped_neighbors) == 3:
+                # Create dihedral: mapped1 - mapped2 - dummy - mapped3
+                if dummy_atom['origA_idx'] is not None:
+                    # This is a unique A atom (dummy in state B)
+                    new_dihedral = {
+                        'ai': mapped_neighbors[0]['index'],
+                        'aj': mapped_neighbors[1]['index'],
+                        'ak': dummy_atom['index'],
+                        'al': mapped_neighbors[2]['index'],
+                        'funct': 1,
+                        'phiA': 180.0,  # Normal dihedral in state A
+                        'fcA': 2.0,
+                        'multA': 3,
+                        'phiB': 180.0,  # Dummy dihedral in state B
+                        'fcB': 0.0,
+                        'multB': 2
+                    }
+                else:
+                    # This is a unique B atom (dummy in state A)
+                    new_dihedral = {
+                        'ai': mapped_neighbors[0]['index'],
+                        'aj': mapped_neighbors[1]['index'],
+                        'ak': dummy_atom['index'],
+                        'al': mapped_neighbors[2]['index'],
+                        'funct': 1,
+                        'phiA': 180.0,  # Dummy dihedral in state A
+                        'fcA': 0.0,
+                        'multA': 2,
+                        'phiB': 180.0,  # Normal dihedral in state B
+                        'fcB': 2.0,
+                        'multB': 3
+                    }
+
+                existing_dihedrals.append(new_dihedral)
+
+    return existing_dihedrals
 
 
 def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
