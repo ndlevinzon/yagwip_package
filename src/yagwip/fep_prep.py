@@ -1563,7 +1563,7 @@ def place_dummy_near_non_dummy(non_dummy_coord, existing_dummy_coords, max_dista
         phi = random.uniform(0, math.pi)  # Polar angle
 
         # Generate random distance within max_distance
-        distance = random.uniform(0.5, max_distance)  # Keep some minimum distance
+        distance = random.uniform(0.01, max_distance)  # Keep some minimum distance
 
         # Convert spherical coordinates to Cartesian
         x = non_dummy_coord[0] + distance * math.sin(phi) * math.cos(theta)
@@ -1585,7 +1585,7 @@ def place_dummy_near_non_dummy(non_dummy_coord, existing_dummy_coords, max_dista
 
     # If we couldn't find a non-overlapping position, place at a random position
     # but with a smaller distance to avoid extreme positions
-    distance = random.uniform(0.3, max_distance * 0.7)
+    distance = random.uniform(0.01, max_distance * 0.7)
     theta = random.uniform(0, 2 * math.pi)
     phi = random.uniform(0, math.pi)
 
