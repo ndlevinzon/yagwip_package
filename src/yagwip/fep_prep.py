@@ -498,8 +498,8 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         hybrid_itp, hybrid_pdbA, hybrid_pdbB = hybrid_files
 
         # Convert PDB to GRO for ligand-only directories
-        def pdb_to_gro(pdb_file, gro_file):
-            """Convert PDB to GRO format"""
+        def pdb_to_gro(pdb_file, gro_file, use_aligned_coords=False):
+            """Convert PDB to GRO format, optionally using aligned coordinates"""
             with open(pdb_file, 'r') as f:
                 lines = f.readlines()
 
@@ -509,7 +509,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
 
             with open(gro_file, 'w') as f:
                 # Write header (title line)
-                f.write("Hybrid structure for FEP\n")
+                f.write("Hybrid structure for FEP (Extended Form)\n")
                 # Write number of atoms
                 f.write(f"{num_atoms:>5}\n")
 
@@ -537,6 +537,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
         hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
 
+        # Convert PDB to GRO using the hybrid PDB files (which already have aligned coordinates)
         pdb_to_gro(hybrid_pdbA, hybrid_groA)
         pdb_to_gro(hybrid_pdbB, hybrid_groB)
 
@@ -1452,45 +1453,90 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
 
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
-    """Write hybrid PDB file for specified state."""
+    """
+    Write hybrid PDB file for specified state using extended form strategy.
+
+    Extended form: Dummy atoms maintain their original spatial positions from the endpoint structure.
+    This preserves realistic geometry and keeps bonded interactions valid at the endpoint.
+
+    Args:
+        out_file: Output PDB file path
+        hybrid_atoms: List of hybrid atom dictionaries
+        coordsA: Coordinates for ligand A (original)
+        coordsB_aligned: Aligned coordinates for ligand B (after Kabsch alignment)
+        mapping: Atom mapping dictionary
+        state: 'A' or 'B' to determine which state to write
+    """
     with open(out_file, 'w') as f:
-        f.write("REMARK Hybrid structure for FEP\n")
-
-        # Calculate centroid of MCS atoms for better dummy placement
-        mcs_coords = []
-        for atom in hybrid_atoms:
-            if atom['mapped']:
-                if state == 'A' and atom['origA_idx'] in coordsA:
-                    mcs_coords.append(coordsA[atom['origA_idx']])
-                elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
-                    mcs_coords.append(coordsB_aligned[atom['origB_idx']])
-
-        if mcs_coords:
-            centroid = tuple(sum(c[i] for c in mcs_coords) / len(mcs_coords) for i in range(3))
-        else:
-            centroid = (0.0, 0.0, 0.0)
+        f.write("REMARK Hybrid structure for FEP (Extended Form)\n")
+        f.write(f"REMARK State: {state}\n")
+        f.write(f"REMARK Dummy atoms maintain original spatial positions from endpoint structure\n")
 
         for atom in hybrid_atoms:
             if state == 'A':
-                if atom['origA_idx'] and atom['origA_idx'] in coordsA:
+                # For state A: Use ligand A coordinates for mapped atoms, ligand B coordinates for dummy atoms
+                if atom['mapped'] and atom['origA_idx'] in coordsA:
+                    # Mapped atom: Use original ligand A coordinates
                     x, y, z = coordsA[atom['origA_idx']]
-                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                    atom_name = atom['name']
+                elif not atom['mapped'] and atom['origB_idx'] in coordsB_aligned:
+                    # Dummy atom (unique to B): Use aligned ligand B coordinates to maintain spatial arrangement
+                    x, y, z = coordsB_aligned[atom['origB_idx']]
+                    atom_name = 'DUM'  # Mark as dummy
                 else:
-                    # For unique B atoms in state A, place near MCS centroid
-                    x, y, z = centroid
+                    # Fallback: Use centroid of mapped atoms
+                    x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
                     atom_name = 'DUM'
             else:  # state == 'B'
-                if atom['origB_idx'] and atom['origB_idx'] in coordsB_aligned:
+                # For state B: Use ligand B coordinates for mapped atoms, ligand A coordinates for dummy atoms
+                if atom['mapped'] and atom['origB_idx'] in coordsB_aligned:
+                    # Mapped atom: Use aligned ligand B coordinates
                     x, y, z = coordsB_aligned[atom['origB_idx']]
-                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                    atom_name = atom['name']
+                elif not atom['mapped'] and atom['origA_idx'] in coordsA:
+                    # Dummy atom (unique to A): Use original ligand A coordinates to maintain spatial arrangement
+                    x, y, z = coordsA[atom['origA_idx']]
+                    atom_name = 'DUM'  # Mark as dummy
                 else:
-                    # For unique A atoms in state B, place near MCS centroid
-                    x, y, z = centroid
+                    # Fallback: Use centroid of mapped atoms
+                    x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
                     atom_name = 'DUM'
 
             f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
 
         f.write("END\n")
+
+
+def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
+    """
+    Calculate centroid of mapped atoms for fallback positioning.
+
+    Args:
+        hybrid_atoms: List of hybrid atom dictionaries
+        coordsA: Coordinates for ligand A
+        coordsB_aligned: Aligned coordinates for ligand B
+
+    Returns:
+        Tuple of (x, y, z) coordinates for centroid
+    """
+    mapped_coords = []
+
+    for atom in hybrid_atoms:
+        if atom['mapped']:
+            if atom['origA_idx'] in coordsA:
+                mapped_coords.append(coordsA[atom['origA_idx']])
+            elif atom['origB_idx'] in coordsB_aligned:
+                mapped_coords.append(coordsB_aligned[atom['origB_idx']])
+
+    if not mapped_coords:
+        return (0.0, 0.0, 0.0)
+
+    # Calculate centroid
+    centroid_x = sum(coord[0] for coord in mapped_coords) / len(mapped_coords)
+    centroid_y = sum(coord[1] for coord in mapped_coords) / len(mapped_coords)
+    centroid_z = sum(coord[2] for coord in mapped_coords) / len(mapped_coords)
+
+    return (centroid_x, centroid_y, centroid_z)
 
 
 def parse_itp_exclusions(itp_file):
