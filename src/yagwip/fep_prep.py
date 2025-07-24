@@ -1613,8 +1613,6 @@ def main():
                         help='Minimum MCS size (default: 3)')
     parser.add_argument('--target_mcs_size', type=int, default=10,
                         help='Target MCS size - stop searching when found (default: 10)')
-    parser.add_argument('--max_mcs_distance', type=float, default=0.2,
-                        help='Maximum distance between MCS atoms in nm (default: 0.2)')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
@@ -1631,28 +1629,16 @@ def main():
 
     print(f"MCS found: {mcs_size} atoms (target was {args.target_mcs_size})")
 
-    # Parse coordinates for spatial validation
-    coordsA, _ = parse_mol2_coords(args.ligA_mol2)
-    coordsB, _ = parse_mol2_coords(args.ligB_mol2)
-
-    # Validate MCS quality (including spatial validation)
-    is_valid, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size, coordsA, coordsB)
+    # Validate MCS quality and prune if necessary
+    is_valid, filtered_mapping, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size)
     if not is_valid:
         raise RuntimeError(f"MCS quality check failed: {reason}")
 
-    print(f"MCS validation passed: {reason}")
-
-    # Apply spatial validation and get filtered mapping
-    filtered_mapping, removed_atoms, spatial_reason = validate_mcs_spatial_connectivity(
-        mapping, gA, gB, coordsA, coordsB, args.max_mcs_distance
-    )
-
-    if len(filtered_mapping) < args.min_mcs_size:
-        raise RuntimeError(f"Spatial validation failed: {spatial_reason}")
-
     if len(filtered_mapping) < len(mapping):
-        print(f"Spatial validation applied: {spatial_reason}")
+        print(f"MCS pruned: {reason}")
         mapping = filtered_mapping  # Use filtered mapping
+    else:
+        print(f"MCS validation passed: {reason}")
 
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
@@ -1683,155 +1669,7 @@ def main():
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
 
 
-def validate_mcs_spatial_connectivity(mapping, gA, gB, coordsA, coordsB_aligned, max_distance=0.2):
-    """
-    Validate that MCS atoms are spatially close to each other (within max_distance).
-    Remove atoms that are too far from other MCS atoms.
-
-    Args:
-        mapping: Atom mapping dictionary
-        gA: MolGraph for ligand A
-        gB: MolGraph for ligand B
-        coordsA: Coordinates for ligand A
-        coordsB_aligned: Aligned coordinates for ligand B
-        max_distance: Maximum allowed distance between MCS atoms (default 0.2 nm)
-
-    Returns:
-        Tuple of (filtered_mapping, removed_atoms, reason)
-    """
-    if not mapping:
-        return {}, [], "No mapping provided"
-
-    # Extract MCS atom indices
-    mcs_atoms_A = list(mapping.keys())
-    mcs_atoms_B = list(mapping.values())
-
-    # Check spatial connectivity in both ligands
-    valid_atoms_A, removed_A = check_spatial_connectivity(mcs_atoms_A, coordsA, max_distance)
-    valid_atoms_B, removed_B = check_spatial_connectivity(mcs_atoms_B, coordsB_aligned, max_distance)
-
-    # Find atoms that are valid in both ligands
-    valid_atoms_common = set(valid_atoms_A) & set(valid_atoms_B)
-
-    # Create filtered mapping
-    filtered_mapping = {a: mapping[a] for a in valid_atoms_common if a in mapping}
-
-    # Find removed atoms
-    removed_atoms = []
-    for atom_A in mcs_atoms_A:
-        if atom_A not in valid_atoms_common:
-            removed_atoms.append(f"A{atom_A}")
-    for atom_B in mcs_atoms_B:
-        if atom_B not in valid_atoms_common:
-            removed_atoms.append(f"B{atom_B}")
-
-    if len(filtered_mapping) < 3:
-        return {}, removed_atoms, f"Spatial validation reduced MCS to {len(filtered_mapping)} atoms (minimum 3 required)"
-
-    reason = f"Spatial validation: {len(filtered_mapping)} atoms remain, {len(removed_atoms)} atoms removed (distance > {max_distance} nm)"
-
-    return filtered_mapping, removed_atoms, reason
-
-
-def check_spatial_connectivity(atom_indices, coords, max_distance):
-    """
-    Check spatial connectivity of atoms and remove those that are too far from others.
-
-    Args:
-        atom_indices: List of atom indices
-        coords: Dictionary of atom coordinates
-        max_distance: Maximum allowed distance between atoms
-
-    Returns:
-        Tuple of (valid_atoms, removed_atoms)
-    """
-    if len(atom_indices) < 2:
-        return atom_indices, []
-
-    # Calculate pairwise distances
-    distances = {}
-    for i, atom1 in enumerate(atom_indices):
-        for j, atom2 in enumerate(atom_indices[i + 1:], i + 1):
-            if atom1 in coords and atom2 in coords:
-                dist = calculate_distance(coords[atom1], coords[atom2])
-                distances[(atom1, atom2)] = dist
-                distances[(atom2, atom1)] = dist
-
-    # Find atoms that are connected to at least one other atom within max_distance
-    valid_atoms = set()
-    removed_atoms = []
-
-    for atom in atom_indices:
-        # Check if this atom is close to any other atom
-        is_connected = False
-        for other_atom in atom_indices:
-            if atom != other_atom:
-                if (atom, other_atom) in distances and distances[(atom, other_atom)] <= max_distance:
-                    is_connected = True
-                    break
-
-        if is_connected:
-            valid_atoms.add(atom)
-        else:
-            removed_atoms.append(atom)
-
-    # Ensure we have a connected component
-    if valid_atoms:
-        # Use BFS to find the largest connected component
-        largest_component = find_largest_connected_component(valid_atoms, distances, max_distance)
-        removed_atoms.extend(valid_atoms - largest_component)
-        valid_atoms = largest_component
-
-    return list(valid_atoms), removed_atoms
-
-
-def find_largest_connected_component(atoms, distances, max_distance):
-    """
-    Find the largest connected component of atoms within max_distance.
-
-    Args:
-        atoms: Set of atom indices
-        distances: Dictionary of pairwise distances
-        max_distance: Maximum allowed distance
-
-    Returns:
-        Set of atoms in the largest connected component
-    """
-    if not atoms:
-        return set()
-
-    # Start BFS from each atom to find all connected components
-    components = []
-    visited = set()
-
-    for start_atom in atoms:
-        if start_atom in visited:
-            continue
-
-        # BFS to find connected component
-        component = set()
-        queue = [start_atom]
-
-        while queue:
-            current = queue.pop(0)
-            if current not in visited:
-                visited.add(current)
-                component.add(current)
-
-                # Add neighbors within max_distance
-                for other_atom in atoms:
-                    if other_atom not in visited:
-                        if (current, other_atom) in distances and distances[(current, other_atom)] <= max_distance:
-                            queue.append(other_atom)
-
-        if component:
-            components.append(component)
-
-    # Return the largest component
-    if components:
-        return max(components, key=len)
-    else:
-        return set()
+# Removed unused spatial validation functions - using simplified pruning approach instead
 
 
 def calculate_distance(coord1, coord2):
@@ -1855,6 +1693,7 @@ def calculate_distance(coord1, coord2):
 def validate_mcs_quality(mapping, gA, gB, min_mcs_size=3, coordsA=None, coordsB_aligned=None):
     """
     Validate the quality of the found MCS to ensure it forms a continuous structure.
+    Prune disconnected atoms until we get a valid MCS.
 
     Args:
         mapping: Atom mapping dictionary
@@ -1865,56 +1704,117 @@ def validate_mcs_quality(mapping, gA, gB, min_mcs_size=3, coordsA=None, coordsB_
         coordsB_aligned: Aligned coordinates for ligand B (for spatial validation)
 
     Returns:
-        Tuple of (is_valid, reason) where is_valid is boolean and reason is string
+        Tuple of (is_valid, filtered_mapping, reason) where is_valid is boolean
     """
     if not mapping or len(mapping) < min_mcs_size:
-        return False, f"MCS too small: {len(mapping) if mapping else 0} atoms (minimum {min_mcs_size})"
+        return False, {}, f"MCS too small: {len(mapping) if mapping else 0} atoms (minimum {min_mcs_size})"
 
-    # Extract MCS subgraphs
-    mcs_atoms_A = set(mapping.keys())
-    mcs_atoms_B = set(mapping.values())
+    # Start with the full mapping and iteratively prune
+    current_mapping = mapping.copy()
 
-    # Create MCS subgraphs
-    mcs_gA = gA.subgraph(mcs_atoms_A)
-    mcs_gB = gB.subgraph(mcs_atoms_B)
+    while len(current_mapping) >= min_mcs_size:
+        # Extract MCS subgraphs
+        mcs_atoms_A = set(current_mapping.keys())
+        mcs_atoms_B = set(current_mapping.values())
 
-    # Check connectivity
-    if not is_graph_connected(mcs_gA):
-        return False, "MCS atoms in ligand A are not connected"
+        # Create MCS subgraphs
+        mcs_gA = gA.subgraph(mcs_atoms_A)
+        mcs_gB = gB.subgraph(mcs_atoms_B)
 
-    if not is_graph_connected(mcs_gB):
-        return False, "MCS atoms in ligand B are not connected"
+        # Check connectivity
+        if not is_graph_connected(mcs_gA):
+            # Remove the most isolated atom from ligand A
+            atom_to_remove = find_most_isolated_atom(mcs_gA)
+            if atom_to_remove:
+                current_mapping.pop(atom_to_remove, None)
+                continue
+            else:
+                return False, {}, "Cannot find isolated atom to remove in ligand A"
 
-    # Check diameter constraints
-    diameter_A = calculate_graph_diameter(mcs_gA)
-    diameter_B = calculate_graph_diameter(mcs_gB)
+        if not is_graph_connected(mcs_gB):
+            # Remove the most isolated atom from ligand B
+            atom_to_remove = find_most_isolated_atom(mcs_gB)
+            if atom_to_remove:
+                # Find the corresponding atom in ligand A
+                for a, b in list(current_mapping.items()):
+                    if b == atom_to_remove:
+                        current_mapping.pop(a, None)
+                        break
+                continue
+            else:
+                return False, {}, "Cannot find isolated atom to remove in ligand B"
 
-    if diameter_A > len(mcs_atoms_A):
-        return False, f"MCS diameter in ligand A too large: {diameter_A} > {len(mcs_atoms_A)}"
+        # Check diameter constraints
+        diameter_A = calculate_graph_diameter(mcs_gA)
+        diameter_B = calculate_graph_diameter(mcs_gB)
 
-    if diameter_B > len(mcs_atoms_B):
-        return False, f"MCS diameter in ligand B too large: {diameter_B} > {len(mcs_atoms_B)}"
+        if diameter_A > len(mcs_atoms_A) or diameter_B > len(mcs_atoms_B):
+            # Remove the atom with highest degree (most connected)
+            atom_to_remove = find_most_connected_atom(mcs_gA, mcs_gB)
+            if atom_to_remove:
+                current_mapping.pop(atom_to_remove, None)
+                continue
+            else:
+                return False, {}, "Cannot find atom to remove for diameter constraint"
 
-    # Check for reasonable spatial distribution
-    if not check_atom_distances_from_center(mcs_gA):
-        return False, "MCS atoms in ligand A are too far apart (disconnected fragments)"
+        # If we reach here, we have a valid MCS
+        reason = f"Valid MCS: {len(current_mapping)} atoms, diameter A={diameter_A}, B={diameter_B}"
+        return True, current_mapping, reason
 
-    if not check_atom_distances_from_center(mcs_gB):
-        return False, "MCS atoms in ligand B are too far apart (disconnected fragments)"
+    return False, {}, f"Pruning reduced MCS below minimum size: {len(current_mapping)} < {min_mcs_size}"
 
-    # Spatial connectivity validation (if coordinates provided)
-    if coordsA is not None and coordsB_aligned is not None:
-        filtered_mapping, removed_atoms, spatial_reason = validate_mcs_spatial_connectivity(
-            mapping, gA, gB, coordsA, coordsB_aligned
-        )
 
-        if len(filtered_mapping) < min_mcs_size:
-            return False, f"Spatial validation failed: {spatial_reason}"
+def find_most_isolated_atom(graph):
+    """
+    Find the most isolated atom in a graph (lowest degree).
 
-        if len(filtered_mapping) < len(mapping):
-            return False, f"Spatial validation reduced MCS: {spatial_reason}"
+    Args:
+        graph: MolGraph object
 
-    return True, f"Valid MCS: {len(mapping)} atoms, diameter A={diameter_A}, B={diameter_B}"
+    Returns:
+        Atom index of the most isolated atom, or None if not found
+    """
+    if not graph.atoms:
+        return None
+
+    min_degree = float('inf')
+    most_isolated = None
+
+    for atom_idx, atom in graph.atoms.items():
+        if atom.degree < min_degree:
+            min_degree = atom.degree
+            most_isolated = atom_idx
+
+    return most_isolated
+
+
+def find_most_connected_atom(graph_A, graph_B):
+    """
+    Find the atom with highest total degree across both graphs.
+
+    Args:
+        graph_A: MolGraph for ligand A
+        graph_B: MolGraph for ligand B
+
+    Returns:
+        Atom index of the most connected atom, or None if not found
+    """
+    if not graph_A.atoms or not graph_B.atoms:
+        return None
+
+    max_total_degree = -1
+    most_connected = None
+
+    for atom_idx, atom_A in graph_A.atoms.items():
+        # Find corresponding atom in graph_B
+        atom_B = graph_B.atoms.get(atom_idx)
+        if atom_B:
+            total_degree = atom_A.degree + atom_B.degree
+            if total_degree > max_total_degree:
+                max_total_degree = total_degree
+                most_connected = atom_idx
+
+    return most_connected
 
 
 def calculate_graph_diameter(graph):
