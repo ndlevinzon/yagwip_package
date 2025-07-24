@@ -1,3 +1,6 @@
+; ============================================================
+;  ENERGY MINIMIZATION  --  YAGWIP (from PMX) FEP, λ = XXX
+; ============================================================
 ; VARIOUS PREPROCESSING OPTIONS
 title                    =
 include                  =

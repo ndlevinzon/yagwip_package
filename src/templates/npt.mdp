@@ -1,4 +1,6 @@
-title                   = NPT equilibration 
+; ============================================================
+;  NPT EQUILIBRATION --  YAGWIP
+; ============================================================
 define                  = -DPOSRES  ; position restrain the protein
 ; Run parameters
 integrator              = md        ; leap-frog integrator
