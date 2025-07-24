@@ -1423,7 +1423,7 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
     with open(out_file, 'w') as f:
         f.write("REMARK Hybrid structure for FEP\n")
         f.write(f"REMARK State: {state}\n")
-        f.write("REMARK Dummy atoms placed within 1 nm of nearest non-dummy atom\n")
+        f.write("REMARK Dummy atoms placed within 0.4 nm of nearest non-dummy atom\n")
 
         # Generate coordinates with intelligent dummy placement
         hybrid_coords = generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state)
@@ -1443,8 +1443,8 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
         f.write("END\n")
 
 
-def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, max_distance=0.09,
-                                            min_dummy_distance=0.01):
+def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, max_distance=0.4,
+                                            min_dummy_distance=0.1):
     """
     Generate hybrid coordinates with intelligent dummy atom placement.
 
@@ -1454,8 +1454,8 @@ def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_align
         coordsB_aligned: Aligned coordinates for ligand B
         mapping: Atom mapping dictionary
         state: 'A' or 'B'
-        max_distance: Maximum distance for dummy placement (default 1.0 nm)
-        min_dummy_distance: Minimum distance between dummy atoms (default 0.3 nm)
+        max_distance: Maximum distance for dummy placement (default 0.4 nm)
+        min_dummy_distance: Minimum distance between dummy atoms (default 0.1 nm)
 
     Returns:
         Dictionary mapping atom index to (x, y, z) coordinates
@@ -1484,18 +1484,20 @@ def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_align
     placed_dummy_coords = []
 
     for atom in dummy_atoms:
-        # Find the nearest non-dummy atom
-        nearest_coord, nearest_distance = find_nearest_non_dummy_atom(atom['index'], hybrid_coords, mcs_atoms)
+        # Get the original position of this dummy atom
+        original_coord = None
+        if state == 'A' and atom['origA_idx'] in coordsA:
+            original_coord = coordsA[atom['origA_idx']]
+        elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+            original_coord = coordsB_aligned[atom['origB_idx']]
+
+        # Find the nearest non-dummy atom to the original position
+        nearest_coord, nearest_distance = find_nearest_non_dummy_atom_to_position(original_coord, hybrid_coords,
+                                                                                  mcs_atoms)
 
         if nearest_distance <= max_distance:
-            # Dummy is already within acceptable distance, keep current position
-            if state == 'A' and atom['origA_idx'] in coordsA:
-                hybrid_coords[atom['index']] = coordsA[atom['origA_idx']]
-            elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
-                hybrid_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
-            else:
-                # Use nearest non-dummy position
-                hybrid_coords[atom['index']] = nearest_coord
+            # Dummy is already within acceptable distance, keep original position
+            hybrid_coords[atom['index']] = original_coord
         else:
             # Place dummy within max_distance of nearest non-dummy atom
             dummy_coord = place_dummy_near_non_dummy(nearest_coord, placed_dummy_coords, max_distance,
@@ -1506,20 +1508,20 @@ def generate_intelligent_hybrid_coordinates(hybrid_atoms, coordsA, coordsB_align
     return hybrid_coords
 
 
-def find_nearest_non_dummy_atom(dummy_atom_idx, hybrid_coords, mcs_atoms):
+def find_nearest_non_dummy_atom_to_position(position, hybrid_coords, mcs_atoms):
     """
-    Find the nearest non-dummy atom to a given dummy atom.
+    Find the nearest non-dummy atom to a given position.
 
     Args:
-        dummy_atom_idx: Index of the dummy atom
+        position: Coordinates to check from
         hybrid_coords: Dictionary of existing coordinates
         mcs_atoms: List of MCS atom dictionaries
 
     Returns:
         Tuple of (nearest_coord, nearest_distance)
     """
-    if not mcs_atoms:
-        # Fallback to origin if no MCS atoms
+    if not mcs_atoms or position is None:
+        # Fallback to origin if no MCS atoms or position
         return (0.0, 0.0, 0.0), float('inf')
 
     nearest_coord = None
@@ -1528,12 +1530,10 @@ def find_nearest_non_dummy_atom(dummy_atom_idx, hybrid_coords, mcs_atoms):
     for mcs_atom in mcs_atoms:
         if mcs_atom['index'] in hybrid_coords:
             mcs_coord = hybrid_coords[mcs_atom['index']]
-            # For simplicity, use the first MCS atom as reference
-            # In practice, you might want to use spatial coordinates
-            if nearest_coord is None:
+            distance = calculate_distance(position, mcs_coord)
+            if distance < min_distance:
+                min_distance = distance
                 nearest_coord = mcs_coord
-                min_distance = 0.0  # Place at the same position initially
-                break
 
     return nearest_coord, min_distance
 
