@@ -1398,12 +1398,12 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
         # Add dihedral section with dual-state parameters
         if hybrid_dihedrals:
             f.write("[ dihedrals ]\n")
-            f.write("; ai    aj    ak    al funct  phiA  fcA  mult   phiB  fcB\n")
+            f.write("; ai    aj    ak    al funct  phiA  fcA  mult   phiB  fcB  mult\n")
             for dih in hybrid_dihedrals:
                 if 'phiA' in dih and 'fcA' in dih and 'mult' in dih and 'phiB' in dih and 'fcB' in dih:
                     f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d} "
                             f"{dih['phiA']:6.1f} {dih['fcA']:5.1f} {dih['mult']:5d} "
-                            f"{dih['phiB']:6.1f} {dih['fcB']:5.1f}\n")
+                            f"{dih['phiB']:6.1f} {dih['fcB']:5.1f} {dih['mult']:5d}\n")
                 else:
                     f.write(f"{dih['ai']:5d} {dih['aj']:5d} {dih['ak']:5d} {dih['al']:5d} {dih['funct']:5d}\n")
             f.write("\n")
