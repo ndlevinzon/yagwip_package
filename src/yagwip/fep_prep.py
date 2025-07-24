@@ -1703,7 +1703,7 @@ def main():
     print(f"Initial MCS found: {mcs_size} atoms")
 
     # 2. Optimize MCS by checking spatial connectivity
-    optimized_mapping = optimize_mcs_spatial_connectivity(mapping, args.ligA_mol2, args.ligB_mol2, max_distance=0.2)
+    optimized_mapping = optimize_mcs_spatial_connectivity(mapping, args.ligA_mol2, args.ligB_mol2, max_distance=0.5)
 
     if len(optimized_mapping) < 3:
         raise RuntimeError(f"Spatial optimization reduced MCS below minimum size: {len(optimized_mapping)} atoms")
@@ -1743,7 +1743,7 @@ def main():
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
 
 
-def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=2):
+def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=0.2):
     """
     Optimize MCS by ensuring all atoms are within max_distance of each other.
     Remove atoms that are too far from other MCS atoms.
@@ -1761,6 +1761,8 @@ def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distanc
     coordsA, _ = parse_mol2_coords(ligA_mol2)
     coordsB, _ = parse_mol2_coords(ligB_mol2)
 
+    print(f"Debug: Parsed {len(coordsA)} coordinates from ligand A, {len(coordsB)} from ligand B")
+
     if not mapping:
         return mapping
 
@@ -1768,12 +1770,20 @@ def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distanc
     mcs_atoms_A = list(mapping.keys())
     mcs_atoms_B = list(mapping.values())
 
+    print(f"Debug: MCS atoms A: {len(mcs_atoms_A)}, MCS atoms B: {len(mcs_atoms_B)}")
+    print(f"Debug: Sample MCS atoms A: {mcs_atoms_A[:5]}")
+    print(f"Debug: Sample MCS atoms B: {mcs_atoms_B[:5]}")
+
     # Check spatial connectivity in both ligands
     valid_atoms_A = check_mcs_spatial_connectivity(mcs_atoms_A, coordsA, max_distance)
     valid_atoms_B = check_mcs_spatial_connectivity(mcs_atoms_B, coordsB, max_distance)
 
+    print(f"Debug: Valid atoms A: {len(valid_atoms_A)}, Valid atoms B: {len(valid_atoms_B)}")
+
     # Find atoms that are valid in both ligands
     valid_atoms_common = set(valid_atoms_A) & set(valid_atoms_B)
+
+    print(f"Debug: Common valid atoms: {len(valid_atoms_common)}")
 
     # Create optimized mapping
     optimized_mapping = {a: mapping[a] for a in valid_atoms_common if a in mapping}
@@ -1796,6 +1806,8 @@ def check_mcs_spatial_connectivity(mcs_atoms, coords, max_distance):
     if len(mcs_atoms) < 2:
         return mcs_atoms
 
+    print(f"Debug: Checking connectivity for {len(mcs_atoms)} atoms with max_distance {max_distance}")
+
     # Calculate pairwise distances
     distances = {}
     for i, atom1 in enumerate(mcs_atoms):
@@ -1805,8 +1817,16 @@ def check_mcs_spatial_connectivity(mcs_atoms, coords, max_distance):
                 distances[(atom1, atom2)] = dist
                 distances[(atom2, atom1)] = dist
 
+    print(f"Debug: Calculated {len(distances) // 2} pairwise distances")
+    if distances:
+        min_dist = min(distances.values())
+        max_dist = max(distances.values())
+        print(f"Debug: Distance range: {min_dist:.3f} to {max_dist:.3f} nm")
+
     # Find the largest connected component
     largest_component = find_largest_spatially_connected_component(mcs_atoms, distances, max_distance)
+
+    print(f"Debug: Largest connected component: {len(largest_component)} atoms")
 
     return largest_component
 
