@@ -1699,22 +1699,37 @@ def main():
     mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
     if mcs_size < 3 or mapping is None:
         raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
+
+    print(f"Initial MCS found: {mcs_size} atoms")
+
+    # 2. Optimize MCS by checking spatial connectivity
+    optimized_mapping = optimize_mcs_spatial_connectivity(mapping, args.ligA_mol2, args.ligB_mol2, max_distance=0.2)
+
+    if len(optimized_mapping) < 3:
+        raise RuntimeError(f"Spatial optimization reduced MCS below minimum size: {len(optimized_mapping)} atoms")
+
+    print(
+        f"Optimized MCS: {len(optimized_mapping)} atoms (removed {len(mapping) - len(optimized_mapping)} disconnected atoms)")
+
+    # Use the optimized mapping
+    mapping = optimized_mapping
+
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
 
-    # 2. Align ligandB.mol2 to ligandA.mol2 using atom_map.txt
+    # 3. Align ligandB.mol2 to ligandA.mol2 using atom_map.txt
     aligned_ligB_mol2 = os.path.join(out_dir, 'ligandB_aligned.mol2')
     align_ligands_with_mapping(args.ligA_mol2, args.ligB_mol2, aligned_ligB_mol2, mapping)
 
-    # 3. Align ligandB.pdb to ligandA.pdb using atom_map.txt
+    # 4. Align ligandB.pdb to ligandA.pdb using atom_map.txt
     aligned_ligB_pdb = os.path.join(out_dir, 'ligandB_aligned.pdb')
     align_ligandB_pdb(args.ligA_pdb, args.ligB_pdb, atom_map_file, aligned_ligB_pdb)
 
-    # 4. Align ligandB.gro to ligandA.gro using atom_map.txt
+    # 5. Align ligandB.gro to ligandA.gro using atom_map.txt
     aligned_ligB_gro = os.path.join(out_dir, 'ligandB_aligned.gro')
     align_ligandB_gro(args.ligA_gro, args.ligB_gro, atom_map_file, aligned_ligB_gro)
 
-    # 5. Create hybrid topology if requested
+    # 6. Create hybrid topology if requested
     hybrid_files = None
     if args.create_hybrid:
         hybrid_itp = os.path.join(out_dir, 'hybrid.itp')
@@ -1724,8 +1739,125 @@ def main():
                                atom_map_file, hybrid_itp, hybrid_pdbA, hybrid_pdbB)
         hybrid_files = (hybrid_itp, hybrid_pdbA, hybrid_pdbB)
 
-    # 6. Organize files into subdirectories
+    # 7. Organize files into subdirectories
     organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files)
+
+
+def optimize_mcs_spatial_connectivity(mapping, ligA_mol2, ligB_mol2, max_distance=0.2):
+    """
+    Optimize MCS by ensuring all atoms are within max_distance of each other.
+    Remove atoms that are too far from other MCS atoms.
+
+    Args:
+        mapping: Original atom mapping dictionary
+        ligA_mol2: Path to ligand A MOL2 file
+        ligB_mol2: Path to ligand B MOL2 file
+        max_distance: Maximum allowed distance between MCS atoms (default 0.2 nm = 2Å)
+
+    Returns:
+        Optimized mapping dictionary with disconnected atoms removed
+    """
+    # Parse coordinates from MOL2 files
+    coordsA, _ = parse_mol2_coords(ligA_mol2)
+    coordsB, _ = parse_mol2_coords(ligB_mol2)
+
+    if not mapping:
+        return mapping
+
+    # Extract MCS atom indices
+    mcs_atoms_A = list(mapping.keys())
+    mcs_atoms_B = list(mapping.values())
+
+    # Check spatial connectivity in both ligands
+    valid_atoms_A = check_mcs_spatial_connectivity(mcs_atoms_A, coordsA, max_distance)
+    valid_atoms_B = check_mcs_spatial_connectivity(mcs_atoms_B, coordsB, max_distance)
+
+    # Find atoms that are valid in both ligands
+    valid_atoms_common = set(valid_atoms_A) & set(valid_atoms_B)
+
+    # Create optimized mapping
+    optimized_mapping = {a: mapping[a] for a in valid_atoms_common if a in mapping}
+
+    return optimized_mapping
+
+
+def check_mcs_spatial_connectivity(mcs_atoms, coords, max_distance):
+    """
+    Check spatial connectivity of MCS atoms and return valid atoms.
+
+    Args:
+        mcs_atoms: List of MCS atom indices
+        coords: Dictionary of atom coordinates
+        max_distance: Maximum allowed distance between atoms
+
+    Returns:
+        List of valid atom indices that are spatially connected
+    """
+    if len(mcs_atoms) < 2:
+        return mcs_atoms
+
+    # Calculate pairwise distances
+    distances = {}
+    for i, atom1 in enumerate(mcs_atoms):
+        for j, atom2 in enumerate(mcs_atoms[i + 1:], i + 1):
+            if atom1 in coords and atom2 in coords:
+                dist = calculate_distance(coords[atom1], coords[atom2])
+                distances[(atom1, atom2)] = dist
+                distances[(atom2, atom1)] = dist
+
+    # Find the largest connected component
+    largest_component = find_largest_spatially_connected_component(mcs_atoms, distances, max_distance)
+
+    return largest_component
+
+
+def find_largest_spatially_connected_component(atoms, distances, max_distance):
+    """
+    Find the largest spatially connected component of atoms.
+
+    Args:
+        atoms: List of atom indices
+        distances: Dictionary of pairwise distances
+        max_distance: Maximum allowed distance
+
+    Returns:
+        List of atoms in the largest connected component
+    """
+    if not atoms:
+        return []
+
+    # Start BFS from each atom to find all connected components
+    components = []
+    visited = set()
+
+    for start_atom in atoms:
+        if start_atom in visited:
+            continue
+
+        # BFS to find connected component
+        component = []
+        queue = [start_atom]
+
+        while queue:
+            current = queue.pop(0)
+            if current not in visited:
+                visited.add(current)
+                component.append(current)
+
+                # Add neighbors within max_distance
+                for other_atom in atoms:
+                    if other_atom not in visited:
+                        if (current, other_atom) in distances and distances[(current, other_atom)] <= max_distance:
+                            queue.append(other_atom)
+
+        if component:
+            components.append(component)
+
+    # Return the largest component
+    if components:
+        return max(components, key=len)
+    else:
+        return []
 
 
 if __name__ == '__main__':
