@@ -1693,7 +1693,7 @@ def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, 
         f.write("END\n")
 
 
-def generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, sphere_radius=1.2):
+def generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, sphere_radius=1):
     """
     Generate sphere-packed coordinates ensuring minimum distance and MCS connectivity.
 
@@ -1839,7 +1839,7 @@ def find_optimal_sphere_position(atom_idx, initial_coord, existing_coords, spher
     return find_touching_sphere_position(initial_coord, existing_coords, sphere_radius)
 
 
-def verify_sphere_packing_connectivity(hybrid_atoms, sphere_coords, sphere_radius=1.2):
+def verify_sphere_packing_connectivity(hybrid_atoms, sphere_coords, sphere_radius=1):
     """
     Verify that all atoms are connected to MCS through network of touching spheres.
 
@@ -2194,57 +2194,6 @@ def filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_align
     return filtered_pairs
 
 
-# def validate_mcs_quality(mapping, gA, gB, min_mcs_size=3):
-#     """
-#     Validate the quality of the found MCS to ensure it forms a continuous structure.
-#
-#     Args:
-#         mapping: Atom mapping dictionary
-#         gA: MolGraph for ligand A
-#         gB: MolGraph for ligand B
-#         min_mcs_size: Minimum required MCS size
-#
-#     Returns:
-#         Tuple of (is_valid, reason) where is_valid is boolean and reason is string
-#     """
-#     if not mapping or len(mapping) < min_mcs_size:
-#         return False, f"MCS too small: {len(mapping) if mapping else 0} atoms (minimum {min_mcs_size})"
-#
-#     # Extract MCS subgraphs
-#     mcs_atoms_A = set(mapping.keys())
-#     mcs_atoms_B = set(mapping.values())
-#
-#     # Create MCS subgraphs
-#     mcs_gA = gA.subgraph(mcs_atoms_A)
-#     mcs_gB = gB.subgraph(mcs_atoms_B)
-#
-#     # Check connectivity
-#     if not is_graph_connected(mcs_gA):
-#         return False, "MCS atoms in ligand A are not connected"
-#
-#     if not is_graph_connected(mcs_gB):
-#         return False, "MCS atoms in ligand B are not connected"
-#
-#     # Check diameter constraints
-#     diameter_A = calculate_graph_diameter(mcs_gA)
-#     diameter_B = calculate_graph_diameter(mcs_gB)
-#
-#     if diameter_A > len(mcs_atoms_A):
-#         return False, f"MCS diameter in ligand A too large: {diameter_A} > {len(mcs_atoms_A)}"
-#
-#     if diameter_B > len(mcs_atoms_B):
-#         return False, f"MCS diameter in ligand B too large: {diameter_B} > {len(mcs_atoms_B)}"
-#
-#     # Check for reasonable spatial distribution
-#     if not check_atom_distances_from_center(mcs_gA):
-#         return False, "MCS atoms in ligand A are too far apart (disconnected fragments)"
-#
-#     if not check_atom_distances_from_center(mcs_gB):
-#         return False, "MCS atoms in ligand B are too far apart (disconnected fragments)"
-#
-#     return True, f"Valid MCS: {len(mapping)} atoms, diameter A={diameter_A}, B={diameter_B}"
-
-
 # --- Main script ---
 def main():
     parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
@@ -2277,13 +2226,6 @@ def main():
             f"Could not find sufficient MCS for alignment (need at least {args.min_mcs_size} atoms, found {mcs_size})")
 
     print(f"MCS found: {mcs_size} atoms (target was {args.target_mcs_size})")
-
-    # Validate MCS quality
-    # is_valid, reason = validate_mcs_quality(mapping, gA, gB, args.min_mcs_size)
-    # if not is_valid:
-    #     raise RuntimeError(f"MCS quality check failed: {reason}")
-
-    # print(f"MCS validation passed: {reason}")
 
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
