@@ -204,26 +204,11 @@ def enumerate_connected_subgraphs(graph, size):
     return [set(s) for s in results]
 
 
-def find_mcs(g1, g2, target_size=10):
-    """
-    Find Maximum Common Substructure (MCS) between two molecular graphs.
-    Conservative approach: stop as soon as we find a connected MCS of target_size atoms.
-
-    Args:
-        g1: MolGraph for ligand A
-        g2: MolGraph for ligand B
-        target_size: Target MCS size (default: 10 atoms)
-
-    Returns:
-        Tuple of (mcs_size, mapping, atom_indices1, atom_indices2)
-    """
+def find_mcs(g1, g2):
     # Always use the smaller graph for subgraph enumeration
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
-
-    # Start from target_size and work down to minimum size
-    for size in range(target_size, 2, -1):  # Start from target_size, need at least 3 for alignment
-        print(f"Searching for MCS of size {size}...")
+    for size in range(len(g1.atoms), 2, -1):  # Start from largest, need at least 3 for alignment
         subgraphs1 = enumerate_connected_subgraphs(g1, size)
         if not subgraphs1:
             continue
@@ -245,193 +230,8 @@ def find_mcs(g1, g2, target_size=10):
                 sg2 = g2.subgraph(atom_indices2)
                 iso, mapping = are_isomorphic(sg1, sg2)
                 if iso:
-                    # Verify MCS connectivity - ensure atoms form a continuous structure
-                    if verify_mcs_connectivity(sg1, sg2, mapping):
-                        print(f"Found valid MCS of size {size}!")
-                        return size, mapping, atom_indices1, atom_indices2
-
-    # If we didn't find target_size, try smaller sizes
-    for size in range(target_size - 1, 2, -1):
-        print(f"Target size not found, trying size {size}...")
-        subgraphs1 = enumerate_connected_subgraphs(g1, size)
-        if not subgraphs1:
-            continue
-        for atom_indices1 in subgraphs1:
-            sg1 = g1.subgraph(atom_indices1)
-            # Chemical invariant: element counts
-            elem_count1 = defaultdict(int)
-            for a in sg1.atoms.values():
-                elem_count1[a.element] += 1
-            # Find candidate subgraphs in g2 with same element counts
-            subgraphs2 = [
-                s for s in enumerate_connected_subgraphs(g2, size)
-                if all(
-                    sum(g2.atoms[i].element == e for i in s) == c
-                    for e, c in elem_count1.items()
-                )
-            ]
-            for atom_indices2 in subgraphs2:
-                sg2 = g2.subgraph(atom_indices2)
-                iso, mapping = are_isomorphic(sg1, sg2)
-                if iso:
-                    # Verify MCS connectivity - ensure atoms form a continuous structure
-                    if verify_mcs_connectivity(sg1, sg2, mapping):
-                        print(f"Found valid MCS of size {size}!")
-                        return size, mapping, atom_indices1, atom_indices2
-
+                    return size, mapping, atom_indices1, atom_indices2
     return 0, None, None, None
-
-
-def verify_mcs_connectivity(sg1, sg2, mapping):
-    """
-    Verify that MCS atoms form a continuous, connected structure.
-
-    Args:
-        sg1: Subgraph from ligand A
-        sg2: Subgraph from ligand B
-        mapping: Atom mapping between the two subgraphs
-
-    Returns:
-        True if MCS is continuous, False if disconnected fragments exist
-    """
-    # Check connectivity in both subgraphs
-    if not is_graph_connected(sg1) or not is_graph_connected(sg2):
-        return False
-
-    # Additional check: ensure no isolated atoms or small disconnected fragments
-    # Calculate the diameter of the MCS (longest shortest path)
-    diameter1 = calculate_graph_diameter(sg1)
-    diameter2 = calculate_graph_diameter(sg2)
-
-    # If diameter is very large relative to number of atoms, it might indicate disconnected fragments
-    # A reasonable threshold: diameter should be less than number of atoms
-    if diameter1 > len(sg1.atoms) or diameter2 > len(sg2.atoms):
-        return False
-
-    # Check for any atoms that are too far from the center of mass
-    if not check_atom_distances_from_center(sg1) or not check_atom_distances_from_center(sg2):
-        return False
-
-    return True
-
-
-def is_graph_connected(graph):
-    """
-    Check if a graph is connected using BFS.
-
-    Args:
-        graph: MolGraph object
-
-    Returns:
-        True if graph is connected, False otherwise
-    """
-    if not graph.atoms:
-        return False
-
-    # Start BFS from the first atom
-    start_atom = next(iter(graph.atoms.keys()))
-    visited = set()
-    queue = [start_atom]
-
-    while queue:
-        current = queue.pop(0)
-        if current not in visited:
-            visited.add(current)
-            # Add all unvisited neighbors
-            for neighbor in graph.atoms[current].neighbors:
-                if neighbor not in visited:
-                    queue.append(neighbor)
-
-    # Check if all atoms were visited
-    return len(visited) == len(graph.atoms)
-
-
-def calculate_graph_diameter(graph):
-    """
-    Calculate the diameter of a graph (longest shortest path between any two vertices).
-
-    Args:
-        graph: MolGraph object
-
-    Returns:
-        Diameter of the graph
-    """
-    if not graph.atoms:
-        return 0
-
-    max_diameter = 0
-
-    # For each pair of atoms, calculate shortest path length
-    atom_indices = list(graph.atoms.keys())
-    for i, start in enumerate(atom_indices):
-        for end in atom_indices[i + 1:]:
-            path_length = shortest_path_length(graph, start, end)
-            if path_length > max_diameter:
-                max_diameter = path_length
-
-    return max_diameter
-
-
-def shortest_path_length(graph, start, end):
-    """
-    Calculate shortest path length between two atoms using BFS.
-
-    Args:
-        graph: MolGraph object
-        start: Starting atom index
-        end: Ending atom index
-
-    Returns:
-        Length of shortest path, or float('inf') if no path exists
-    """
-    if start == end:
-        return 0
-
-    visited = set()
-    queue = [(start, 0)]  # (atom, distance)
-
-    while queue:
-        current, distance = queue.pop(0)
-        if current == end:
-            return distance
-
-        if current not in visited:
-            visited.add(current)
-            for neighbor in graph.atoms[current].neighbors:
-                if neighbor not in visited:
-                    queue.append((neighbor, distance + 1))
-
-    return float('inf')  # No path found
-
-
-def check_atom_distances_from_center(graph, max_distance_factor=3.0):
-    """
-    Check that no atoms are too far from the center of the MCS.
-
-    Args:
-        graph: MolGraph object
-        max_distance_factor: Maximum allowed distance as factor of graph diameter
-
-    Returns:
-        True if all atoms are reasonably close to center, False otherwise
-    """
-    if not graph.atoms:
-        return True
-
-    # Calculate center of mass (using atom indices as proxy for spatial position)
-    center = sum(graph.atoms.keys()) / len(graph.atoms)
-
-    # Calculate maximum distance from center
-    max_distance = max(abs(atom_idx - center) for atom_idx in graph.atoms.keys())
-
-    # Calculate graph diameter
-    diameter = calculate_graph_diameter(graph)
-
-    # If max distance is too large relative to diameter, it might indicate disconnected fragments
-    if diameter > 0 and max_distance > max_distance_factor * diameter:
-        return False
-
-    return True
 
 
 def are_isomorphic(g1, g2):
@@ -698,8 +498,8 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         hybrid_itp, hybrid_pdbA, hybrid_pdbB = hybrid_files
 
         # Convert PDB to GRO for ligand-only directories
-        def pdb_to_gro(pdb_file, gro_file, use_aligned_coords=False):
-            """Convert PDB to GRO format, optionally using aligned coordinates"""
+        def pdb_to_gro(pdb_file, gro_file):
+            """Convert PDB to GRO format"""
             with open(pdb_file, 'r') as f:
                 lines = f.readlines()
 
@@ -709,7 +509,7 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
 
             with open(gro_file, 'w') as f:
                 # Write header (title line)
-                f.write("Hybrid structure for FEP (Extended Form)\n")
+                f.write("Hybrid structure for FEP\n")
                 # Write number of atoms
                 f.write(f"{num_atoms:>5}\n")
 
@@ -737,7 +537,6 @@ def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_fil
         hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
         hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
 
-        # Convert PDB to GRO using the hybrid PDB files (which already have aligned coordinates)
         pdb_to_gro(hybrid_pdbA, hybrid_groA)
         pdb_to_gro(hybrid_pdbB, hybrid_groB)
 
@@ -833,12 +632,6 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     atomsA = parse_itp_atoms(ligA_itp)
     atomsB = parse_itp_atoms(ligB_itp)
 
-    # Parse exclusions and pairs from ITP files
-    exclusionsA = parse_itp_exclusions(ligA_itp)
-    exclusionsB = parse_itp_exclusions(ligB_itp)
-    pairsA = parse_itp_pairs(ligA_itp)
-    pairsB = parse_itp_pairs(ligB_itp)
-
     # Create hybrid atoms
     hybrid_atoms = []
     atom_counter = 1
@@ -912,13 +705,8 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     # Create hybrid dihedrals
     hybrid_dihedrals = create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp)
 
-    # Filter exclusions and pairs based on best practices
-    hybrid_exclusions = filter_exclusions_for_hybrid(exclusionsA, exclusionsB, hybrid_atoms, coordsA, coordsB_aligned)
-    hybrid_pairs = filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_aligned)
-
     # Write hybrid topology
-    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_exclusions,
-                     hybrid_pairs)
+    write_hybrid_itp(out_itp, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals)
 
     # Write hybrid PDB files for both states
     write_hybrid_pdb(out_pdbA, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A')
@@ -928,8 +716,6 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
     print(f"  - {len([a for a in hybrid_atoms if a['mapped']])} mapped atoms")
     print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origA_idx']])} unique A atoms")
     print(f"  - {len([a for a in hybrid_atoms if not a['mapped'] and a['origB_idx']])} unique B atoms")
-    print(f"  - {len(hybrid_exclusions)} filtered exclusions")
-    print(f"  - {len(hybrid_pairs)} filtered pairs")
 
 
 def parse_itp_atoms(itp_file):
@@ -1567,8 +1353,7 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
     return existing_dihedrals
 
 
-def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals, hybrid_exclusions,
-                     hybrid_pairs):
+def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
     """Write hybrid topology file with dual-state parameters."""
     with open(out_file, 'w') as f:
         f.write("; Hybrid topology for FEP\n")
@@ -1632,566 +1417,47 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
                 f.write(f"{atom['index']:4d}     1   1000    1000    1000\n")
             f.write("\n")
 
-        # Add exclusions section
-        if hybrid_exclusions:
-            f.write("[ exclusions ]\n")
-            f.write("; ai    aj\n")
-            for excl in hybrid_exclusions:
-                f.write(f"{excl['ai']:5d} {excl['aj']:5d}\n")
-            f.write("\n")
-
-        # Add pairs section
-        if hybrid_pairs:
-            f.write("[ pairs ]\n")
-            f.write("; ai    aj funct  param\n")
-            for pair in hybrid_pairs:
-                if 'funct' in pair and 'param' in pair:
-                    f.write(f"{pair['ai']:5d} {pair['aj']:5d} {pair['funct']:5d} {pair['param']:8.3f}\n")
-                else:
-                    f.write(f"{pair['ai']:5d} {pair['aj']:5d} {pair['funct']:5d}\n")
-            f.write("\n")
-
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
-    """
-    Write hybrid PDB file for specified state using sphere-packing algorithm.
-
-    Sphere-packing strategy:
-    - All atoms are surrounded by 1.2 nm radius spheres
-    - Non-MCS atoms are positioned so their spheres touch other ligand atom spheres
-    - All atoms must be connected to MCS through network of touching spheres
-    - Minimum distance constraint: 1.2 nm between all atoms
-
-    Args:
-        out_file: Output PDB file path
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A (original)
-        coordsB_aligned: Aligned coordinates for ligand B (after Kabsch alignment)
-        mapping: Atom mapping dictionary
-        state: 'A' or 'B' to determine which state to write
-    """
+    """Write hybrid PDB file for specified state."""
     with open(out_file, 'w') as f:
-        f.write("REMARK Hybrid structure for FEP (Sphere-Packing)\n")
-        f.write(f"REMARK State: {state}\n")
-        f.write(f"REMARK All atoms separated by >= 1.2 nm, connected to MCS via touching spheres\n")
+        f.write("REMARK Hybrid structure for FEP\n")
 
-        # Generate sphere-packed coordinates
-        sphere_coords = generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state)
+        # Calculate centroid of MCS atoms for better dummy placement
+        mcs_coords = []
+        for atom in hybrid_atoms:
+            if atom['mapped']:
+                if state == 'A' and atom['origA_idx'] in coordsA:
+                    mcs_coords.append(coordsA[atom['origA_idx']])
+                elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
+                    mcs_coords.append(coordsB_aligned[atom['origB_idx']])
+
+        if mcs_coords:
+            centroid = tuple(sum(c[i] for c in mcs_coords) / len(mcs_coords) for i in range(3))
+        else:
+            centroid = (0.0, 0.0, 0.0)
 
         for atom in hybrid_atoms:
-            atom_idx = atom['index']
-            if atom_idx in sphere_coords:
-                x, y, z = sphere_coords[atom_idx]
-                atom_name = atom['name'] if atom['mapped'] else 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
-            else:
-                # Fallback to centroid if sphere packing failed
-                x, y, z = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-                atom_name = 'DUM'
-                f.write(f"HETATM{atom_idx:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
+            if state == 'A':
+                if atom['origA_idx'] and atom['origA_idx'] in coordsA:
+                    x, y, z = coordsA[atom['origA_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique B atoms in state A, place near MCS centroid
+                    x, y, z = centroid
+                    atom_name = 'DUM'
+            else:  # state == 'B'
+                if atom['origB_idx'] and atom['origB_idx'] in coordsB_aligned:
+                    x, y, z = coordsB_aligned[atom['origB_idx']]
+                    atom_name = atom['name'] if not atom['name'].startswith('D') else 'DUM'
+                else:
+                    # For unique A atoms in state B, place near MCS centroid
+                    x, y, z = centroid
+                    atom_name = 'DUM'
+
+            f.write(f"HETATM{atom['index']:5d}  {atom_name:<4s}LIG     1    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n")
 
         f.write("END\n")
-
-
-def generate_sphere_packed_coordinates(hybrid_atoms, coordsA, coordsB_aligned, mapping, state, sphere_radius=1):
-    """
-    Generate sphere-packed coordinates ensuring minimum distance and MCS connectivity.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A
-        coordsB_aligned: Aligned coordinates for ligand B
-        mapping: Atom mapping dictionary
-        state: 'A' or 'B'
-        sphere_radius: Radius of spheres (default 1.2 nm)
-
-    Returns:
-        Dictionary mapping atom index to (x, y, z) coordinates
-    """
-    import math
-    import random
-
-    # Initialize coordinates dictionary
-    sphere_coords = {}
-
-    # Identify MCS atoms (mapped atoms)
-    mcs_atoms = [atom for atom in hybrid_atoms if atom['mapped']]
-    non_mcs_atoms = [atom for atom in hybrid_atoms if not atom['mapped']]
-
-    # Step 1: Position MCS atoms using original coordinates
-    for atom in mcs_atoms:
-        if state == 'A' and atom['origA_idx'] in coordsA:
-            sphere_coords[atom['index']] = coordsA[atom['origA_idx']]
-        elif state == 'B' and atom['origB_idx'] in coordsB_aligned:
-            sphere_coords[atom['index']] = coordsB_aligned[atom['origB_idx']]
-        else:
-            # Fallback to centroid
-            sphere_coords[atom['index']] = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-
-    # Step 2: Position non-MCS atoms using sphere-packing algorithm
-    for atom in non_mcs_atoms:
-        if state == 'A' and atom['origB_idx'] in coordsB_aligned:
-            # For state A, non-MCS atoms are unique to B - use aligned B coordinates as starting point
-            initial_coord = coordsB_aligned[atom['origB_idx']]
-        elif state == 'B' and atom['origA_idx'] in coordsA:
-            # For state B, non-MCS atoms are unique to A - use A coordinates as starting point
-            initial_coord = coordsA[atom['origA_idx']]
-        else:
-            # Fallback to centroid
-            initial_coord = get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned)
-
-        # Find optimal position that satisfies distance and connectivity constraints
-        optimal_coord = find_optimal_sphere_position(
-            atom['index'], initial_coord, sphere_coords, sphere_radius
-        )
-        sphere_coords[atom['index']] = optimal_coord
-
-    return sphere_coords
-
-
-def find_optimal_sphere_position(atom_idx, initial_coord, existing_coords, sphere_radius, max_iterations=1000):
-    """
-    Find optimal position for an atom that satisfies sphere-packing constraints.
-
-    Args:
-        atom_idx: Index of the atom to position
-        initial_coord: Initial coordinate guess
-        existing_coords: Dictionary of existing atom coordinates
-        sphere_radius: Radius of spheres
-        max_iterations: Maximum iterations for optimization
-
-    Returns:
-        Optimal (x, y, z) coordinates
-    """
-    import math
-    import random
-
-    def distance(coord1, coord2):
-        """Calculate Euclidean distance between two coordinates."""
-        dx = coord1[0] - coord2[0]
-        dy = coord1[1] - coord2[1]
-        dz = coord1[2] - coord2[2]
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    def is_valid_position(coord, existing_coords, sphere_radius):
-        """Check if position satisfies distance constraints."""
-        for existing_idx, existing_coord in existing_coords.items():
-            if existing_idx != atom_idx:
-                dist = distance(coord, existing_coord)
-                if dist < sphere_radius:
-                    return False
-        return True
-
-    def find_touching_sphere_position(coord, existing_coords, sphere_radius):
-        """Find position where sphere touches another sphere."""
-        best_coord = coord
-        min_distance = float('inf')
-
-        for existing_idx, existing_coord in existing_coords.items():
-            if existing_idx != atom_idx:
-                dist = distance(coord, existing_coord)
-                if dist < min_distance:
-                    min_distance = dist
-                    # Position sphere to touch the closest existing sphere
-                    if dist > 0:
-                        # Normalize direction vector
-                        direction = [
-                            (coord[0] - existing_coord[0]) / dist,
-                            (coord[1] - existing_coord[1]) / dist,
-                            (coord[2] - existing_coord[2]) / dist
-                        ]
-                        # Position at exactly sphere_radius distance
-                        best_coord = [
-                            existing_coord[0] + direction[0] * sphere_radius,
-                            existing_coord[1] + direction[1] * sphere_radius,
-                            existing_coord[2] + direction[2] * sphere_radius
-                        ]
-
-        return best_coord
-
-    # Start with initial coordinate
-    current_coord = list(initial_coord)
-
-    # Iterative optimization
-    for iteration in range(max_iterations):
-        # Check if current position is valid
-        if is_valid_position(current_coord, existing_coords, sphere_radius):
-            return tuple(current_coord)
-
-        # Find position that touches another sphere
-        touching_coord = find_touching_sphere_position(current_coord, existing_coords, sphere_radius)
-
-        # Add small random perturbation to avoid getting stuck
-        perturbation = 0.1 * sphere_radius
-        perturbed_coord = [
-            touching_coord[0] + random.uniform(-perturbation, perturbation),
-            touching_coord[1] + random.uniform(-perturbation, perturbation),
-            touching_coord[2] + random.uniform(-perturbation, perturbation)
-        ]
-
-        # If perturbed position is valid, use it
-        if is_valid_position(perturbed_coord, existing_coords, sphere_radius):
-            return tuple(perturbed_coord)
-
-        current_coord = perturbed_coord
-
-    # If optimization failed, return the best touching position found
-    return find_touching_sphere_position(initial_coord, existing_coords, sphere_radius)
-
-
-def verify_sphere_packing_connectivity(hybrid_atoms, sphere_coords, sphere_radius=1):
-    """
-    Verify that all atoms are connected to MCS through network of touching spheres.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        sphere_coords: Dictionary of atom coordinates
-        sphere_radius: Radius of spheres
-
-    Returns:
-        True if all atoms are connected, False otherwise
-    """
-    import math
-
-    def distance(coord1, coord2):
-        """Calculate Euclidean distance between two coordinates."""
-        dx = coord1[0] - coord2[0]
-        dy = coord1[1] - coord2[1]
-        dz = coord1[2] - coord2[2]
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    def are_spheres_touching(coord1, coord2, sphere_radius):
-        """Check if two spheres are touching (distance <= 2*radius)."""
-        dist = distance(coord1, coord2)
-        return dist <= 2.0 * sphere_radius
-
-    # Build connectivity graph
-    connectivity = {}
-    mcs_atoms = set()
-
-    for atom in hybrid_atoms:
-        atom_idx = atom['index']
-        connectivity[atom_idx] = []
-
-        if atom['mapped']:
-            mcs_atoms.add(atom_idx)
-
-        # Find all atoms that this atom's sphere touches
-        for other_atom in hybrid_atoms:
-            other_idx = other_atom['index']
-            if other_idx != atom_idx:
-                if (atom_idx in sphere_coords and other_idx in sphere_coords and
-                        are_spheres_touching(sphere_coords[atom_idx], sphere_coords[other_idx], sphere_radius)):
-                    connectivity[atom_idx].append(other_idx)
-
-    # Check connectivity using BFS from MCS atoms
-    visited = set()
-    queue = list(mcs_atoms)
-
-    while queue:
-        current = queue.pop(0)
-        if current not in visited:
-            visited.add(current)
-            for neighbor in connectivity[current]:
-                if neighbor not in visited:
-                    queue.append(neighbor)
-
-    # All atoms should be reachable from MCS
-    all_atoms = {atom['index'] for atom in hybrid_atoms}
-    return visited == all_atoms
-
-
-def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
-    """
-    Calculate centroid of mapped atoms for fallback positioning.
-
-    Args:
-        hybrid_atoms: List of hybrid atom dictionaries
-        coordsA: Coordinates for ligand A
-        coordsB_aligned: Aligned coordinates for ligand B
-
-    Returns:
-        Tuple of (x, y, z) coordinates for centroid
-    """
-    mapped_coords = []
-
-    for atom in hybrid_atoms:
-        if atom['mapped']:
-            if atom['origA_idx'] in coordsA:
-                mapped_coords.append(coordsA[atom['origA_idx']])
-            elif atom['origB_idx'] in coordsB_aligned:
-                mapped_coords.append(coordsB_aligned[atom['origB_idx']])
-
-    if not mapped_coords:
-        return (0.0, 0.0, 0.0)
-
-    # Calculate centroid
-    centroid_x = sum(coord[0] for coord in mapped_coords) / len(mapped_coords)
-    centroid_y = sum(coord[1] for coord in mapped_coords) / len(mapped_coords)
-    centroid_z = sum(coord[2] for coord in mapped_coords) / len(mapped_coords)
-
-    return (centroid_x, centroid_y, centroid_z)
-
-
-def parse_itp_exclusions(itp_file):
-    """Parse exclusion section from ITP file."""
-    exclusions = []
-    with open(itp_file, 'r') as f:
-        lines = f.readlines()
-
-    in_exclusions = False
-    for line in lines:
-        if line.strip() == '[ exclusions ]':
-            in_exclusions = True
-            continue
-        elif in_exclusions and line.strip().startswith('['):
-            break
-        elif in_exclusions and line.strip() and not line.strip().startswith(';'):
-            parts = line.split()
-            if len(parts) >= 2:
-                exclusion = {
-                    'ai': int(parts[0]),
-                    'aj': int(parts[1])
-                }
-                exclusions.append(exclusion)
-
-    return exclusions
-
-
-def parse_itp_pairs(itp_file):
-    """Parse pairs section from ITP file."""
-    pairs = []
-    with open(itp_file, 'r') as f:
-        lines = f.readlines()
-
-    in_pairs = False
-    for line in lines:
-        if line.strip() == '[ pairs ]':
-            in_pairs = True
-            continue
-        elif in_pairs and line.strip().startswith('['):
-            break
-        elif in_pairs and line.strip() and not line.strip().startswith(';'):
-            parts = line.split()
-            if len(parts) >= 2:
-                # Check if the line contains valid numeric data
-                try:
-                    pair = {
-                        'ai': int(parts[0]),
-                        'aj': int(parts[1])
-                    }
-                    # Add pair parameters if present and valid
-                    if len(parts) >= 4:
-                        try:
-                            pair['funct'] = int(parts[2])
-                            pair['param'] = float(parts[3])
-                        except (ValueError, IndexError):
-                            # If parameters can't be parsed, skip them
-                            pass
-                    pairs.append(pair)
-                except (ValueError, IndexError):
-                    # Skip lines that can't be parsed as valid pairs
-                    continue
-
-    return pairs
-
-
-def filter_exclusions_for_hybrid(exclusionsA, exclusionsB, hybrid_atoms, coordsA, coordsB_aligned, rlist=1.1):
-    """
-    Filter exclusions based on hybrid topology best practices.
-
-    Rules:
-    1. Only keep exclusions for atoms that exist in both states
-    2. Filter by distance (within rlist) in both lambda states
-    3. Exclude dummy atoms from exclusions
-    """
-    import math
-
-    def calculate_distance(coord1, coord2):
-        """Calculate Euclidean distance between two 3D coordinates."""
-        dx = coord1[0] - coord2[0]
-        dy = coord1[1] - coord2[1]
-        dz = coord1[2] - coord2[2]
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    # Create mapping from original atom indices to hybrid indices
-    orig_to_hybrid_A = {}
-    orig_to_hybrid_B = {}
-
-    for atom in hybrid_atoms:
-        if atom['origA_idx'] is not None:
-            orig_to_hybrid_A[atom['origA_idx']] = atom['index']
-        if atom['origB_idx'] is not None:
-            orig_to_hybrid_B[atom['origB_idx']] = atom['index']
-
-    filtered_exclusions = []
-
-    # Process exclusions from ligand A
-    for excl in exclusionsA:
-        ai_A, aj_A = excl['ai'], excl['aj']
-
-        # Check if both atoms exist in hybrid topology
-        if ai_A in orig_to_hybrid_A and aj_A in orig_to_hybrid_A:
-            ai_hybrid = orig_to_hybrid_A[ai_A]
-            aj_hybrid = orig_to_hybrid_A[aj_A]
-
-            # Check if both atoms are mapped (not dummy)
-            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
-            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
-
-            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
-                # Check distance in both states
-                if (ai_A in coordsA and aj_A in coordsA and
-                        ai_A in coordsB_aligned and aj_A in coordsB_aligned):
-
-                    dist_A = calculate_distance(coordsA[ai_A], coordsA[aj_A])
-                    dist_B = calculate_distance(coordsB_aligned[ai_A], coordsB_aligned[aj_A])
-
-                    # Only keep if close in both states
-                    if dist_A < rlist and dist_B < rlist:
-                        filtered_exclusions.append({
-                            'ai': ai_hybrid,
-                            'aj': aj_hybrid
-                        })
-
-    # Process exclusions from ligand B (avoid duplicates)
-    for excl in exclusionsB:
-        ai_B, aj_B = excl['ai'], excl['aj']
-
-        # Check if both atoms exist in hybrid topology
-        if ai_B in orig_to_hybrid_B and aj_B in orig_to_hybrid_B:
-            ai_hybrid = orig_to_hybrid_B[ai_B]
-            aj_hybrid = orig_to_hybrid_B[aj_B]
-
-            # Check if both atoms are mapped (not dummy)
-            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
-            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
-
-            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
-                # Check if this exclusion was already added from ligand A
-                already_exists = any(
-                    (e['ai'] == ai_hybrid and e['aj'] == aj_hybrid) or
-                    (e['ai'] == aj_hybrid and e['aj'] == ai_hybrid)
-                    for e in filtered_exclusions
-                )
-
-                if not already_exists:
-                    # Check distance in both states
-                    if (ai_B in coordsA and aj_B in coordsA and
-                            ai_B in coordsB_aligned and aj_B in coordsB_aligned):
-
-                        dist_A = calculate_distance(coordsA[ai_B], coordsA[aj_B])
-                        dist_B = calculate_distance(coordsB_aligned[ai_B], coordsB_aligned[aj_B])
-
-                        # Only keep if close in both states
-                        if dist_A < rlist and dist_B < rlist:
-                            filtered_exclusions.append({
-                                'ai': ai_hybrid,
-                                'aj': aj_hybrid
-                            })
-
-    return filtered_exclusions
-
-
-def filter_pairs_for_hybrid(pairsA, pairsB, hybrid_atoms, coordsA, coordsB_aligned, rlist=1.1):
-    """
-    Filter pairs based on hybrid topology best practices.
-
-    Rules:
-    1. Only keep pairs for atoms that exist in the relevant state
-    2. Filter by distance (within rlist)
-    3. Exclude dummy atoms from pairs
-    """
-    import math
-
-    def calculate_distance(coord1, coord2):
-        """Calculate Euclidean distance between two 3D coordinates."""
-        dx = coord1[0] - coord2[0]
-        dy = coord1[1] - coord2[1]
-        dz = coord1[2] - coord2[2]
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    # Create mapping from original atom indices to hybrid indices
-    orig_to_hybrid_A = {}
-    orig_to_hybrid_B = {}
-
-    for atom in hybrid_atoms:
-        if atom['origA_idx'] is not None:
-            orig_to_hybrid_A[atom['origA_idx']] = atom['index']
-        if atom['origB_idx'] is not None:
-            orig_to_hybrid_B[atom['origB_idx']] = atom['index']
-
-    filtered_pairs = []
-
-    # Process pairs from ligand A
-    for pair in pairsA:
-        ai_A, aj_A = pair['ai'], pair['aj']
-
-        # Check if both atoms exist in hybrid topology
-        if ai_A in orig_to_hybrid_A and aj_A in orig_to_hybrid_A:
-            ai_hybrid = orig_to_hybrid_A[ai_A]
-            aj_hybrid = orig_to_hybrid_A[aj_A]
-
-            # Check if both atoms are mapped (not dummy)
-            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
-            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
-
-            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
-                # Check distance in state A
-                if ai_A in coordsA and aj_A in coordsA:
-                    dist_A = calculate_distance(coordsA[ai_A], coordsA[aj_A])
-
-                    # Only keep if close in state A
-                    if dist_A < rlist:
-                        filtered_pair = {
-                            'ai': ai_hybrid,
-                            'aj': aj_hybrid
-                        }
-                        if 'funct' in pair:
-                            filtered_pair['funct'] = pair['funct']
-                        if 'param' in pair:
-                            filtered_pair['param'] = pair['param']
-                        filtered_pairs.append(filtered_pair)
-
-    # Process pairs from ligand B (avoid duplicates)
-    for pair in pairsB:
-        ai_B, aj_B = pair['ai'], pair['aj']
-
-        # Check if both atoms exist in hybrid topology
-        if ai_B in orig_to_hybrid_B and aj_B in orig_to_hybrid_B:
-            ai_hybrid = orig_to_hybrid_B[ai_B]
-            aj_hybrid = orig_to_hybrid_B[aj_B]
-
-            # Check if both atoms are mapped (not dummy)
-            ai_atom = next((a for a in hybrid_atoms if a['index'] == ai_hybrid), None)
-            aj_atom = next((a for a in hybrid_atoms if a['index'] == aj_hybrid), None)
-
-            if ai_atom and aj_atom and ai_atom['mapped'] and aj_atom['mapped']:
-                # Check if this pair was already added from ligand A
-                already_exists = any(
-                    (p['ai'] == ai_hybrid and p['aj'] == aj_hybrid) or
-                    (p['ai'] == aj_hybrid and p['aj'] == ai_hybrid)
-                    for p in filtered_pairs
-                )
-
-                if not already_exists:
-                    # Check distance in state B
-                    if ai_B in coordsB_aligned and aj_B in coordsB_aligned:
-                        dist_B = calculate_distance(coordsB_aligned[ai_B], coordsB_aligned[aj_B])
-
-                        # Only keep if close in state B
-                        if dist_B < rlist:
-                            filtered_pair = {
-                                'ai': ai_hybrid,
-                                'aj': aj_hybrid
-                            }
-                            if 'funct' in pair:
-                                filtered_pair['funct'] = pair['funct']
-                            if 'param' in pair:
-                                filtered_pair['param'] = pair['param']
-                            filtered_pairs.append(filtered_pair)
-
-    return filtered_pairs
 
 
 # --- Main script ---
@@ -2207,26 +1473,16 @@ def main():
     parser.add_argument('--ligB_itp', required=True)
     parser.add_argument('--create_hybrid', action='store_true',
                         help='Create hybrid topology for FEP simulations')
-    parser.add_argument('--min_mcs_size', type=int, default=3,
-                        help='Minimum MCS size (default: 3)')
-    parser.add_argument('--target_mcs_size', type=int, default=10,
-                        help='Target MCS size - stop searching when found (default: 10)')
     args = parser.parse_args()
 
     out_dir = os.path.dirname(os.path.abspath(args.ligA_mol2))
 
     # 1. Find MCS and write atom_map.txt
-    print(f"Searching for MCS with target size {args.target_mcs_size}...")
     gA = MolGraph.from_mol2(args.ligA_mol2)
     gB = MolGraph.from_mol2(args.ligB_mol2)
-    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB, args.target_mcs_size)
-
-    if mcs_size < args.min_mcs_size or mapping is None:
-        raise RuntimeError(
-            f"Could not find sufficient MCS for alignment (need at least {args.min_mcs_size} atoms, found {mcs_size})")
-
-    print(f"MCS found: {mcs_size} atoms (target was {args.target_mcs_size})")
-
+    mcs_size, mapping, atom_indicesA, atom_indicesB = find_mcs(gA, gB)
+    if mcs_size < 3 or mapping is None:
+        raise RuntimeError("Could not find sufficient MCS for alignment (need at least 3 atoms)")
     atom_map_file = os.path.join(out_dir, "atom_map.txt")
     write_atom_map(mapping, atom_map_file)
 
