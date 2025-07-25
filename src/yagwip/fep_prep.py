@@ -1,3 +1,33 @@
+"""
+Free Energy Perturbation (FEP) Preparation Module
+
+This module provides comprehensive tools for preparing Free Energy Perturbation (FEP)
+simulations between two ligands. It implements Maximum Common Substructure (MCS)
+detection, ligand alignment using the Kabsch algorithm, and hybrid topology creation
+using the PMX method.
+
+Key Features:
+- MCS detection for finding common structural elements between ligands
+- Ligand alignment using atom mapping and Kabsch algorithm
+- Hybrid topology creation with dual-state parameters
+- File organization for FEP simulation workflows
+- Support for multiple file formats (MOL2, PDB, GRO, ITP)
+
+Workflow:
+1. MCS Detection: Find common structural elements between ligand A and B
+2. Atom Mapping: Create mapping between equivalent atoms
+3. Ligand Alignment: Align ligand B to ligand A using mapped atoms
+4. Hybrid Topology: Create dual-state topology for FEP simulations
+5. File Organization: Organize files into simulation-ready directory structure
+
+Usage:
+    python fep_prep.py --ligA_mol2 ligandA.mol2 --ligB_mol2 ligandB.mol2
+                       --ligA_pdb ligandA.pdb --ligA_gro ligandA.gro --ligA_itp ligandA.itp
+                       --ligB_pdb ligandB.pdb --ligB_gro ligandB.gro --ligB_itp ligandB.itp
+                       --create_hybrid
+
+Author: YAGWIP Development Team
+"""
 
 # === Standard Library Imports ===
 import os
@@ -10,93 +40,10 @@ from importlib.resources import files
 import numpy as np
 
 
-# --- MOL2 parsing ---
-def parse_mol2_coords(filename):
-    coords = {}
-    names = {}
-    with open(filename) as f:
-        lines = f.readlines()
-    in_atoms = False
-    for line in lines:
-        if line.startswith("@<TRIPOS>ATOM"):
-            in_atoms = True
-            continue
-        if in_atoms:
-            if line.startswith("@<TRIPOS>"):
-                break
-            parts = line.split()
-            if len(parts) < 6:
-                continue
-            idx = int(parts[0])
-            name = parts[1]
-            x, y, z = map(float, parts[2:5])
-            coords[idx] = (x, y, z)
-            names[idx] = name
-    return coords, names
-
-
-# --- PDB parsing ---
-def parse_pdb_coords(filename):
-    coords = {}
-    names = {}
-    atom_lines = []
-    idx = 1
-    with open(filename) as f:
-        lines = f.readlines()
-    for line in lines:
-        if line.startswith("ATOM") or line.startswith("HETATM"):
-            x = float(line[30:38])
-            y = float(line[38:46])
-            z = float(line[46:54])
-            coords[idx] = (x, y, z)
-            names[idx] = line[12:16].strip()
-            atom_lines.append(line)
-            idx += 1
-    return coords, names, atom_lines, lines
-
-
-def write_aligned_pdb(atom_lines, coords, out_file):
-    with open(out_file, 'w') as f:
-        for line, (x, y, z) in zip(atom_lines, coords):
-            newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
-            f.write(newline)
-
-
-# --- GRO parsing ---
-def parse_gro_coords(filename):
-    coords = {}
-    names = {}
-    atom_lines = []
-    with open(filename) as f:
-        lines = f.readlines()
-    # Skip title and atom count lines
-    for i, line in enumerate(lines[2:], 2):
-        if len(line.strip()) == 0:
-            break
-        if len(line) >= 44:  # GRO format: atom index, residue name, atom name, coordinates
-            try:
-                atom_idx = int(line[15:20])
-                atom_name = line[10:15].strip()
-                x = float(line[20:28])
-                y = float(line[28:36])
-                z = float(line[36:44])
-                coords[atom_idx] = (x, y, z)
-                names[atom_idx] = atom_name
-                atom_lines.append(line)
-            except (ValueError, IndexError):
-                continue
-    return coords, names, atom_lines, lines
-
-
-def write_aligned_gro(atom_lines, coords, out_file):
-    with open(out_file, 'w') as f:
-        for line, (x, y, z) in zip(atom_lines, coords):
-            newline = line[:20] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[44:]
-            f.write(newline)
-
-
-# --- Atom and Bond classes for MolGraph ---
+# --- MCS Detection and Atom Mapping ---
 class Atom:
+    """Represents an atom in a molecular graph."""
+
     def __init__(self, idx, element):
         self.idx = idx
         self.element = element
@@ -105,14 +52,17 @@ class Atom:
 
 
 class Bond:
+    """Represents a bond between two atoms."""
+
     def __init__(self, a1, a2, order):
         self.a1 = a1
         self.a2 = a2
         self.order = order
 
 
-# --- MolGraph and MCS utilities ---
 class MolGraph:
+    """Molecular graph representation for MCS detection."""
+
     def __init__(self):
         self.atoms = {}  # idx: Atom
         self.bonds = []  # list of Bond
@@ -121,6 +71,7 @@ class MolGraph:
 
     @staticmethod
     def from_mol2(filename):
+        """Create MolGraph from MOL2 file."""
         atoms = {}
         bonds = []
         adj = defaultdict(set)
@@ -170,6 +121,7 @@ class MolGraph:
         return g
 
     def subgraph(self, atom_indices):
+        """Create subgraph from specified atom indices."""
         sg = MolGraph()
         for idx in atom_indices:
             atom = self.atoms[idx]
@@ -192,6 +144,7 @@ class MolGraph:
 
 
 def enumerate_connected_subgraphs(graph, size):
+    """Enumerate all connected subgraphs of given size."""
     results = set()
     for start in graph.atoms:
         stack = [(frozenset([start]), start)]
@@ -209,6 +162,7 @@ def enumerate_connected_subgraphs(graph, size):
 
 
 def find_mcs(g1, g2):
+    """Find Maximum Common Substructure between two molecular graphs."""
     # Always use the smaller graph for subgraph enumeration
     if len(g1.atoms) > len(g2.atoms):
         g1, g2 = g2, g1
@@ -239,6 +193,7 @@ def find_mcs(g1, g2):
 
 
 def are_isomorphic(g1, g2):
+    """Check if two molecular graphs are isomorphic."""
     if len(g1.atoms) != len(g2.atoms):
         return False, None
 
@@ -304,12 +259,14 @@ def are_isomorphic(g1, g2):
 
 
 def write_atom_map(mapping, filename):
+    """Write atom mapping to file."""
     with open(filename, "w") as f:
         for a, b in mapping.items():
             f.write(f"{a} {b}\n")
 
 
 def load_atom_map(filename):
+    """Load atom mapping from file."""
     mapping = {}
     with open(filename) as f:
         for line in f:
@@ -320,8 +277,81 @@ def load_atom_map(filename):
     return mapping
 
 
-# --- Kabsch alignment and robust ligand alignment ---
+# --- File Parsing Functions ---
+def parse_mol2_coords(filename):
+    """Parse coordinates from MOL2 file."""
+    coords = {}
+    names = {}
+    with open(filename) as f:
+        lines = f.readlines()
+    in_atoms = False
+    for line in lines:
+        if line.startswith("@<TRIPOS>ATOM"):
+            in_atoms = True
+            continue
+        if in_atoms:
+            if line.startswith("@<TRIPOS>"):
+                break
+            parts = line.split()
+            if len(parts) < 6:
+                continue
+            idx = int(parts[0])
+            name = parts[1]
+            x, y, z = map(float, parts[2:5])
+            coords[idx] = (x, y, z)
+            names[idx] = name
+    return coords, names
+
+
+def parse_pdb_coords(filename):
+    """Parse coordinates from PDB file."""
+    coords = {}
+    names = {}
+    atom_lines = []
+    idx = 1
+    with open(filename) as f:
+        lines = f.readlines()
+    for line in lines:
+        if line.startswith("ATOM") or line.startswith("HETATM"):
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            coords[idx] = (x, y, z)
+            names[idx] = line[12:16].strip()
+            atom_lines.append(line)
+            idx += 1
+    return coords, names, atom_lines, lines
+
+
+def parse_gro_coords(filename):
+    """Parse coordinates from GRO file."""
+    coords = {}
+    names = {}
+    atom_lines = []
+    with open(filename) as f:
+        lines = f.readlines()
+    # Skip title and atom count lines
+    for i, line in enumerate(lines[2:], 2):
+        if len(line.strip()) == 0:
+            break
+        if len(line) >= 44:  # GRO format: atom index, residue name, atom name, coordinates
+            try:
+                atom_idx = int(line[15:20])
+                atom_name = line[10:15].strip()
+                x = float(line[20:28])
+                y = float(line[28:36])
+                z = float(line[36:44])
+                coords[atom_idx] = (x, y, z)
+                names[atom_idx] = atom_name
+                atom_lines.append(line)
+            except (ValueError, IndexError):
+                continue
+    return coords, names, atom_lines, lines
+
+
+# --- Ligand Alignment Functions ---
 def kabsch_align(coords_A, coords_B):
+    """Perform Kabsch alignment between two sets of coordinates."""
     centroid_A = np.mean(coords_A, axis=0)
     centroid_B = np.mean(coords_B, axis=0)
     centered_A = coords_A - centroid_A
@@ -336,6 +366,7 @@ def kabsch_align(coords_A, coords_B):
 
 
 def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2, mapping):
+    """Align ligand B to ligand A using atom mapping and Kabsch algorithm."""
     if not mapping:
         raise RuntimeError("No atom mapping found for alignment.")
     coordsA, namesA = parse_mol2_coords(ligandA_mol2)
@@ -394,6 +425,7 @@ def align_ligands_with_mapping(ligandA_mol2, ligandB_mol2, aligned_ligandB_mol2,
 
 
 def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
+    """Align ligand B PDB to ligand A PDB using atom mapping."""
     mapping = load_atom_map(atom_map_file)
     if not mapping:
         raise RuntimeError("No atom mapping found for PDB alignment.")
@@ -423,6 +455,7 @@ def align_ligandB_pdb(ligA_pdb, ligB_pdb, atom_map_file, aligned_ligB_pdb):
 
 
 def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
+    """Align ligand B GRO to ligand A GRO using atom mapping."""
     mapping = load_atom_map(atom_map_file)
     if not mapping:
         raise RuntimeError("No atom mapping found for GRO alignment.")
@@ -451,157 +484,24 @@ def align_ligandB_gro(ligA_gro, ligB_gro, atom_map_file, aligned_ligB_gro):
     return aligned_ligB_gro
 
 
-def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files=None):
-    """
-    Organize files into new directory structure:
-    - ligand_only/
-      - A_to_B/
-        - lambda_0.00/ (hybrid_stateA.gro, hybrid.itp)
-        - lambda_0.05/ (hybrid_stateA.gro, hybrid.itp)
-        - ...
-        - lambda_1.00/ (hybrid_stateA.gro, hybrid.itp)
-      - B_to_A/
-        - lambda_0.00/ (hybrid_stateB.gro, hybrid.itp)
-        - lambda_0.05/ (hybrid_stateB.gro, hybrid.itp)
-        - ...
-        - lambda_1.00/ (hybrid_stateB.gro, hybrid.itp)
-    - protein_complex/
-      - A_to_B/
-        - lambda_0.00/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
-        - lambda_0.05/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
-        - ...
-        - lambda_1.00/ (hybrid_stateA.pdb, protein.pdb, hybrid.itp)
-      - B_to_A/
-        - lambda_0.00/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
-        - lambda_0.05/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
-        - ...
-        - lambda_1.00/ (hybrid_stateB.pdb, protein.pdb, hybrid.itp)
-    """
-    # Create main directories
-    ligand_only_dir = os.path.join(out_dir, 'ligand_only')
-    protein_complex_dir = os.path.join(out_dir, 'protein_complex')
-
-    # Create subdirectories
-    ligand_a_to_b = os.path.join(ligand_only_dir, 'A_to_B')
-    ligand_b_to_a = os.path.join(ligand_only_dir, 'B_to_A')
-    protein_a_to_b = os.path.join(protein_complex_dir, 'A_to_B')
-    protein_b_to_a = os.path.join(protein_complex_dir, 'B_to_A')
-
-    # Generate lambda values from 0.00 to 1.00 in increments of 0.05
-    lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
-
-    # Create all lambda subdirectories
-    for base_dir in [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]:
-        os.makedirs(base_dir, exist_ok=True)
-        for lambda_val in lambda_values:
-            lambda_dir = os.path.join(base_dir, lambda_val)
-            os.makedirs(lambda_dir, exist_ok=True)
-
-    # Copy hybrid files if available
-    if hybrid_files:
-        hybrid_itp, hybrid_pdbA, hybrid_pdbB = hybrid_files
-
-        # Convert PDB to GRO for ligand-only directories
-        def pdb_to_gro(pdb_file, gro_file):
-            """Convert PDB to GRO format"""
-            with open(pdb_file, 'r') as f:
-                lines = f.readlines()
-
-            # Count atoms (skip REMARK and END lines)
-            atom_lines = [line for line in lines if line.startswith('HETATM') or line.startswith('ATOM')]
-            num_atoms = len(atom_lines)
-
-            with open(gro_file, 'w') as f:
-                # Write header (title line)
-                f.write("Hybrid structure for FEP\n")
-                # Write number of atoms
-                f.write(f"{num_atoms:>5}\n")
-
-                for i, line in enumerate(atom_lines, 1):
-                    # Extract coordinates from PDB format (in Angstroms)
-                    x_angstroms = float(line[30:38])
-                    y_angstroms = float(line[38:46])
-                    z_angstroms = float(line[46:54])
-                    atom_name = line[12:16].strip()
-                    res_name = line[17:20].strip()
-
-                    # Convert from Angstroms to nanometers (1 nm = 10 Å)
-                    x_nm = x_angstroms / 10.0
-                    y_nm = y_angstroms / 10.0
-                    z_nm = z_angstroms / 10.0
-
-                    # Write GRO format line: resnum(5) resname(5) atomname(5) atomnum(5) x(8) y(8) z(8)
-                    # Format: resnum(5) resname(5) atomname(5) atomnum(5) x(8.3f) y(8.3f) z(8.3f)
-                    f.write(f"{1:>5}{res_name:>5}{atom_name:>5}{i:>5}{x_nm:>8.3f}{y_nm:>8.3f}{z_nm:>8.3f}\n")
-
-                # Add box vectors (default 10nm cubic box)
-                f.write("   10.00000   10.00000   10.00000\n")
-
-        # Create files in main directories first
-        hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
-        hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
-
-        pdb_to_gro(hybrid_pdbA, hybrid_groA)
-        pdb_to_gro(hybrid_pdbB, hybrid_groB)
-
-        copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
-        copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
-
-        copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
-        copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
-        copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
-        copyfile(hybrid_itp, os.path.join(protein_b_to_a, 'hybrid.itp'))
-
-        # Copy protein.pdb if it exists
-        if os.path.exists("protein.pdb"):
-            copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
-            copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
-
-            # Get topol.top template from templates directory
-            topol_template_path = files("templates").joinpath("topol.top")
-            with open(str(topol_template_path), 'r', encoding='utf-8') as f:
-                topol_template = f.read()
-            print(f"Using topol.top template from {topol_template_path}")
-
-        # Write topol.top files to A_to_B and B_to_A level
-        with open(os.path.join(ligand_a_to_b, 'topol.top'), 'w') as f:
-            f.write(topol_template)
-        with open(os.path.join(ligand_b_to_a, 'topol.top'), 'w') as f:
-            f.write(topol_template)
-
-        # Copy FEP MDP files from templates to each A_to_B and B_to_A directory
-        fep_mdp_files = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
-        fep_directories = [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]
-
-        for fep_dir in fep_directories:
-            for mdp_file in fep_mdp_files:
-                mdp_template_path = files("templates").joinpath(mdp_file)
-                if mdp_template_path.is_file():
-                    dest_path = os.path.join(fep_dir, mdp_file)
-                    with open(str(mdp_template_path), 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    with open(dest_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    print(f"Copied {mdp_file} to {fep_dir}")
-                else:
-                    print(f"Warning: {mdp_file} template not found at {mdp_template_path}")
-
-    print("Output written to:")
-    print(f"  {ligand_only_dir}/")
-    print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp, topol.top")
-    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
-    print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp, topol.top")
-    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
-    print(f"  {protein_complex_dir}/")
-    print(f"    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
-    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
-    print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
-    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
-    print(f"Total: 84 lambda directories created (21 per transition type)")
-    print(f"Note: Files are placed at A_to_B and B_to_A level for building, then copied to lambda directories")
+# --- File Writing Functions ---
+def write_aligned_pdb(atom_lines, coords, out_file):
+    """Write aligned coordinates to PDB file."""
+    with open(out_file, 'w') as f:
+        for line, (x, y, z) in zip(atom_lines, coords):
+            newline = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
+            f.write(newline)
 
 
-# --- Hybrid topology creation (inspired by make_hybrid.py) ---
+def write_aligned_gro(atom_lines, coords, out_file):
+    """Write aligned coordinates to GRO file."""
+    with open(out_file, 'w') as f:
+        for line, (x, y, z) in zip(atom_lines, coords):
+            newline = line[:20] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[44:]
+            f.write(newline)
+
+
+# --- Hybrid Topology Creation ---
 def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, atom_map_file, out_itp, out_pdbA,
                            out_pdbB):
     """
@@ -723,7 +623,14 @@ def create_hybrid_topology(ligA_mol2, ligB_aligned_mol2, ligA_itp, ligB_itp, ato
 
 
 def parse_itp_atoms(itp_file):
-    """Parse atom section from ITP file."""
+    """Parse atom section from ITP file.
+
+    Args:
+        itp_file: Path to ITP file
+
+    Returns:
+        Dictionary mapping atom index to atom properties (name, type, charge, mass)
+    """
     atoms = {}
     with open(itp_file, 'r') as f:
         lines = f.readlines()
@@ -754,7 +661,14 @@ def parse_itp_atoms(itp_file):
 
 
 def parse_itp_bonds(itp_file):
-    """Parse bond section from ITP file."""
+    """Parse bond section from ITP file.
+
+    Args:
+        itp_file: Path to ITP file
+
+    Returns:
+        List of bond dictionaries with atom indices and parameters
+    """
     bonds = []
     with open(itp_file, 'r') as f:
         lines = f.readlines()
@@ -784,7 +698,14 @@ def parse_itp_bonds(itp_file):
 
 
 def parse_itp_angles(itp_file):
-    """Parse angle section from ITP file."""
+    """Parse angle section from ITP file.
+
+    Args:
+        itp_file: Path to ITP file
+
+    Returns:
+        List of angle dictionaries with atom indices and parameters
+    """
     angles = []
     with open(itp_file, 'r') as f:
         lines = f.readlines()
@@ -815,7 +736,14 @@ def parse_itp_angles(itp_file):
 
 
 def parse_itp_dihedrals(itp_file):
-    """Parse dihedral section from ITP file."""
+    """Parse dihedral section from ITP file.
+
+    Args:
+        itp_file: Path to ITP file
+
+    Returns:
+        List of dihedral dictionaries with atom indices and parameters
+    """
     dihedrals = []
     with open(itp_file, 'r') as f:
         lines = f.readlines()
@@ -848,7 +776,19 @@ def parse_itp_dihedrals(itp_file):
 
 
 def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid bonds using the merge strategy with complete connectivity."""
+    """Create hybrid bonds using the merge strategy with complete connectivity.
+
+    Args:
+        atomsA: Dictionary of atoms from ligand A
+        atomsB: Dictionary of atoms from ligand B
+        mapping: Atom mapping dictionary
+        hybrid_atoms: List of hybrid atom dictionaries
+        ligA_itp: Path to ligand A ITP file
+        ligB_itp: Path to ligand B ITP file
+
+    Returns:
+        List of hybrid bond dictionaries with dual-state parameters
+    """
     # Parse bond sections from both ITP files
     bondsA = parse_itp_bonds(ligA_itp)
     bondsB = parse_itp_bonds(ligB_itp)
@@ -993,7 +933,19 @@ def create_hybrid_bonds(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_it
 
 
 def create_hybrid_angles(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid angles using the merge strategy with complete connectivity."""
+    """Create hybrid angles using the merge strategy with complete connectivity.
+
+    Args:
+        atomsA: Dictionary of atoms from ligand A
+        atomsB: Dictionary of atoms from ligand B
+        mapping: Atom mapping dictionary
+        hybrid_atoms: List of hybrid atom dictionaries
+        ligA_itp: Path to ligand A ITP file
+        ligB_itp: Path to ligand B ITP file
+
+    Returns:
+        List of hybrid angle dictionaries with dual-state parameters
+    """
     # Parse angle sections from both ITP files
     anglesA = parse_itp_angles(ligA_itp)
     anglesB = parse_itp_angles(ligB_itp)
@@ -1173,7 +1125,19 @@ def add_missing_angles_for_connectivity(hybrid_atoms, existing_angles):
 
 
 def create_hybrid_dihedrals(atomsA, atomsB, mapping, hybrid_atoms, ligA_itp, ligB_itp):
-    """Create hybrid dihedrals using the merge strategy with complete connectivity."""
+    """Create hybrid dihedrals using the merge strategy with complete connectivity.
+
+    Args:
+        atomsA: Dictionary of atoms from ligand A
+        atomsB: Dictionary of atoms from ligand B
+        mapping: Atom mapping dictionary
+        hybrid_atoms: List of hybrid atom dictionaries
+        ligA_itp: Path to ligand A ITP file
+        ligB_itp: Path to ligand B ITP file
+
+    Returns:
+        List of hybrid dihedral dictionaries with dual-state parameters
+    """
     # Parse dihedral sections from both ITP files
     dihedralsA = parse_itp_dihedrals(ligA_itp)
     dihedralsB = parse_itp_dihedrals(ligB_itp)
@@ -1358,7 +1322,15 @@ def add_missing_dihedrals_for_connectivity(hybrid_atoms, existing_dihedrals):
 
 
 def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid_dihedrals):
-    """Write hybrid topology file with dual-state parameters."""
+    """Write hybrid topology file with dual-state parameters.
+
+    Args:
+        out_file: Output ITP file path
+        hybrid_atoms: List of hybrid atom dictionaries
+        hybrid_bonds: List of hybrid bond dictionaries
+        hybrid_angles: List of hybrid angle dictionaries
+        hybrid_dihedrals: List of hybrid dihedral dictionaries
+    """
     with open(out_file, 'w') as f:
         f.write("; Hybrid topology for FEP\n")
         f.write("[ moleculetype ]\n")
@@ -1423,7 +1395,16 @@ def write_hybrid_itp(out_file, hybrid_atoms, hybrid_bonds, hybrid_angles, hybrid
 
 
 def write_hybrid_pdb(out_file, hybrid_atoms, coordsA, coordsB_aligned, mapping, state='A'):
-    """Write hybrid PDB file for specified state using PMX method."""
+    """Write hybrid PDB file for specified state using PMX method.
+
+    Args:
+        out_file: Output PDB file path
+        hybrid_atoms: List of hybrid atom dictionaries
+        coordsA: Coordinates for ligand A
+        coordsB_aligned: Aligned coordinates for ligand B
+        mapping: Atom mapping dictionary
+        state: 'A' or 'B' to specify which state to write
+    """
     with open(out_file, 'w') as f:
         f.write("REMARK Hybrid structure for FEP (PMX Method)\n")
         f.write(f"REMARK State: {state}\n")
@@ -1900,8 +1881,159 @@ def get_centroid_of_mapped_atoms(hybrid_atoms, coordsA, coordsB_aligned):
     return calculate_centroid(mapped_coords)
 
 
+# --- File Organization ---
+def organize_files(args, out_dir, aligned_ligB_pdb, aligned_ligB_gro, hybrid_files=None):
+    """Organize files into FEP simulation directory structure.
+
+    Creates a hierarchical directory structure for FEP simulations:
+    - ligand_only/
+      - A_to_B/ (lambda_0.00 to lambda_1.00)
+      - B_to_A/ (lambda_0.00 to lambda_1.00)
+    - protein_complex/
+      - A_to_B/ (lambda_0.00 to lambda_1.00)
+      - B_to_A/ (lambda_0.00 to lambda_1.00)
+
+    Args:
+        args: Command line arguments
+        out_dir: Output directory path
+        aligned_ligB_pdb: Path to aligned ligand B PDB file
+        aligned_ligB_gro: Path to aligned ligand B GRO file
+        hybrid_files: Tuple of (hybrid_itp, hybrid_pdbA, hybrid_pdbB) if available
+    """
+    # Create main directories
+    ligand_only_dir = os.path.join(out_dir, 'ligand_only')
+    protein_complex_dir = os.path.join(out_dir, 'protein_complex')
+
+    # Create subdirectories
+    ligand_a_to_b = os.path.join(ligand_only_dir, 'A_to_B')
+    ligand_b_to_a = os.path.join(ligand_only_dir, 'B_to_A')
+    protein_a_to_b = os.path.join(protein_complex_dir, 'A_to_B')
+    protein_b_to_a = os.path.join(protein_complex_dir, 'B_to_A')
+
+    # Generate lambda values from 0.00 to 1.00 in increments of 0.05
+    lambda_values = [f"lambda_{i * 0.05:.2f}" for i in range(21)]  # 0.00 to 1.00
+
+    # Create all lambda subdirectories
+    for base_dir in [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]:
+        os.makedirs(base_dir, exist_ok=True)
+        for lambda_val in lambda_values:
+            lambda_dir = os.path.join(base_dir, lambda_val)
+            os.makedirs(lambda_dir, exist_ok=True)
+
+    # Copy hybrid files if available
+    if hybrid_files:
+        hybrid_itp, hybrid_pdbA, hybrid_pdbB = hybrid_files
+
+        # Convert PDB to GRO for ligand-only directories
+        def pdb_to_gro(pdb_file, gro_file):
+            """Convert PDB to GRO format"""
+            with open(pdb_file, 'r') as f:
+                lines = f.readlines()
+
+            # Count atoms (skip REMARK and END lines)
+            atom_lines = [line for line in lines if line.startswith('HETATM') or line.startswith('ATOM')]
+            num_atoms = len(atom_lines)
+
+            with open(gro_file, 'w') as f:
+                # Write header (title line)
+                f.write("Hybrid structure for FEP\n")
+                # Write number of atoms
+                f.write(f"{num_atoms:>5}\n")
+
+                for i, line in enumerate(atom_lines, 1):
+                    # Extract coordinates from PDB format (in Angstroms)
+                    x_angstroms = float(line[30:38])
+                    y_angstroms = float(line[38:46])
+                    z_angstroms = float(line[46:54])
+                    atom_name = line[12:16].strip()
+                    res_name = line[17:20].strip()
+
+                    # Convert from Angstroms to nanometers (1 nm = 10 Å)
+                    x_nm = x_angstroms / 10.0
+                    y_nm = y_angstroms / 10.0
+                    z_nm = z_angstroms / 10.0
+
+                    # Write GRO format line: resnum(5) resname(5) atomname(5) atomnum(5) x(8) y(8) z(8)
+                    # Format: resnum(5) resname(5) atomname(5) atomnum(5) x(8.3f) y(8.3f) z(8.3f)
+                    f.write(f"{1:>5}{res_name:>5}{atom_name:>5}{i:>5}{x_nm:>8.3f}{y_nm:>8.3f}{z_nm:>8.3f}\n")
+
+                # Add box vectors (default 10nm cubic box)
+                f.write("   10.00000   10.00000   10.00000\n")
+
+        # Create files in main directories first
+        hybrid_groA = os.path.join(ligand_a_to_b, 'hybrid_stateA.gro')
+        hybrid_groB = os.path.join(ligand_b_to_a, 'hybrid_stateB.gro')
+
+        pdb_to_gro(hybrid_pdbA, hybrid_groA)
+        pdb_to_gro(hybrid_pdbB, hybrid_groB)
+
+        copyfile(hybrid_itp, os.path.join(ligand_a_to_b, 'hybrid.itp'))
+        copyfile(hybrid_itp, os.path.join(ligand_b_to_a, 'hybrid.itp'))
+
+        copyfile(hybrid_pdbA, os.path.join(protein_a_to_b, 'hybrid_stateA.pdb'))
+        copyfile(hybrid_pdbB, os.path.join(protein_b_to_a, 'hybrid_stateB.pdb'))
+        copyfile(hybrid_itp, os.path.join(protein_a_to_b, 'hybrid.itp'))
+        copyfile(hybrid_itp, os.path.join(protein_b_to_a, 'hybrid.itp'))
+
+        # Copy protein.pdb if it exists
+        if os.path.exists("protein.pdb"):
+            copyfile("protein.pdb", os.path.join(protein_a_to_b, 'protein.pdb'))
+            copyfile("protein.pdb", os.path.join(protein_b_to_a, 'protein.pdb'))
+
+            # Get topol.top template from templates directory
+            topol_template_path = files("templates").joinpath("topol.top")
+            with open(str(topol_template_path), 'r', encoding='utf-8') as f:
+                topol_template = f.read()
+            print(f"Using topol.top template from {topol_template_path}")
+
+        # Write topol.top files to A_to_B and B_to_A level
+        with open(os.path.join(ligand_a_to_b, 'topol.top'), 'w') as f:
+            f.write(topol_template)
+        with open(os.path.join(ligand_b_to_a, 'topol.top'), 'w') as f:
+            f.write(topol_template)
+
+        # Copy FEP MDP files from templates to each A_to_B and B_to_A directory
+        fep_mdp_files = ["em_fep.mdp", "nvt_fep.mdp", "npt_fep.mdp", "production_fep.mdp"]
+        fep_directories = [ligand_a_to_b, ligand_b_to_a, protein_a_to_b, protein_b_to_a]
+
+        for fep_dir in fep_directories:
+            for mdp_file in fep_mdp_files:
+                mdp_template_path = files("templates").joinpath(mdp_file)
+                if mdp_template_path.is_file():
+                    dest_path = os.path.join(fep_dir, mdp_file)
+                    with open(str(mdp_template_path), 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    with open(dest_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"Copied {mdp_file} to {fep_dir}")
+                else:
+                    print(f"Warning: {mdp_file} template not found at {mdp_template_path}")
+
+    print("Output written to:")
+    print(f"  {ligand_only_dir}/")
+    print(f"    A_to_B/ - hybrid_stateA.gro, hybrid.itp, topol.top")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
+    print(f"    B_to_A/ - hybrid_stateB.gro, hybrid.itp, topol.top")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
+    print(f"  {protein_complex_dir}/")
+    print(f"    A_to_B/ - hybrid_stateA.pdb, protein.pdb, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
+    print(f"    B_to_A/ - hybrid_stateB.pdb, protein.pdb, hybrid.itp")
+    print(f"      lambda_0.00/ to lambda_1.00/ (21 directories)")
+    print(f"Total: 84 lambda directories created (21 per transition type)")
+    print(f"Note: Files are placed at A_to_B and B_to_A level for building, then copied to lambda directories")
+
+
 # --- Main script ---
 def main():
+    """Main function for FEP preparation workflow.
+
+    Executes the complete FEP preparation pipeline:
+    1. Find MCS and create atom mapping
+    2. Align ligand B to ligand A using atom mapping
+    3. Create hybrid topology (if requested)
+    4. Organize files into simulation-ready directory structure
+    """
     parser = argparse.ArgumentParser(description='FEP prep: MCS, alignment, and file organization.')
     parser.add_argument('--ligA_mol2', required=True)
     parser.add_argument('--ligB_mol2', required=True)
