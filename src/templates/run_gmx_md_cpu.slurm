@@ -26,7 +26,7 @@ prod_step="step"
 # ------------------------
 echo "Starting production MD..."
 
-srun gmx_mpi mdrun -deffnm ${prod_prefix} -cpi prod.cpt -maxh 2.92 -nsteps -1
+gmx mdrun -deffnm ${prod_prefix} -cpi ${prod_prefix}_prev -maxh 2.92 -nsteps -1
 
 sbatch run_gmx_md_cpu.slurm
 
