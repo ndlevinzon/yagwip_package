@@ -3,8 +3,8 @@
 #SBATCH --output=slurm/md_job_%j.out
 #SBATCH --error=slurm/md_job_%j.err
 #SBATCH --nodes=1              # Number of Nodes
-#SBATCH --ntasks-per-node=1    # Replicas per Node
-#SBATCH --cpus-per-task=64     # CPUs Per Replicas
+#SBATCH --ntasks-per-node=64   # Replicas per Node
+#SBATCH --cpus-per-task=1      # CPUs Per Replicas
 #SBATCH --time=01:00:00        # Time limit (1 hour)
 #SBATCH --exclusive            # Exclusive node allocation
 #SBATCH --mem=0                # Use all available memory
