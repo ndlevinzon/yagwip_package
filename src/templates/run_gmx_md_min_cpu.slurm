@@ -117,6 +117,7 @@ gmx grompp -f ${prod_prefix}.mdp -c ${npt_prefix}.gro -p topol.top -o ${prod_pre
 
 sbatch run_gmx_md_cpu.slurm
 
+
 #--------------------------------------
 #__  _____   _______       __________
 #\ \/ /   | / ____/ |     / /  _/ __ \
