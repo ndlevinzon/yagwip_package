@@ -4,7 +4,6 @@ gromacs_runner.py: GROMACS and ligand building utilities for YAGWIP.
 
 # === Standard Library Imports ===
 import os
-import shutil
 from importlib.resources import files
 
 # === Local Imports ===

@@ -1,9 +1,13 @@
+
+# === Standard Library Imports ===
 import os
 import argparse
-import numpy as np
 from shutil import copyfile
 from collections import defaultdict
 from importlib.resources import files
+
+# === Third-Party Imports ===
+import numpy as np
 
 
 # --- MOL2 parsing ---

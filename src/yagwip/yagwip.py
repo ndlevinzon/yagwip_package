@@ -315,7 +315,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def _handle_protein_ligand(self, lines, hetatm_lines, args):
         ligand_name = self._assign_ligand_name()
-        protein_file, ligand_file, connect_records = self._extract_ligand_and_protein_with_connect(lines, ligand_name)
+        protein_file, ligand_file, connect_records = (
+            self._extract_ligand_and_protein_with_connect(lines, ligand_name)
+        )
         self.ligand_pdb_path = os.path.abspath(ligand_file)
         self._warn_if_no_hydrogens(hetatm_lines)
         itp_file = f"{ligand_name}.itp"
@@ -323,7 +325,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._process_ligand_itp(itp_file, ligand_name)
         elif args.ligand_builder:
             # Pass CONNECT records to ligand_pipeline
-            self._run_ligand_builder(ligand_file, ligand_name, args.c, args.m, connect_records=connect_records)
+            self._run_ligand_builder(
+                ligand_file,
+                ligand_name,
+                args.c,
+                args.m,
+                connect_records=connect_records,
+            )
             if os.path.isfile(itp_file):
                 self._process_ligand_itp(itp_file, ligand_name)
         else:
@@ -394,7 +402,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 "Ligand appears to lack hydrogen atoms. Consider checking hydrogens and valences."
             )
 
-    def _run_ligand_builder(self, ligand_file, ligand_name, charge, multiplicity, connect_records=None):
+    def _run_ligand_builder(
+        self, ligand_file, ligand_name, charge, multiplicity, connect_records=None
+    ):
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
         if not os.path.exists(amber_ff_dest):
@@ -415,7 +425,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
 
         # Pass connect_records to convert_pdb_to_mol2
-        mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(ligand_file, connect_records=connect_records)
+        mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(
+            ligand_file, connect_records=connect_records
+        )
         if not mol2_file or not os.path.isfile(mol2_file):
             self._log_error(
                 f"MOL2 generation failed or file not found: {mol2_file}. Aborting ligand pipeline..."
@@ -437,7 +449,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if atom_end is None:
             atom_end = len(lines)
         atom_lines = lines[atom_start:atom_end]
-
 
         df_atoms = pd.read_csv(
             io.StringIO("".join(atom_lines)),
@@ -511,12 +522,18 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     try:
                         idx = int(parts[1])
                         if idx in ligand_indices:
-                            bonded = [int(x) for x in parts[2:] if x.isdigit() and int(x) in ligand_indices]
+                            bonded = [
+                                int(x)
+                                for x in parts[2:]
+                                if x.isdigit() and int(x) in ligand_indices
+                            ]
                             if bonded:
                                 connect_records[idx] = bonded
                     except Exception:
                         pass
-        self._log_info(f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records.")
+        self._log_info(
+            f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records."
+        )
         return protein_file, ligand_file, connect_records
 
     def do_fep_prep(self, arg):
@@ -541,7 +558,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "ligandB.gro",
             "ligandB.itp",
         ]
-        missing = [f for f in required_files if not os.path.isfile(os.path.join(cwd, f))]
+        missing = [
+            f for f in required_files if not os.path.isfile(os.path.join(cwd, f))
+        ]
         if missing:
             self._log_error(f"Missing required files: {', '.join(missing)}")
             return
@@ -550,14 +569,22 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         cmd = [
             python_exe,
             fep_prep_path,
-            "--ligA_mol2", "ligandA.mol2",
-            "--ligB_mol2", "ligandB.mol2",
-            "--ligA_pdb", "ligandA.pdb",
-            "--ligA_gro", "ligandA.gro",
-            "--ligA_itp", "ligandA.itp",
-            "--ligB_pdb", "ligandB.pdb",
-            "--ligB_gro", "ligandB.gro",
-            "--ligB_itp", "ligandB.itp",
+            "--ligA_mol2",
+            "ligandA.mol2",
+            "--ligB_mol2",
+            "ligandB.mol2",
+            "--ligA_pdb",
+            "ligandA.pdb",
+            "--ligA_gro",
+            "ligandA.gro",
+            "--ligA_itp",
+            "ligandA.itp",
+            "--ligB_pdb",
+            "ligandB.pdb",
+            "--ligB_gro",
+            "ligandB.gro",
+            "--ligB_itp",
+            "ligandB.itp",
             "--create_hybrid",  # Add hybrid topology creation
         ]
         self._log_info("FEP prep workflow:")
@@ -566,12 +593,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
         self._log_info("  4. Align ligandB.gro to ligandA.gro")
         self._log_info("  5. Create hybrid topology for FEP simulations")
-        self._log_info("  6. Organize files into ligand_only/ and protein_complex/ directories")
+        self._log_info(
+            "  6. Organize files into ligand_only/ and protein_complex/ directories"
+        )
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             self._log_success("FEP preparation complete.")
-            self._log_info("Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, hybrid.itp, hybrid_stateA.pdb, hybrid_stateB.pdb")
+            self._log_info(
+                "Output files: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, hybrid.itp, hybrid_stateA.pdb, hybrid_stateB.pdb"
+            )
             self._log_info("Directory structure:")
             self._log_info("  ligand_only/")
             self._log_info("    A_to_B/ - hybrid_stateA.gro, hybrid.itp")
@@ -620,7 +651,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # First, run pdb2gmx on the protein component
         protein_pdb = "protein"
         output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx"))
+        self.builder.run_pdb2gmx(
+            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
+        )
         if not os.path.isfile(output_gro):
             self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
             return
@@ -631,7 +664,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._pdb2gmx_fep(fep_dirs)
         else:
             # Check for ligand presence
-            ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile("ligand.pdb")
+            ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile(
+                "ligand.pdb"
+            )
             if ligand_present:
                 self._pdb2gmx_protein_ligand(output_gro)
 
@@ -646,7 +681,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         # Check if amber14sb.ff exists in current working directory
         if not os.path.exists(amber_ff_source):
-            self._log_error(f"amber14sb.ff not found in current working directory: {amber_ff_source}")
+            self._log_error(
+                f"amber14sb.ff not found in current working directory: {amber_ff_source}"
+            )
             return
 
         # Define the 4 FEP directories that need amber14sb.ff
@@ -654,7 +691,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             os.path.join("ligand_only", "A_to_B"),
             os.path.join("ligand_only", "B_to_A"),
             os.path.join("protein_complex", "A_to_B"),
-            os.path.join("protein_complex", "B_to_A")
+            os.path.join("protein_complex", "B_to_A"),
         ]
 
         # Copy amber14sb.ff to each FEP directory
@@ -668,9 +705,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         shutil.copytree(amber_ff_source, amber_ff_dest)
                         self._log_success(f"Copied amber14sb.ff to {fep_dir}")
                     except Exception as e:
-                        self._log_error(f"Failed to copy amber14sb.ff to {fep_dir}: {e}")
+                        self._log_error(
+                            f"Failed to copy amber14sb.ff to {fep_dir}: {e}"
+                        )
                 else:
-                    self._log_info(f"amber14sb.ff already exists in {fep_dir}, not overwriting")
+                    self._log_info(
+                        f"amber14sb.ff already exists in {fep_dir}, not overwriting"
+                    )
 
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
 
@@ -685,18 +726,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                         # This ensures the Editor uses the correct paths for this context
                         fep_editor = Editor(
                             ligand_itp=hybrid_itp_path,
-                            ffnonbonded_itp=os.path.join(fep_dir, "amber14sb.ff", "ffnonbonded.itp")
+                            ffnonbonded_itp=os.path.join(
+                                fep_dir, "amber14sb.ff", "ffnonbonded.itp"
+                            ),
                         )
 
                         # Process the hybrid.itp with the FEP-specific Editor
-                        fep_editor.append_ligand_atomtypes_to_forcefield(hybrid_itp_path, "LIG")
+                        fep_editor.append_ligand_atomtypes_to_forcefield(
+                            hybrid_itp_path, "LIG"
+                        )
                         fep_editor.ligand_itp = hybrid_itp_path
                         fep_editor.modify_improper_dihedrals_in_ligand_itp()
                         fep_editor.rename_residue_in_itp_atoms_section()
 
                         self._log_success(f"Processed hybrid.itp in {fep_dir}")
                     except Exception as e:
-                        self._log_error(f"Failed to process hybrid.itp in {fep_dir}: {e}")
+                        self._log_error(
+                            f"Failed to process hybrid.itp in {fep_dir}: {e}"
+                        )
                 else:
                     self._log_warning(f"hybrid.itp not found in {fep_dir}")
 
@@ -738,10 +785,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             protein_gro_source = "protein.gro"
             topol_top_source = "topol.top"
             if not os.path.exists(protein_gro_source):
-                self._log_error(f"protein.gro not found in current directory: {protein_gro_source}")
+                self._log_error(
+                    f"protein.gro not found in current directory: {protein_gro_source}"
+                )
                 return
             if not os.path.exists(topol_top_source):
-                self._log_error(f"topol.top not found in current directory: {topol_top_source}")
+                self._log_error(
+                    f"topol.top not found in current directory: {topol_top_source}"
+                )
                 return
 
             # Process A_to_B directory
@@ -790,7 +841,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 finally:
                     os.chdir(original_cwd)
 
-        self._log_success("FEP pdb2gmx workflow completed for A_to_B and B_to_A directories.")
+        self._log_success(
+            "FEP pdb2gmx workflow completed for A_to_B and B_to_A directories."
+        )
 
     def _pdb2gmx_protein_ligand(self, protein_gro):
         # Determine ligand PDB file (regular ligand or hybrid)
@@ -812,13 +865,15 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             for fname in ligand_pdb_files:
                 if os.path.exists(fname) and os.path.getsize(fname) > 0:
                     ligand_pdb_file = fname
-                    ligand_itp_file = fname.replace('.pdb', '.itp')
+                    ligand_itp_file = fname.replace(".pdb", ".itp")
                     self._log_info(f"Found regular ligand file: {ligand_pdb_file}")
                     break
 
         # Check if we found any ligand file
         if ligand_pdb_file is None:
-            self._log_error("No ligand PDB file found. Expected hybrid_stateA/B.pdb or ligandX.pdb")
+            self._log_error(
+                "No ligand PDB file found. Expected hybrid_stateA/B.pdb or ligandX.pdb"
+            )
             return
 
         # Check if corresponding ITP file exists
@@ -827,12 +882,21 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
 
         # Protein + ligand case
-        if ligand_pdb_file is not None and os.path.exists(ligand_pdb_file) and os.path.getsize(
-                ligand_pdb_file) > 0:
-            self._log_info(f"Processing protein-ligand system with {ligand_pdb_file}...")
+        if (
+            ligand_pdb_file is not None
+            and os.path.exists(ligand_pdb_file)
+            and os.path.getsize(ligand_pdb_file) > 0
+        ):
+            self._log_info(
+                f"Processing protein-ligand system with {ligand_pdb_file}..."
+            )
             # Add ligand coordinates to protein gro and update topology
-            self.editor.append_ligand_coordinates_to_gro(protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro")
-            self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=ligand_itp_file)
+            self.editor.append_ligand_coordinates_to_gro(
+                protein_gro, ligand_pdb_file, ligand_itp_file, "complex.gro"
+            )
+            self.editor.include_ligand_itp_in_topol(
+                "topol.top", "LIG", ligand_itp_path=ligand_itp_file
+            )
 
     def _pdb2gmx_ligand(self):
         """
@@ -845,13 +909,17 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         for hybrid_file in hybrid_gro_files:
             if os.path.isfile(hybrid_file):
                 hybrid_found = True
-                self._log_info(f"Found hybrid file {hybrid_file} - processing FEP workflow")
+                self._log_info(
+                    f"Found hybrid file {hybrid_file} - processing FEP workflow"
+                )
                 break
 
         if hybrid_found:
             # For FEP case, the topol.top template already includes hybrid.itp
             if os.path.exists("hybrid.itp") and os.path.exists("topol.top"):
-                self._log_info("FEP workflow detected - topol.top template already includes hybrid.itp")
+                self._log_info(
+                    "FEP workflow detected - topol.top template already includes hybrid.itp"
+                )
                 self._log_success("topol.top is ready for FEP workflow")
             else:
                 self._log_warning("hybrid.itp or topol.top not found for FEP workflow")
@@ -868,7 +936,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 break
         if not found:
             self._log_error(
-                f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}")
+                f"No ligand_*.pdb file found in current directory. Expected one of: {', '.join(ligand_pdb_files)}"
+            )
             return
         # Find the first ligandX.acpype directory and copy the topology
         for c in string.ascii_uppercase:
@@ -877,40 +946,52 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 gmx_top = os.path.join(acpype_dir, f"ligand{c}_GMX.top")
                 if os.path.isfile(gmx_top):
                     # Read the topology file
-                    with open(gmx_top, 'r') as f:
+                    with open(gmx_top, "r") as f:
                         content = f.read()
 
                     # Remove the [ defaults ] block
                     content = re.sub(
-                        r'\[ defaults \]\s*\n; nbfunc\s+comb-rule\s+gen-pairs\s+fudgeLJ fudgeQQ\s*\n\d+\s+\d+\s+\w+\s+[\d\.]+\s+[\d\.]+\s*\n',
-                        '', content)
+                        r"\[ defaults \]\s*\n; nbfunc\s+comb-rule\s+gen-pairs\s+fudgeLJ fudgeQQ\s*\n\d+\s+\d+\s+\w+\s+[\d\.]+\s+[\d\.]+\s*\n",
+                        "",
+                        content,
+                    )
 
                     # Remove the entire POSRES_LIG block
                     content = re.sub(
                         r'; Ligand position restraints\s*\n#ifdef POSRES_LIG\s*\n#include "posre_[^"]*\.itp"\s*\n#endif\s*\n',
-                        '', content)
+                        "",
+                        content,
+                    )
 
                     # Remove all "_GMX" strings
                     content = content.replace("_GMX", "")
 
                     # Replace ligandX with LIG in the [ molecules ] section
-                    content = re.sub(r'ligand[A-Z]\s+\d+', 'LIG              1', content)
+                    content = re.sub(
+                        r"ligand[A-Z]\s+\d+", "LIG              1", content
+                    )
 
                     # Replace the ligand GMX itp include line with forcefield include
-                    content = re.sub(r'#include "ligand[A-Z]\.itp"\s*\n',
-                                     '#include "./amber14sb.ff/forcefield.itp"\n'
-                                     '; Include water topology\n#include "./amber14sb.ff/spce.itp"\n'
-                                     '; Include topology for ions\n#include "./amber14sb.ff/ions.itp"\n',
-                                     content)
+                    content = re.sub(
+                        r'#include "ligand[A-Z]\.itp"\s*\n',
+                        '#include "./amber14sb.ff/forcefield.itp"\n'
+                        '; Include water topology\n#include "./amber14sb.ff/spce.itp"\n'
+                        '; Include topology for ions\n#include "./amber14sb.ff/ions.itp"\n',
+                        content,
+                    )
 
                     # Write the modified content to topol.top
-                    with open("topol.top", 'w') as f:
+                    with open("topol.top", "w") as f:
                         f.write(content)
 
                     self._log_success(f"Modified and copied {gmx_top} to topol.top")
-                    self.editor.include_ligand_itp_in_topol("topol.top", "LIG", ligand_itp_path=None)
+                    self.editor.include_ligand_itp_in_topol(
+                        "topol.top", "LIG", ligand_itp_path=None
+                    )
                 else:
-                    self._log_error("No ligand.acpype directory with ligand_GMX.top found.")
+                    self._log_error(
+                        "No ligand.acpype directory with ligand_GMX.top found."
+                    )
                     return
 
     def do_solvate(self, arg):
@@ -966,7 +1047,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             if found:
                 return found
             else:
-                self._log_error("No protein.gro, ligand_*.gro, or hybrid_state*.gro found for solvation.")
+                self._log_error(
+                    "No protein.gro, ligand_*.gro, or hybrid_state*.gro found for solvation."
+                )
                 return None
         else:
             return "protein"
@@ -1051,7 +1134,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 finally:
                     os.chdir(original_cwd)
 
-        self._log_success("FEP solvate workflow completed for A_to_B and B_to_A directories.")
+        self._log_success(
+            "FEP solvate workflow completed for A_to_B and B_to_A directories."
+        )
 
     def _determine_genions_base(self):
         """
@@ -1093,7 +1178,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             error_message = ""
             success = False
             # Patch: capture stderr/stdout
-            with StringIO() as buf, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            with StringIO() as buf, contextlib.redirect_stdout(
+                buf
+            ), contextlib.redirect_stderr(buf):
                 try:
                     self.builder.run_genions(basename, custom_command=custom_command)
                     output = buf.getvalue()
@@ -1130,6 +1217,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if success:
             self._log_success(f"Added ions to {solvated_base}.solv.gro")
         elif "[file topol.top, line" in error_message:
+
             def rerun():
                 return run_genions_and_capture(
                     solvated_base, custom_command=self.custom_cmds.get("genions")
@@ -1149,7 +1237,9 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             error_message = ""
             success = False
             # Patch: capture stderr/stdout
-            with StringIO() as buf, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            with StringIO() as buf, contextlib.redirect_stdout(
+                buf
+            ), contextlib.redirect_stderr(buf):
                 try:
                     self.builder.run_genions(basename, custom_command=custom_command)
                     output = buf.getvalue()
@@ -1183,16 +1273,23 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             base, custom_command=self.custom_cmds.get("genions")
                         )
                         if success:
-                            self._log_success(f"Added ions to {base}.solv.gro in {a_to_b_dir}")
+                            self._log_success(
+                                f"Added ions to {base}.solv.gro in {a_to_b_dir}"
+                            )
                         elif "[file topol.top, line" in error_message:
+
                             def rerun():
                                 return run_genions_and_capture(
                                     base, custom_command=self.custom_cmds.get("genions")
                                 )
 
-                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                            self.editor.comment_out_topol_line_and_rerun_genions(
+                                rerun, error_message
+                            )
                         else:
-                            self._log_error(f"Failed to add ions in {a_to_b_dir}: {error_message}")
+                            self._log_error(
+                                f"Failed to add ions in {a_to_b_dir}: {error_message}"
+                            )
                     else:
                         self._log_error(f"{base}.solv.gro not found in {a_to_b_dir}")
                 finally:
@@ -1212,16 +1309,23 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             base, custom_command=self.custom_cmds.get("genions")
                         )
                         if success:
-                            self._log_success(f"Added ions to {base}.solv.gro in {b_to_a_dir}")
+                            self._log_success(
+                                f"Added ions to {base}.solv.gro in {b_to_a_dir}"
+                            )
                         elif "[file topol.top, line" in error_message:
+
                             def rerun():
                                 return run_genions_and_capture(
                                     base, custom_command=self.custom_cmds.get("genions")
                                 )
 
-                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                            self.editor.comment_out_topol_line_and_rerun_genions(
+                                rerun, error_message
+                            )
                         else:
-                            self._log_error(f"Failed to add ions in {b_to_a_dir}: {error_message}")
+                            self._log_error(
+                                f"Failed to add ions in {b_to_a_dir}: {error_message}"
+                            )
                     else:
                         self._log_error(f"{base}.solv.gro not found in {b_to_a_dir}")
                 finally:
@@ -1246,16 +1350,23 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             base, custom_command=self.custom_cmds.get("genions")
                         )
                         if success:
-                            self._log_success(f"Added ions to {base}.solv.gro in {a_to_b_dir}")
+                            self._log_success(
+                                f"Added ions to {base}.solv.gro in {a_to_b_dir}"
+                            )
                         elif "[file topol.top, line" in error_message:
+
                             def rerun():
                                 return run_genions_and_capture(
                                     base, custom_command=self.custom_cmds.get("genions")
                                 )
 
-                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                            self.editor.comment_out_topol_line_and_rerun_genions(
+                                rerun, error_message
+                            )
                         else:
-                            self._log_error(f"Failed to add ions in {a_to_b_dir}: {error_message}")
+                            self._log_error(
+                                f"Failed to add ions in {a_to_b_dir}: {error_message}"
+                            )
                     else:
                         self._log_error(f"{base}.solv.gro not found in {a_to_b_dir}")
                 finally:
@@ -1275,22 +1386,31 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             base, custom_command=self.custom_cmds.get("genions")
                         )
                         if success:
-                            self._log_success(f"Added ions to {base}.solv.gro in {b_to_a_dir}")
+                            self._log_success(
+                                f"Added ions to {base}.solv.gro in {b_to_a_dir}"
+                            )
                         elif "[file topol.top, line" in error_message:
+
                             def rerun():
                                 return run_genions_and_capture(
                                     base, custom_command=self.custom_cmds.get("genions")
                                 )
 
-                            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
+                            self.editor.comment_out_topol_line_and_rerun_genions(
+                                rerun, error_message
+                            )
                         else:
-                            self._log_error(f"Failed to add ions in {b_to_a_dir}: {error_message}")
+                            self._log_error(
+                                f"Failed to add ions in {b_to_a_dir}: {error_message}"
+                            )
                     else:
                         self._log_error(f"{base}.solv.gro not found in {b_to_a_dir}")
                 finally:
                     os.chdir(original_cwd)
 
-        self._log_success("FEP genions workflow completed for A_to_B and B_to_A directories.")
+        self._log_success(
+            "FEP genions workflow completed for A_to_B and B_to_A directories."
+        )
 
     def do_em(self, arg):
         """Run energy minimization."""

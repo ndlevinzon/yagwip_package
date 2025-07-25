@@ -16,10 +16,12 @@ import pandas as pd
 from yagwip.base import YagwipBase
 from utils.pipeline_utils import LigandUtils
 from utils.log_utils import auto_monitor
+from .config import get_tool_checker            # Get ToolChecker instance with configuration
 
 ligand_utils = LigandUtils()
+tool_checker = get_tool_checker()               # Get the ToolChecker instance for checking tool availability
 
-
+# === LigandPipeline Class ===
 class LigandPipeline(YagwipBase):
     """Ligand parameterization and force field generation pipeline."""
 
@@ -203,8 +205,6 @@ class LigandPipeline(YagwipBase):
         input_file = os.path.abspath(
             os.path.join(orca_dir, os.path.basename(input_file))
         )
-        # Get ToolChecker instance with configuration
-        from .config import get_tool_checker
 
         tool_checker = get_tool_checker()
 
@@ -382,10 +382,6 @@ class LigandPipeline(YagwipBase):
         Args:
             mol2_file (str): Path to the input .mol2 file.
         """
-        # Get ToolChecker instance with configuration
-        from .config import get_tool_checker
-
-        tool_checker = get_tool_checker()
 
         acpype_path = tool_checker.check_acpype_available()
         if acpype_path is None:
