@@ -18,18 +18,15 @@ module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 # ------------------------
 # VARIABLES
 # ------------------------
-npt_prefix="npt"
 prod_prefix="production"
 prod_step="step"
-
-srun gmx_mpi grompp -f ${prod_prefix}.mdp -c ${npt_prefix}.gro -p topol.top -o ${prod_prefix}.tpr -maxwarn 20
 
 # ------------------------
 # Production (10 segments)
 # ------------------------
 echo "Starting production MD..."
 
-srun gmx_mpi mdrun -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${prod_prefix} -cpt 60 -cpi prod.cpt -maxh 2.92
+srun gmx_mpi mdrun -deffnm ${prod_prefix} -cpi prod.cpt -maxh 2.92 -nsteps -1
 
 sbatch run_gmx_md_cpu.slurm
 

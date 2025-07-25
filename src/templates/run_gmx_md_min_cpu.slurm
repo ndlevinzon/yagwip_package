@@ -22,6 +22,7 @@ init="__INIT__.solv.ions"
 mini_prefix="em"
 nvt_prefix="nvt"
 npt_prefix="npt"
+prod_prefix="production"
 
 # ------------------------
 # ADJUST TOPOL FILE TO CURRENT WORKING DIRECTORY
@@ -81,8 +82,8 @@ function reverse(s,    i, r) {
 # ------------------------
 if [ ! -f "${mini_prefix}.gro" ]; then
     echo "Starting energy minimization..."
-    srun gmx_mpi grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${mini_prefix}
+    gmx grompp -f ${mini_prefix}.mdp -o ${mini_prefix}.tpr -c ${init}.gro -r ${init}.gro -p topol.top -maxwarn 20
+    gmx mdrun -v -deffnm ${mini_prefix}
 else
     echo "Minimization output ${mini_prefix}.gro already exists. Skipping minimization."
 fi
@@ -92,8 +93,8 @@ fi
 # ------------------------
 if [ ! -f "${nvt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${nvt_prefix}
+    gmx grompp -f ${nvt_prefix}.mdp -o ${nvt_prefix}.tpr -c ${mini_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
+    gmx mdrun -v -deffnm ${nvt_prefix}
 else
     echo "Equilibration output ${nvt_prefix}.gro already exists. Skipping equilibration."
 fi
@@ -103,13 +104,17 @@ fi
 # ------------------------
 if [ ! -f "${npt_prefix}.gro" ]; then
     echo "Starting equilibration..."
-    srun gmx_mpi grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
-    srun gmx_mpi mdrun -v -ntomp ${SLURM_CPUS_PER_TASK} -deffnm ${npt_prefix}
+    gmx grompp -f ${npt_prefix}.mdp -o ${npt_prefix}.tpr -c ${nvt_prefix}.gro -r ${init}.gro -p topol.top -maxwarn 20
+    gmx mdrun -v -deffnm ${npt_prefix}
 else
     echo "Equilibration output ${npt_prefix}.gro already exists. Skipping equilibration."
 fi
 
 echo "Minimization and Equilibration Done. Submitting MD..."
+
+gmx grompp -f ${prod_prefix}.mdp -c ${npt_prefix}.gro -p topol.top -o ${prod_prefix}.tpr -maxwarn 20
+
+
 sbatch run_gmx_md_cpu.slurm
 
 #--------------------------------------
