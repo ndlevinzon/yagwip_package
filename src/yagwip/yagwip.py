@@ -1,5 +1,22 @@
 """
-yagwip.py: (Y)et (A)nother (G)ROMACS (W)rapper (I)n (P)ython
+YAGWIP: Yet Another GROMACS Wrapper In Python
+
+A comprehensive Python-native application and library that automates the setup
+and execution of GROMACS molecular dynamics (MD) simulations, including support
+for both standard and advanced simulation types like Temperature Replica Exchange
+Molecular Dynamics (TREMD) and Free Energy Perturbation (FEP).
+
+This module provides the main interactive command-line interface (CLI) for YAGWIP,
+offering a user-friendly shell environment for molecular simulation workflows.
+
+Key Features:
+- Interactive CLI with tab completion and command history
+- Support for protein-only, ligand-only, and protein-ligand systems
+- Automated FEP workflow with hybrid topology generation
+- TREMD temperature ladder calculation and setup
+- Batch processing capabilities for multiple PDB files
+- Custom command override system
+- Comprehensive logging and debugging tools
 
 Copyright (c) 2025 the Authors.
 Authors: Nathan Levinzon, Olivier Mailhot
@@ -34,6 +51,7 @@ import importlib.metadata
 import multiprocessing as mp
 from pathlib import Path
 from importlib.resources import files
+from typing import Optional, List, Dict, Any, Tuple
 
 # === Third-Party Imports ===
 import pandas as pd
@@ -56,67 +74,148 @@ __version__ = importlib.metadata.version("yagwip")
 class YagwipShell(cmd.Cmd, YagwipBase):
     """
     Interactive shell for YAGWIP: Yet Another GROMACS Wrapper In Python.
-    Provides a command-line interface for molecular simulation workflows.
+
+    This class provides a comprehensive command-line interface for molecular
+    simulation workflows, extending Python's cmd.Cmd with GROMACS-specific
+    functionality and YAGWIP's base features.
+
+    The shell supports three main workflow types:
+    1. Protein-only simulations
+    2. Protein-ligand complex simulations
+    3. Free Energy Perturbation (FEP) workflows
+    4. Temperature Replica Exchange MD (TREMD)
+
+    Key Features:
+    - Interactive command execution with tab completion
+    - Automatic file detection and workflow selection
+    - Custom command override system
+    - Batch processing capabilities
+    - Comprehensive error handling and logging
+    - Debug mode with detailed system monitoring
+
+    Attributes:
+        current_pdb_path (Optional[str]): Full path to the loaded PDB file
+        ligand_pdb_path (Optional[str]): Full path to the ligand PDB file, if any
+        basename (Optional[str]): Base PDB filename (without extension)
+        user_itp_paths (List[str]): Stores user input paths for do_source
+        editor (Editor): File editor instance for topology manipulation
+        ligand_pipeline (LigandPipeline): Ligand processing pipeline
+        sim (Sim): Simulation execution handler
+        builder (Builder): System building handler
+        custom_cmds (Dict[str, str]): Custom command overrides
+        ligand_counter (int): Counter for FEP-style ligand naming
+        current_ligand_name (Optional[str]): Current ligand name being processed
     """
 
     # Intro message and prompt for the interactive CLI
     intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
     prompt = "YAGWIP> "
 
-    def __init__(self, gmx_path):
-        """Initialize the YAGWIP shell with GROMACS path."""
+    def __init__(self, gmx_path: str) -> None:
+        """
+        Initialize the YAGWIP shell with GROMACS path.
+
+        Sets up the interactive shell environment, initializes all necessary
+        components (Builder, Sim, LigandPipeline, Editor), validates GROMACS
+        installation, and prepares the shell for command execution.
+
+        Args:
+            gmx_path: Path to GROMACS executable
+
+        Raises:
+            RuntimeError: If GROMACS installation validation fails
+            SystemExit: If critical initialization fails
+        """
         # Initialize cmd.Cmd first (no parameters)
         cmd.Cmd.__init__(self)
         # Initialize YagwipBase with our parameters
         YagwipBase.__init__(self, gmx_path=gmx_path, debug=False)
 
-        self.current_pdb_path = None  # Full path to the loaded PDB file
-        self.ligand_pdb_path = None  # Full path to the ligand PDB file, if any
-        self.basename = None  # Base PDB filename (without extension)
-        self.print_banner()  # Prints intro banner to command line
-        self.user_itp_paths = []  # Stores user input paths for do_source
-        self.editor = (
-            Editor()
-        )  # Initialize the file Editor class from pipeline_utils.py
-        self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
-        # Initialize the Sim class from sim.py
-        self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+        # Core file paths and state
+        self.current_pdb_path: Optional[str] = None
+        self.ligand_pdb_path: Optional[str] = None
+        self.basename: Optional[str] = None
+        self.current_ligand_name: Optional[str] = None
 
-        # Initialize the Builder Pipeline class from gromacs_runner.py
-        self.builder = Builder(
-            gmx_path=self.gmx_path, debug=self.debug, logger=self.logger
-        )
+        # Print welcome banner
+        self.print_banner()
+
+        # Initialize component handlers
+        self.user_itp_paths: List[str] = []
+        self.editor = Editor()
+        self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
+        self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+        self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
         except RuntimeError as e:
             self._log_error(f"GROMACS Validation Error: {e}")
-            self._log_error(
-                "YAGWIP cannot start without GROMACS. Please install GROMACS and try again."
-            )
+            self._log_error("YAGWIP cannot start without GROMACS. Please install GROMACS and try again.")
             sys.exit(1)
-        # Dictionary of custom command overrides set by the user
-        self.custom_cmds = {k: "" for k in ("pdb2gmx", "solvate", "genions")}
-        self.ligand_counter = 0  # For FEP-style ligand naming
-        self.current_ligand_name = None
 
-    def _require_pdb(self):
-        """Check if a PDB file is loaded."""
+        # Custom command system
+        self.custom_cmds: Dict[str, str] = {k: "" for k in ("pdb2gmx", "solvate", "genions")}
+        self.ligand_counter: int = 0  # For FEP-style ligand naming
+
+    def _setup(self) -> None:
+        """Component-specific initialization. Override from YagwipBase."""
+        # Additional setup can be added here if needed
+        pass
+
+    def _require_pdb(self) -> bool:
+        """
+        Check if a PDB file is loaded and available for processing.
+
+        This method validates that a PDB file has been loaded before
+        executing commands that require structural data.
+
+        Returns:
+            True if a PDB file is loaded, False otherwise
+
+        Note:
+            In debug mode, this check is bypassed to allow testing
+            without actual PDB files.
+        """
         if not self.current_pdb_path and not self.debug:
             self._log_error("No PDB loaded.")
             return False
         return True
 
-    def default(self, line):
-        """Throws error when command is not recognized."""
+    def default(self, line: str) -> None:
+        """
+        Handle unrecognized commands.
+
+        This method is called when a command is not recognized by
+        the shell. It provides a helpful error message to guide
+        the user.
+
+        Args:
+            line: The unrecognized command line
+        """
         self._log_error(f"Unknown command: {line}")
 
-    def do_debug(self, arg):
+    def do_debug(self, arg: str) -> None:
         """
-        Debug Mode: Enhanced logging with detailed resource statistics and command information.
-        Commands are still executed, but with verbose output including system resources.
+        Toggle debug mode on/off with enhanced logging and system monitoring.
 
-        Usage: Toggle with 'debug', 'debug on', or 'debug off'
+        Debug mode provides detailed information about:
+        - Command execution details
+        - System resource statistics (CPU, memory, disk usage)
+        - Runtime monitoring data
+        - File operations and validation
+
+        Commands are still executed in debug mode, but with verbose
+        output for troubleshooting and development.
+
+        Usage:
+            debug          - Toggle debug mode
+            debug on       - Enable debug mode
+            debug off      - Disable debug mode
+
+        Args:
+            arg: Debug mode argument ('on', 'off', or empty for toggle)
         """
         arg = arg.lower().strip()
         if arg == "on":
@@ -125,8 +224,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.debug = False
         else:
             self.debug = not self.debug
-        # Update logger and simulation mode
 
+        # Update logger with new debug mode
         self.logger = setup_logger(debug_mode=self.debug)
 
         if self.debug:
@@ -139,8 +238,14 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info("Debug mode is now OFF")
 
-    def print_banner(self):
-        """Prints YAGWIP Banner Logo on Start."""
+    def print_banner(self) -> None:
+        """
+        Print the YAGWIP banner logo on shell startup.
+
+        Loads and displays the ASCII art banner from the assets
+        directory. If the banner file cannot be loaded, the error
+        is logged but the shell continues to function.
+        """
         try:
             module_dir = os.path.dirname(os.path.abspath(__file__))
             assets_dir = os.path.join(os.path.dirname(module_dir), "assets")
@@ -150,14 +255,43 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         except Exception as e:
             self._log_error(f"Could not load banner: {e}")
 
-    def do_show(self, arg):
-        """Show current custom or default commands."""
+    def do_show(self, arg: str) -> None:
+        """
+        Display current custom or default command configurations.
+
+        Shows the current state of custom command overrides for
+        pdb2gmx, solvate, and genions commands. If no custom
+        command is set, '[DEFAULT]' is displayed.
+
+        Usage:
+            show
+
+        Args:
+            arg: Command argument (unused)
+        """
         for k in ["pdb2gmx", "solvate", "genions"]:
             cmd_str = self.custom_cmds.get(k)
             self._log_info(f"{k}: {cmd_str if cmd_str else '[DEFAULT]'}")
 
-    def do_runtime(self, arg):
-        """Show runtime statistics and performance metrics."""
+    def do_runtime(self, arg: str) -> None:
+        """
+        Display runtime statistics and performance metrics.
+
+        Shows comprehensive runtime information including:
+        - Total operations performed
+        - Success/failure rates
+        - Average operation duration
+        - System resource usage patterns
+
+        This information is useful for performance monitoring
+        and debugging long-running workflows.
+
+        Usage:
+            runtime
+
+        Args:
+            arg: Command argument (unused)
+        """
         if hasattr(self, "runtime_monitor"):
             summary = self.runtime_monitor.get_summary()
             if summary:
@@ -166,39 +300,43 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 self._log_info(f"Successful: {summary['successful_operations']}")
                 self._log_info(f"Failed: {summary['failed_operations']}")
                 self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
-                self._log_info(
-                    f"Total Duration: {summary['total_duration_seconds']:.2f}s"
-                )
-                self._log_info(
-                    f"Average Duration: {summary['average_duration_seconds']:.2f}s"
-                )
+                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
+                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
             else:
                 self._log_info("No runtime data available yet.")
         else:
             self._log_info("Runtime monitoring not available.")
 
-    def do_set(self, arg):
+    def do_set(self, arg: str) -> None:
         """
-        Edit the default command string for pdb2gmx, solvate, or genions.
+        Edit default command strings for GROMACS tools.
+
+        Allows customization of the default commands used for
+        pdb2gmx, solvate, and genions. The user is shown the
+        current command and can modify it inline.
+
         Usage:
-            set pdb2gmx
-            set solvate
-            set genions
-        The user is shown the current command and can modify it inline.
-        Press ENTER to accept the modified command.
-        Type 'quit' to cancel.
+            set pdb2gmx    - Edit pdb2gmx command
+            set solvate    - Edit solvate command
+            set genions    - Edit genions command
+
+        Args:
+            arg: The command type to edit ('pdb2gmx', 'solvate', or 'genions')
+
+        Note:
+            Press ENTER to accept the modified command.
+            Type 'quit' to cancel the edit operation.
         """
         valid_keys = ["pdb2gmx", "solvate", "genions"]
         cmd_key = arg.strip().lower()
         if cmd_key not in valid_keys:
             self._log_error(f"Usage: set <{'|'.join(valid_keys)}>")
             return
+
         # Get the default command string
         base = self.basename if self.basename else "PLACEHOLDER"
         if cmd_key == "pdb2gmx":
-            default = (
-                f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
-            )
+            default = f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
         elif cmd_key == "solvate":
             default = (
                 f"{self.gmx_path} editconf -f {base}.gro -o {base}.newbox.gro -c -d 1.0 -bt cubic && "
@@ -210,13 +348,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 f"{self.gmx_path} grompp -f {ions_mdp} -c {base}.solv.gro -r {base}.solv.gro -p topol.top -o ions.tpr && "
                 f"{self.gmx_path} genion -s ions.tpr -o {base}.solv.ions.gro -p topol.top -pname NA -nname CL -conc 0.150 -neutral"
             )
+
         # Show current command and prompt for new input
         current = self.custom_cmds.get(cmd_key) or default
         self._log_info(f"Current command for {cmd_key}:\n{current}")
-        self._log_info(
-            "Type new command or press ENTER to keep current. Type 'quit' to cancel."
-        )
+        self._log_info("Type new command or press ENTER to keep current. Type 'quit' to cancel.")
         new_cmd = input("New command: ").strip()
+
         if new_cmd.lower() == "quit":
             self._log_info("Edit canceled.")
             return
@@ -224,31 +362,87 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self.custom_cmds[cmd_key] = current
             self._log_info("Keeping existing command.")
             return
+
         self.custom_cmds[cmd_key] = new_cmd
         self._log_success(f"Updated command for {cmd_key}.")
 
-    def _complete_filename(self, text, suffix, line=None, begidx=None, endidx=None):
+    def _complete_filename(self, text: str, suffix: str, line: Optional[str] = None,
+                          begidx: Optional[int] = None, endidx: Optional[int] = None) -> List[str]:
         """
-        Generic TAB Autocomplete for filenames in the current directory matching a suffix.
+        Generic TAB autocomplete for filenames matching a specific suffix.
 
-        Parameters:
-            text (str): The current input text to match.
-            suffix (str): The file suffix or pattern to match (e.g., ".pdb", "solv.ions.gro").
+        Provides intelligent filename completion for commands that require
+        specific file types (e.g., .pdb, .gro, .top files).
+
+        Args:
+            text: The current input text to match
+            suffix: The file suffix or pattern to match (e.g., ".pdb", "solv.ions.gro")
+            line: The complete command line (unused)
+            begidx: Beginning index of the word being completed (unused)
+            endidx: Ending index of the word being completed (unused)
+
+        Returns:
+            List of matching filenames in the current directory
+
+        Example:
+            If text="pro" and suffix=".pdb", returns ["protein.pdb", "protein_clean.pdb"]
         """
         if not text:
             return [f for f in os.listdir() if f.endswith(suffix)]
         return [f for f in os.listdir() if f.startswith(text) and f.endswith(suffix)]
 
-    def complete_loadpdb(self, text, line=None, begidx=None, endidx=None):
-        """Tab completion for .pdb files."""
+    def complete_loadpdb(self, text: str, line: Optional[str] = None,
+                        begidx: Optional[int] = None, endidx: Optional[int] = None) -> List[str]:
+        """
+        Tab completion for .pdb files in the loadpdb command.
+
+        Args:
+            text: The current input text to match
+            line: The complete command line
+            begidx: Beginning index of the word being completed
+            endidx: Ending index of the word being completed
+
+        Returns:
+            List of .pdb files in the current directory
+        """
         return self._complete_filename(text, ".pdb", line, begidx, endidx)
 
-    def do_loadpdb(self, arg):
+    def do_loadpdb(self, arg: str) -> None:
         """
-        Usage: "loadpdb X.pdb [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY] (Requires ORCA)."
-                --ligand_builder: Run the ligand building pipeline if ligand.itp is missing.
-                --c: Set the total charge for QM input (default 0)
-                --m: Set the multiplicity for QM input (default 1)
+        Load and process a PDB file for molecular dynamics simulation setup.
+
+        This is the primary command for loading structural data into YAGWIP.
+        The command automatically detects the type of system (protein-only,
+        ligand-only, or protein-ligand complex) and processes it accordingly.
+
+        For protein-ligand systems, the command:
+        - Separates protein and ligand coordinates
+        - Handles CONNECT records for bond information
+        - Optionally runs ligand parameterization pipeline
+        - Prepares files for GROMACS processing
+
+        For ligand-only systems:
+        - Processes ligand coordinates
+        - Optionally runs quantum chemistry calculations
+        - Generates force field parameters
+
+        Usage:
+            loadpdb <filename.pdb> [--ligand_builder] [--c CHARGE] [--m MULTIPLICITY]
+
+        Arguments:
+            filename.pdb: PDB file to load (required)
+            --ligand_builder: Enable ligand parameterization pipeline (requires ORCA)
+            --c CHARGE: Total charge for quantum chemistry calculations (default: 0)
+            --m MULTIPLICITY: Spin multiplicity for quantum chemistry (default: 1)
+
+        Examples:
+            loadpdb protein.pdb                    # Load protein-only system
+            loadpdb complex.pdb --ligand_builder   # Load complex with ligand parameterization
+            loadpdb ligand.pdb --c 1 --m 2        # Load ligand with charge=1, multiplicity=2
+
+        Note:
+            The --ligand_builder option requires ORCA to be installed and available
+            in the system PATH for quantum chemistry calculations.
         """
         args = self._parse_loadpdb_args(arg)
         try:
@@ -267,7 +461,19 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         self._handle_protein_only(lines)
 
-    def _parse_loadpdb_args(self, arg):
+    def _parse_loadpdb_args(self, arg: str) -> argparse.Namespace:
+        """
+        Parse command line arguments for the loadpdb command.
+
+        Args:
+            arg: Command line argument string
+
+        Returns:
+            Parsed arguments namespace
+
+        Raises:
+            SystemExit: If argument parsing fails
+        """
         parser = argparse.ArgumentParser(description="Load PDB file")
         parser.add_argument("pdb_file", help="PDB file to load")
         parser.add_argument(
@@ -281,7 +487,22 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         )
         return parser.parse_args(arg.split())
 
-    def _read_pdb_file(self, pdb_file):
+    def _read_pdb_file(self, pdb_file: str) -> List[str]:
+        """
+        Read and validate a PDB file.
+
+        Loads the PDB file, validates its existence, and sets up
+        the internal state for further processing.
+
+        Args:
+            pdb_file: Path to the PDB file
+
+        Returns:
+            List of lines from the PDB file
+
+        Raises:
+            FileNotFoundError: If the PDB file doesn't exist
+        """
         full_path = os.path.abspath(pdb_file)
         if not os.path.isfile(full_path):
             self._log_error(f"'{pdb_file}' not found.")
@@ -292,12 +513,34 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         with open(full_path, "r") as f:
             return f.readlines()
 
-    def _split_pdb_lines(self, lines):
+    def _split_pdb_lines(self, lines: List[str]) -> Tuple[List[str], List[str]]:
+        """
+        Split PDB file lines into HETATM and ATOM records.
+
+        Separates ligand atoms (HETATM records) from protein atoms
+        (ATOM records) for independent processing.
+
+        Args:
+            lines: List of lines from the PDB file
+
+        Returns:
+            Tuple of (hetatm_lines, atom_lines) where each is a list of strings
+        """
         hetatm_lines = [line for line in lines if line.startswith("HETATM")]
         atom_lines = [line for line in lines if line.startswith("ATOM")]
         return hetatm_lines, atom_lines
 
-    def _handle_ligand_only(self, hetatm_lines, args):
+    def _handle_ligand_only(self, hetatm_lines: List[str], args: argparse.Namespace) -> None:
+        """
+        Process a ligand-only PDB file.
+
+        Handles the case where the PDB file contains only ligand atoms
+        (HETATM records) without protein structure.
+
+        Args:
+            hetatm_lines: List of HETATM record lines
+            args: Parsed command line arguments
+        """
         ligand_name = self._assign_ligand_name()
         ligand_file = f"{ligand_name}.pdb"
         self.ligand_pdb_path = os.path.abspath(ligand_file)
@@ -313,7 +556,20 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
-    def _handle_protein_ligand(self, lines, hetatm_lines, args):
+    def _handle_protein_ligand(self, lines: List[str], hetatm_lines: List[str],
+                              args: argparse.Namespace) -> None:
+        """
+        Process a protein-ligand complex PDB file.
+
+        Handles the case where the PDB file contains both protein (ATOM)
+        and ligand (HETATM) atoms. Separates them into individual files
+        and processes the ligand if requested.
+
+        Args:
+            lines: All lines from the PDB file
+            hetatm_lines: List of HETATM record lines
+            args: Parsed command line arguments
+        """
         ligand_name = self._assign_ligand_name()
         protein_file, ligand_file, connect_records = (
             self._extract_ligand_and_protein_with_connect(lines, ligand_name)
@@ -337,8 +593,24 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"{itp_file} not found and --ligand_builder not specified.")
 
-    def _warn_if_missing_residues(self, protein_pdb):
-        """Identifies missing internal residues by checking for gaps in residue numbering."""
+    def _warn_if_missing_residues(self, protein_pdb: str) -> List[Tuple[str, int, int]]:
+        """
+        Identify missing internal residues by checking for gaps in residue numbering.
+
+        Analyzes the protein PDB file to detect missing residues that could
+        affect simulation quality. Reports gaps in residue numbering by chain.
+
+        Args:
+            protein_pdb: Path to the protein PDB file
+
+        Returns:
+            List of tuples containing (chain_id, current_residue, next_residue)
+            for each gap found
+
+        Note:
+            This is a warning system - gaps don't prevent simulation setup
+            but may indicate structural issues that should be addressed.
+        """
         self._log_info(f"Checking for missing residues in {protein_pdb}")
         residue_map = {}  # {chain_id: sorted list of residue IDs}
         with open(protein_pdb, "r", encoding="utf-8") as f:
@@ -366,7 +638,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_info("No gaps found.")
         return gaps
 
-    def _handle_protein_only(self, lines):
+    def _handle_protein_only(self, lines: List[str]) -> None:
+        """
+        Process a protein-only PDB file.
+
+        Handles the case where the PDB file contains only protein atoms
+        (ATOM records) without any ligands.
+
+        Args:
+            lines: List of lines from the PDB file
+        """
         self.ligand_pdb_path = None
         with open("protein.pdb", "w", encoding="utf-8") as prot_out:
             for line in lines:
@@ -378,14 +659,33 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         )
         self._warn_if_missing_residues(protein_pdb="protein.pdb")
 
-    def _assign_ligand_name(self):
+    def _assign_ligand_name(self) -> str:
+        """
+        Assign a unique name to the current ligand.
+
+        Uses a counter to generate sequential ligand names (ligandA, ligandB, etc.)
+        for FEP-style workflows.
+
+        Returns:
+            Unique ligand name string
+        """
         ligand_name = chr(ord("A") + self.ligand_counter)
         ligand_name = f"ligand{ligand_name}"
         self.current_ligand_name = ligand_name
         self.ligand_counter += 1
         return ligand_name
 
-    def _write_ligand_pdb(self, ligand_file, hetatm_lines):
+    def _write_ligand_pdb(self, ligand_file: str, hetatm_lines: List[str]) -> None:
+        """
+        Write ligand atoms to a separate PDB file.
+
+        Creates a new PDB file containing only the ligand atoms,
+        with the residue name changed to "LIG" for consistency.
+
+        Args:
+            ligand_file: Output filename for the ligand PDB
+            hetatm_lines: List of HETATM record lines
+        """
         with open(ligand_file, "w", encoding="utf-8") as lig_out:
             for line in hetatm_lines:
                 lig_out.write(line[:17] + "LIG" + line[20:])
@@ -393,7 +693,16 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             f"Ligand-only PDB detected. Assigned name: {ligand_file}. Wrote ligand to {ligand_file}"
         )
 
-    def _warn_if_no_hydrogens(self, hetatm_lines):
+    def _warn_if_no_hydrogens(self, hetatm_lines: List[str]) -> None:
+        """
+        Check if ligand atoms include hydrogen atoms and warn if missing.
+
+        Analyzes HETATM records to detect the presence of hydrogen atoms.
+        Missing hydrogens can affect force field assignment and simulation accuracy.
+
+        Args:
+            hetatm_lines: List of HETATM record lines
+        """
         if not any(
             line[76:78].strip() == "H" or line[12:16].strip().startswith("H")
             for line in hetatm_lines
@@ -403,8 +712,32 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             )
 
     def _run_ligand_builder(
-        self, ligand_file, ligand_name, charge, multiplicity, connect_records=None
-    ):
+        self, ligand_file: str, ligand_name: str, charge: int, multiplicity: int,
+        connect_records: Optional[Dict[int, List[int]]] = None
+    ) -> None:
+        """
+        Execute the complete ligand parameterization pipeline.
+
+        This method orchestrates the full ligand parameterization workflow:
+        1. Copies AMBER force field files
+        2. Converts PDB to MOL2 format with bond detection
+        3. Runs quantum chemistry calculations with ORCA
+        4. Applies calculated charges to MOL2 file
+        5. Generates GROMACS topology with ACPYPE
+
+        Args:
+            ligand_file: Path to the ligand PDB file
+            ligand_name: Name assigned to the ligand
+            charge: Total charge for quantum chemistry calculations
+            multiplicity: Spin multiplicity for quantum chemistry
+            connect_records: Optional CONNECT records from PDB for bond information
+
+        Note:
+            This method requires ORCA to be installed and available in the system PATH.
+            The workflow generates several intermediate files and the final GROMACS
+            topology files needed for simulation.
+        """
+        # Copy AMBER force field files
         amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
         amber_ff_dest = os.path.abspath("amber14sb.ff")
         if not os.path.exists(amber_ff_dest):
@@ -424,7 +757,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         else:
             self._log_info(f"amber14sb.ff already exists, not overwriting.")
 
-        # Pass connect_records to convert_pdb_to_mol2
+        # Convert PDB to MOL2 with bond detection
         mol2_file = self.ligand_pipeline.convert_pdb_to_mol2(
             ligand_file, connect_records=connect_records
         )
@@ -434,6 +767,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             )
             return
 
+        # Extract atom information for ORCA input
         with open(mol2_file, encoding="utf-8") as f:
             lines = f.readlines()
         atom_start = atom_end = None
@@ -450,6 +784,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             atom_end = len(lines)
         atom_lines = lines[atom_start:atom_end]
 
+        # Create pandas DataFrame for atom data
         df_atoms = pd.read_csv(
             io.StringIO("".join(atom_lines)),
             sep=r"\s+",
@@ -467,6 +802,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                 "status_bit",
             ],
         )
+
+        # Generate ORCA input file
         orca_geom_input = mol2_file.replace(".mol2", ".inp")
         self.ligand_pipeline.mol2_dataframe_to_orca_charge_input(
             df_atoms,
@@ -474,6 +811,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             charge=charge,
             multiplicity=multiplicity,
         )
+
+        # Run ORCA calculation
         self.ligand_pipeline.run_orca(orca_geom_input)
 
         # Check if ORCA property file exists before applying charges
@@ -484,21 +823,53 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             )
             return
 
+        # Apply calculated charges and generate topology
         self.ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, property_file)
         self.ligand_pipeline.run_acpype(mol2_file)
         self.ligand_pipeline.copy_acpype_output_files(mol2_file)
 
-    def _process_ligand_itp(self, itp_file, ligand_name):
+    def _process_ligand_itp(self, itp_file: str, ligand_name: str) -> None:
+        """
+        Process an existing ligand ITP file for GROMACS compatibility.
+
+        Integrates the ligand topology into the force field system by:
+        1. Appending atom types to the force field
+        2. Modifying improper dihedrals if needed
+        3. Renaming residues for consistency
+
+        Args:
+            itp_file: Path to the ligand ITP file
+            ligand_name: Name of the ligand for force field integration
+        """
         self.editor.append_ligand_atomtypes_to_forcefield(itp_file, ligand_name)
         self.editor.ligand_itp = itp_file
         self.editor.modify_improper_dihedrals_in_ligand_itp()
         self.editor.rename_residue_in_itp_atoms_section()
 
-    def _extract_ligand_and_protein_with_connect(self, lines, ligand_name):
+    def _extract_ligand_and_protein_with_connect(self, lines: List[str], ligand_name: str) -> Tuple[str, str, Dict[int, List[int]]]:
+        """
+        Extract ligand and protein coordinates from a complex PDB file.
+
+        Separates protein and ligand atoms from a complex PDB file while
+        preserving CONNECT records for bond information. This is essential
+        for maintaining proper bond connectivity in the ligand.
+
+        Args:
+            lines: All lines from the complex PDB file
+            ligand_name: Name to assign to the ligand
+
+        Returns:
+            Tuple containing:
+            - protein_file: Path to the extracted protein PDB file
+            - ligand_file: Path to the extracted ligand PDB file
+            - connect_records: Dictionary mapping atom indices to bonded atoms
+        """
         protein_file = "protein.pdb"
         ligand_file = f"{ligand_name}.pdb"
         ligand_indices = []
         connect_records = {}
+
+        # Extract protein and ligand atoms
         with open(protein_file, "w", encoding="utf-8") as prot_out, open(
             ligand_file, "w", encoding="utf-8"
         ) as lig_out:
@@ -514,7 +885,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     if line[17:20] in ("HSP", "HSD"):
                         line = line[:17] + "HIS" + line[20:]
                     prot_out.write(line)
-        # Now extract CONNECT records for ligand atoms
+
+        # Extract CONNECT records for ligand atoms
         for line in lines:
             if line.startswith("CONECT"):
                 parts = line.split()
@@ -531,21 +903,46 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                                 connect_records[idx] = bonded
                     except Exception:
                         pass
+
         self._log_info(
             f"Detected ligand. Split into: {protein_file}, {ligand_file}, with {len(connect_records)} ligand CONNECT records."
         )
         return protein_file, ligand_file, connect_records
 
-    def do_fep_prep(self, arg):
+    def do_fep_prep(self, arg: str) -> None:
         """
-        Run the FEP preparation workflow using fep_prep.py CLI.
-        This will:
-        1) Find MCS and write atom_map.txt
-        2) Align ligandB.mol2 to ligandA.mol2
-        3) Align ligandB.pdb to ligandA.pdb
-        4) Align ligandB.gro to ligandA.gro
-        5) Organize all files into A/B_complex/water directories
-        Output: atom_map.txt, ligandB_aligned.mol2, ligandB_aligned.pdb, ligandB_aligned.gro, and subdirectories.
+        Run the Free Energy Perturbation (FEP) preparation workflow.
+
+        This command orchestrates the complete FEP setup process, which includes:
+        1. Finding Maximum Common Substructure (MCS) between ligands
+        2. Writing atom mapping file (atom_map.txt)
+        3. Aligning ligandB structures to ligandA structures
+        4. Creating hybrid topology for FEP simulations
+        5. Organizing files into A_to_B and B_to_A directories
+
+        The workflow requires both ligand A and ligand B files to be present
+        in the current directory.
+
+        Usage:
+            fep_prep
+
+        Required Files:
+            - ligandA.mol2, ligandB.mol2: MOL2 files for both ligands
+            - ligandA.pdb, ligandB.pdb: PDB files for both ligands
+            - ligandA.gro, ligandB.gro: GROMACS coordinate files
+            - ligandA.itp, ligandB.itp: GROMACS topology files
+
+        Output:
+            - atom_map.txt: Atom mapping between ligands
+            - ligandB_aligned.mol2/pdb/gro: Aligned ligand B structures
+            - hybrid.itp: Hybrid topology for FEP
+            - hybrid_stateA.pdb/gro: Hybrid state A structures
+            - hybrid_stateB.pdb/gro: Hybrid state B structures
+            - Directory structure for FEP simulations
+
+        Note:
+            This command calls the external fep_prep.py script to perform
+            the actual FEP preparation calculations.
         """
         cwd = os.getcwd()
         required_files = [
@@ -564,6 +961,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if missing:
             self._log_error(f"Missing required files: {', '.join(missing)}")
             return
+
+        # Prepare command to call fep_prep.py
         fep_prep_path = os.path.join(os.path.dirname(__file__), "fep_prep.py")
         python_exe = sys.executable
         cmd = [
@@ -587,15 +986,17 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             "ligandB.itp",
             "--create_hybrid",  # Add hybrid topology creation
         ]
+
+        # Log workflow steps
         self._log_info("FEP prep workflow:")
         self._log_info("  1. Find MCS and write atom_map.txt")
         self._log_info("  2. Align ligandB.mol2 to ligandA.mol2")
         self._log_info("  3. Align ligandB.pdb to ligandA.pdb")
         self._log_info("  4. Align ligandB.gro to ligandA.gro")
         self._log_info("  5. Create hybrid topology for FEP simulations")
-        self._log_info(
-            "  6. Organize files into ligand_only/ and protein_complex/ directories"
-        )
+        self._log_info("  6. Organize files into ligand_only/ and protein_complex/ directories")
+
+        # Execute FEP preparation
         self._log_info(f"Running FEP prep: {' '.join(cmd)}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -1553,49 +1954,130 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         return True
 
 
-def main():
-    """Main entry point for YAGWIP CLI."""
-    parser = argparse.ArgumentParser(description="YAGWIP - GROMACS CLI interface")
-    parser.add_argument(
-        "-i", "--interactive", action="store_true", help="Run interactive CLI"
+def main() -> None:
+    """
+    Main entry point for YAGWIP command-line interface.
+
+    This function serves as the primary entry point for the YAGWIP application,
+    handling command-line argument parsing and routing to appropriate execution
+    modes (interactive, file-based, or batch processing).
+
+    The function supports several execution modes:
+
+    1. Interactive Mode (default):
+       - Launches the interactive YAGWIP shell
+       - Provides command-line interface with tab completion
+       - Suitable for interactive molecular dynamics workflow setup
+
+    2. File-based Mode:
+       - Executes commands from a script file
+       - Useful for automated workflows and reproducibility
+       - Commands are executed sequentially from the file
+
+    3. Batch Processing Mode:
+       - Processes multiple PDB files using the same command script
+       - Supports both sequential and parallel execution
+       - Generates comprehensive reports and logs
+
+    Command-line Arguments:
+        -i, --interactive: Run interactive CLI (default if no other mode specified)
+        -f, --file: Execute commands from input file
+        -b, --batch: Batch process multiple PDBs using command script
+        -p, --pdb-list: File containing list of PDB paths for batch processing
+        -d, --pdb-dir: Directory containing PDB files for batch processing
+        -r, --resume: Resume previous batch run
+        --ligand_builder: Use ligand builder for batch processing
+        --parallel: Enable parallel batch processing
+        --workers: Number of parallel workers (default: auto-detect)
+        --gmx-path: GROMACS executable path (default: "gmx")
+        --debug: Enable debug mode
+
+    Examples:
+        # Interactive mode
+        yagwip
+
+        # Execute commands from file
+        yagwip -f workflow.txt
+
+        # Batch process with ligand builder
+        yagwip -b commands.txt -p pdb_list.txt --ligand_builder
+
+        # Parallel batch processing
+        yagwip -b commands.txt -d pdb_directory/ --parallel --workers 4
+
+        # Resume interrupted batch run
+        yagwip -b commands.txt -p pdb_list.txt --resume
+
+    Exit Codes:
+        0: Successful execution
+        1: Error during execution (file not found, command failed, etc.)
+
+    Note:
+        The function automatically validates GROMACS installation and provides
+        helpful error messages if dependencies are missing.
+    """
+    parser = argparse.ArgumentParser(
+        description="YAGWIP - Yet Another GROMACS Wrapper In Python",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  yagwip                           # Interactive mode
+  yagwip -f workflow.txt           # Execute commands from file
+  yagwip -b commands.txt -p pdb_list.txt --ligand_builder  # Batch processing
+  yagwip -b commands.txt -d pdb_directory/ --parallel      # Parallel batch processing
+        """
     )
-    parser.add_argument("-f", "--file", type=str, help="Run commands from input file")
+
+    # Execution mode arguments
     parser.add_argument(
-        "-b",
-        "--batch",
-        type=str,
-        help="Batch process multiple PDBs using command script",
+        "-i", "--interactive", action="store_true",
+        help="Run interactive CLI (default if no other mode specified)"
     )
     parser.add_argument(
-        "-p",
-        "--pdb-list",
-        type=str,
-        help="File containing list of PDB paths for batch processing",
+        "-f", "--file", type=str,
+        help="Execute commands from input file"
+    )
+
+    # Batch processing arguments
+    parser.add_argument(
+        "-b", "--batch", type=str,
+        help="Batch process multiple PDBs using command script"
     )
     parser.add_argument(
-        "-d",
-        "--pdb-dir",
-        type=str,
-        help="Directory containing PDB files for batch processing",
+        "-p", "--pdb-list", type=str,
+        help="File containing list of PDB paths for batch processing"
     )
     parser.add_argument(
-        "-r", "--resume", action="store_true", help="Resume previous batch run"
+        "-d", "--pdb-dir", type=str,
+        help="Directory containing PDB files for batch processing"
     )
     parser.add_argument(
-        "--ligand_builder",
-        action="store_true",
-        help="Use ligand builder for batch processing",
+        "-r", "--resume", action="store_true",
+        help="Resume previous batch run"
     )
     parser.add_argument(
-        "--parallel", action="store_true", help="Enable parallel batch processing"
+        "--ligand_builder", action="store_true",
+        help="Use ligand builder for batch processing"
     )
     parser.add_argument(
-        "--workers", type=int, help="Number of parallel workers (default: auto-detect)"
+        "--parallel", action="store_true",
+        help="Enable parallel batch processing"
     )
     parser.add_argument(
-        "--gmx-path", type=str, default="gmx", help="GROMACS executable path"
+        "--workers", type=int,
+        help="Number of parallel workers (default: auto-detect)"
     )
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+
+    # Configuration arguments
+    parser.add_argument(
+        "--gmx-path", type=str, default="gmx",
+        help="GROMACS executable path (default: gmx)"
+    )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Enable debug mode"
+    )
+
     args = parser.parse_args()
 
     # Initialize YAGWIP shell
@@ -1606,18 +2088,14 @@ def main():
 
     # Handle batch processing
     if args.batch:
-
         # Determine number of workers
         max_workers = args.workers
         if args.parallel and not max_workers:
-
             max_workers = min(mp.cpu_count(), 8)  # Auto-detect with cap
 
         # Initialize batch processor
         if args.parallel:
-            print(
-                f"Initializing parallel batch processor with {max_workers} workers..."
-            )
+            print(f"Initializing parallel batch processor with {max_workers} workers...")
             batch_processor = ParallelBatchProcessor(
                 gmx_path=args.gmx_path,
                 debug=args.debug,
@@ -1643,9 +2121,7 @@ def main():
             # Load from directory
             batch_processor.load_pdb_directory(args.pdb_dir)
         else:
-            print(
-                "[ERROR] Must specify either --pdb-list or --pdb-dir for batch processing"
-            )
+            print("[ERROR] Must specify either --pdb-list or --pdb-dir for batch processing")
             sys.exit(1)
 
         # Execute batch
@@ -1658,17 +2134,11 @@ def main():
         results = batch_processor.execute_batch(args.batch, resume=args.resume)
 
         if results:
-            print(
-                f"Batch processing completed. Results saved in {batch_processor.results_dir}"
-            )
-            print(
-                f"Completed: {results['completed_jobs']}/{results['total_jobs']} jobs"
-            )
+            print(f"Batch processing completed. Results saved in {batch_processor.results_dir}")
+            print(f"Completed: {results['completed_jobs']}/{results['total_jobs']} jobs")
             print(f"Failed: {results['failed_jobs']} jobs")
             if args.parallel:
-                print(
-                    f"Parallel workers used: {results.get('parallel_workers', 'N/A')}"
-                )
+                print(f"Parallel workers used: {results.get('parallel_workers', 'N/A')}")
         else:
             print("Batch processing failed.")
             sys.exit(1)
@@ -1687,7 +2157,7 @@ def main():
             print(f"[ERROR] File '{args.file}' not found.")
             sys.exit(1)
 
-    # Interactive mode
+    # Interactive mode (default)
     else:
         cli.cmdloop()
 
