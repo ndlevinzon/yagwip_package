@@ -1,5 +1,28 @@
 """
-ligand_pipeline.py: Ligand parameterization and force field generation pipeline for YAGWIP.
+Ligand Builder Module for YAGWIP
+
+This module provides the LigandPipeline class and supporting utilities for ligand parameterization
+and force field generation in the YAGWIP workflow. It automates the conversion of PDB files to MOL2,
+performs atom typing and valence validation, generates quantum chemistry input for ORCA, applies
+calculated charges, and interfaces with ACPYPE for topology generation.
+
+Key Features:
+- PDB to MOL2 conversion with atom typing and bond detection
+- Valence rule enforcement and atom type assignment
+- ORCA input generation and charge calculation
+- Application of ORCA charges to MOL2 files
+- ACPYPE integration for topology and coordinate file generation
+- Robust error handling and logging
+
+Usage:
+    pipeline = LigandPipeline()
+    mol2_file = pipeline.convert_pdb_to_mol2('ligand.pdb')
+    orca_input = pipeline.mol2_dataframe_to_orca_charge_input(df_atoms, 'orca_input.inp')
+    pipeline.run_orca(orca_input)
+    pipeline.apply_orca_charges_to_mol2(mol2_file, 'orca.property.txt')
+    pipeline.run_acpype(mol2_file)
+
+Author: YAGWIP Development Team
 """
 
 # === Standard Library Imports ===
@@ -31,6 +54,20 @@ class LigandPipeline(YagwipBase):
 
     @auto_monitor
     def convert_pdb_to_mol2(self, pdb_file, mol2_file=None, connect_records=None):
+        """
+        Convert a PDB file to a MOL2 file.
+
+        Args:
+            pdb_file (str): Path to the input PDB file.
+            mol2_file (str, optional): Path to the output MOL2 file. If None, a default is used.
+            connect_records (list, optional): List of CONNECT records to use for bond detection.
+
+        Returns:
+            str: Path to the generated MOL2 file.
+
+        Raises:
+            ValueError: If no atoms are found in the PDB file.
+        """
         # Covalent radii in Ångstroms for common elements (extend as needed)
         covalent_radii = {
             "H": 0.31,
@@ -174,7 +211,18 @@ class LigandPipeline(YagwipBase):
     def mol2_dataframe_to_orca_charge_input(
         self, df_atoms, output_file, charge=0, multiplicity=1
     ):
-        """Generate an ORCA input file from a DataFrame of atomic coordinates."""
+        """
+        Generate an ORCA input file from a DataFrame of atomic coordinates.
+
+        Args:
+            df_atoms (pd.DataFrame): DataFrame containing atomic coordinates and types.
+            output_file (str): Path to the output ORCA input file.
+            charge (int, optional): Charge for the ORCA calculation. Defaults to 0.
+            multiplicity (int, optional): Spin multiplicity for the ORCA calculation. Defaults to 1.
+
+        Returns:
+            str: Path to the generated ORCA input file.
+        """
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
@@ -198,7 +246,16 @@ class LigandPipeline(YagwipBase):
         return output_file
 
     def run_orca(self, input_file, output_file=None):
-        """Run ORCA quantum chemistry calculation."""
+        """
+        Run ORCA quantum chemistry calculation.
+
+        Args:
+            input_file (str): Path to the ORCA input file.
+            output_file (str, optional): Path to the ORCA output file. If None, a default is used.
+
+        Returns:
+            bool: True if ORCA execution was successful, False otherwise.
+        """
         orca_dir = os.path.abspath("orca")
         if not os.path.exists(orca_dir):
             os.makedirs(orca_dir)
@@ -247,10 +304,14 @@ class LigandPipeline(YagwipBase):
     def apply_orca_charges_to_mol2(self, mol2_path, property_path, output_path=None):
         """
         Update the charges in a MOL2 file using the AtomCharges from an ORCA property file.
+
         Args:
             mol2_path (str): Path to the .mol2 file.
             property_path (str): Path to the ORCA ligand.property.txt file.
             output_path (str, optional): Path to write the updated .mol2 file. If None, overwrite input.
+
+        Returns:
+            str: Path to the updated MOL2 file.
         """
         # Load mol2 file and extract atom block
         with open(mol2_path, "r", encoding="utf-8") as f:
@@ -375,12 +436,17 @@ class LigandPipeline(YagwipBase):
         self._log_info(
             f"[SUMMARY] Updated {len(df_atoms)} atoms with charges from ORCA calculation."
         )
+        return output_path
 
     def run_acpype(self, mol2_file):
         """
         Run ACPYPE to generate topology files from a .mol2 file.
+
         Args:
             mol2_file (str): Path to the input .mol2 file.
+
+        Returns:
+            bool: True if ACPYPE execution was successful, False otherwise.
         """
 
         acpype_path = tool_checker.check_acpype_available()
@@ -408,8 +474,12 @@ class LigandPipeline(YagwipBase):
     def copy_acpype_output_files(self, mol2_file):
         """
         Copy and rename ACPYPE output files from ligand.acpype subdirectory.
+
         Args:
             mol2_file (str): Path to the input .mol2 file.
+
+        Returns:
+            int: Number of files successfully copied.
         """
         # Get the base name without extension
         base_name = os.path.splitext(os.path.basename(mol2_file))[0]
