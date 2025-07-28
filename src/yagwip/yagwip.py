@@ -45,6 +45,7 @@ import string
 import subprocess
 import random
 import argparse
+import shlex
 import shutil
 import contextlib
 import importlib.metadata
@@ -485,7 +486,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         parser.add_argument(
             "--m", type=int, default=1, help="Multiplicity for QM input"
         )
-        return parser.parse_args(arg.split())
+        # Use shlex.split to properly handle negative values and quoted strings
+        return parser.parse_args(shlex.split(arg))
 
     def _read_pdb_file(self, pdb_file: str) -> List[str]:
         """
@@ -1881,7 +1883,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         parser.add_argument(
             "-p", type=float, required=True, help="Probability of Exchange (0-1)"
         )
-        return parser.parse_args(arg.split())
+        # Use shlex.split to properly handle negative values and quoted strings
+        return parser.parse_args(shlex.split(arg))
 
     def do_source(self, arg):
         """Source additional .itp files into topology."""
