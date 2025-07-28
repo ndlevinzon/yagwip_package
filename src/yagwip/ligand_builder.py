@@ -170,7 +170,7 @@ class LigandPipeline(YagwipBase):
                     "num_feat": 0,
                     "num_sets": 0,
                     "mol_type": "SMALL",
-                    "charge_type": "NO_CHARGES",
+                    "charge_type": "USER_CHARGES",
                 }
             ]
         )
