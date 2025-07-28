@@ -86,8 +86,8 @@ class LigandPipeline(YagwipBase):
         valence_rules = {
             "C": {"max_valence": 4, "common_types": ["C.3", "C.2", "C.1", "C.ar"]},
             "N": {
-                "max_valence": 3,
-                "common_types": ["N.3", "N.2", "N.1", "N.ar", "N.am"],
+                "max_valence": 4,
+                "common_types": ["N.4", "N.3", "N.2", "N.1", "N.ar", "N.am"],
             },
             "O": {"max_valence": 2, "common_types": ["O.3", "O.2", "O.co2"]},
             "S": {"max_valence": 6, "common_types": ["S.3", "S.2", "S.o", "S.o2"]},
