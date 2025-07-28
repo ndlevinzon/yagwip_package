@@ -260,7 +260,7 @@ class YagwipBase(LoggingMixin, ABC):
                 # Catch periodic improper dihedral type error
                 elif "no default periodic improper dih. types" in error_text:
                     match = re.search(
-                        r"\[file topol\.top, line (\d+)\]", stderr, re.IGNORECASE
+                        r"\[file topol\.top, line \d+\]", stderr, re.IGNORECASE
                     )
                     if match:
                         line_num = int(match.group(1))
