@@ -258,7 +258,7 @@ class YagwipBase(LoggingMixin, ABC):
                     print(specific_msg)
 
                 # Catch periodic improper dihedral type error
-                elif "no default periodic improper dih. types" in error_text:
+                elif "No default Per. Imp. Dih. types" in error_text:
                     match = re.search(
                         r"\[file topol\.top, line \d+\]", stderr, re.IGNORECASE
                     )
