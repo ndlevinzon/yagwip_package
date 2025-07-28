@@ -825,7 +825,7 @@ class LigandUtils(LoggingMixin):
         max_valence = {
             "H": 1,
             "C": 4,
-            "N": 3,
+            "N": 4,
             "O": 2,
             "F": 1,
             "P": 5,
