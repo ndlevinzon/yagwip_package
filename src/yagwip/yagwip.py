@@ -825,7 +825,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
         # Apply calculated charges and generate topology
         self.ligand_pipeline.apply_orca_charges_to_mol2(mol2_file, property_file)
-        self.ligand_pipeline.run_acpype(mol2_file)
+        self.ligand_pipeline.run_acpype(mol2_file, charge=charge, multiplicity=multiplicity)
         self.ligand_pipeline.copy_acpype_output_files(mol2_file)
 
     def _process_ligand_itp(self, itp_file: str, ligand_name: str) -> None:

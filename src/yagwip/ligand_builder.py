@@ -20,7 +20,7 @@ Usage:
     orca_input = pipeline.mol2_dataframe_to_orca_charge_input(df_atoms, 'orca_input.inp')
     pipeline.run_orca(orca_input)
     pipeline.apply_orca_charges_to_mol2(mol2_file, 'orca.property.txt')
-    pipeline.run_acpype(mol2_file)
+    pipeline.run_acpype(mol2_file, charge=0, multiplicity=1)
 
 Author: YAGWIP Development Team
 """
@@ -438,7 +438,7 @@ class LigandPipeline(YagwipBase):
         )
         return output_path
 
-    def run_acpype(self, mol2_file):
+    def run_acpype(self, mol2_file, charge=0, multiplicity=1):
         """
         Run ACPYPE to generate topology files from a .mol2 file.
 
@@ -453,7 +453,7 @@ class LigandPipeline(YagwipBase):
         if acpype_path is None:
             self._log_warning("[ERROR] ACPYPE not found. Skipping acpype step.")
             return False
-        cmd = f"{acpype_path} -i {mol2_file} -c user -a gaff2"
+        cmd = f"{acpype_path} -i {mol2_file} -c user -a gaff2 -n {charge} -m {multiplicity}"
         self._log_info(f"[RUNNING] {cmd}")
         try:
             result = subprocess.run(
