@@ -911,7 +911,9 @@ class LigandUtils(LoggingMixin):
                 return "C.3"  # default to sp3
 
         elif element == "N":
-            if valence == 3:
+            if valence == 4:
+                return "N.4"
+            elif valence == 3:
                 # Check for amide nitrogen
                 if self.is_amide_nitrogen(df_atoms, atom_idx, adjacency):
                     return "N.am"
