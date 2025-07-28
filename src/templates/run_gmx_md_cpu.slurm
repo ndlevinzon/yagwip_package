@@ -32,7 +32,7 @@ fi
 # Run production MD
 # ------------------------
 echo "Starting production MD..."
-gmx mdrun -deffnm ${prod_prefix} -cpi ${prod_prefix}_prev -maxh 2.92 -nsteps -1
+gmx mdrun -v -deffnm ${prod_prefix} -cpi ${prod_prefix}_prev -maxh 2.92 -nsteps -1
 
 # ------------------------
 # Resubmit if control.txt says "go"
