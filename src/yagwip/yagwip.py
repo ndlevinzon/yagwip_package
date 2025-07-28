@@ -1588,7 +1588,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                     self.builder.run_genions(basename, custom_command=custom_command)
                     output = buf.getvalue()
                     # Check for error pattern
-                    if re.search(r"ERROR 1 \[file topol\\.top, line \\d+\]", output):
+                    if re.search(r"ERROR 1 \[file topol\.top, line \d+\]", output):
                         error_message = output
                         success = False
                     else:
