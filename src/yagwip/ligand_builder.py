@@ -466,6 +466,11 @@ class LigandPipeline(YagwipBase):
 
             # Post-process ACPYPE output files
             self.copy_acpype_output_files(mol2_file)
+            self._log_info(
+                f"Forcefield Generation Complete.\n"
+                "Please cite ACPYPE: SOUSA DA SILVA, A. W. & VRANKEN, W. F. \n"
+                "ACPYPE - AnteChamber PYthon Parser interfacE. BMC Research Notes 5 (2012), 367 Doi: 10.1186/1756-0500-5-367"
+            )
             return True
         except Exception as e:
             self._log_error(f"[ERROR] Failed to run ACPYPE: {e}")
