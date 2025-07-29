@@ -5,7 +5,7 @@
 #SBATCH --nodes=1              # Number of Nodes
 #SBATCH --ntasks-per-node=64   # Replicas per Node
 #SBATCH --cpus-per-task=1      # CPUs Per Replicas
-#SBATCH --time=01:00:00        # Time limit (1 hour)
+#SBATCH --time=03:00:00        # Time limit (3 hour)
 #SBATCH --exclusive            # Exclusive node allocation
 #SBATCH --mem=0                # Use all available memory
 
