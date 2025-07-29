@@ -1801,8 +1801,27 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         return self._complete_filename(text, ".gro", line, begidx, endidx)
 
     def do_tremd_prep(self, arg):
-        """Calculate temperature ladder for TREMD simulations. Usage: tremd_prep -i <init_temp> -f <final_temp> -p <prob>"""
-        args = self._parse_tremd_prep(arg)
+        """
+        Calculate temperature ladder for TREMD simulations.
+
+        Usage:
+            tremd_prep                    # Interactive mode - prompts for parameters
+            tremd_prep -i 300 -f 400 -p 0.2  # Command-line mode with parameters
+
+        Interactive Mode:
+            When no arguments are provided, the command will prompt you for:
+            - Initial temperature (K): Lowest temperature in the ladder
+            - Final temperature (K): Highest temperature in the ladder
+            - Exchange probability: Desired probability between adjacent replicas (e.g., 0.2)
+
+        Command-line Mode:
+            -i INITIAL    Initial temperature (K)
+            -f FINAL      Final temperature (K)
+            -p PROB       Exchange probability (0-1)
+        """
+        # Parse arguments if provided
+        args = self._parse_tremd_prep(arg) if arg.strip() else None
+
         solvated_gro = (
             "complex.solv.ions.gro"
             if os.path.exists("complex.solv.ions.gro")
@@ -1812,19 +1831,129 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_error(f"File not found: {solvated_gro}")
             return
 
-        if args.i is None or args.f is None or args.p is None:
-            self._log_error("Missing required flags: -i, -f, -p")
-
         python_exe = sys.executable
         tremd_prep_path = os.path.join(os.path.dirname(__file__), "tremd_prep.py")
-        command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}" -i {args.i} -f {args.f} -p {args.p}'
-        self._log_info(f"Running: {command_str}")
-        success = self._execute_command(
-            command=command_str,
-            description="TREMD temperature ladder calculation (non-interactive)",
-        )
-        if not success:
-            self._log_error("TREMD temperature ladder calculation failed.")
+
+        if args and args.i is not None and args.f is not None and args.p is not None:
+            # Use command-line arguments if provided
+            command_str = f'"{python_exe}" "{tremd_prep_path}" "{solvated_gro}" -i {args.i} -f {args.f} -p {args.p}'
+            self._log_info(f"Running with command-line arguments: {command_str}")
+            success = self._execute_command(
+                command=command_str,
+                description="TREMD temperature ladder calculation (non-interactive)",
+            )
+            if not success:
+                self._log_error("TREMD temperature ladder calculation failed.")
+        else:
+            # Use interactive mode
+            self._log_info("Running TREMD temperature ladder calculation in interactive mode...")
+            success = self._run_tremd_prep_interactive(tremd_prep_path, solvated_gro)
+            if not success:
+                self._log_error("TREMD temperature ladder calculation failed.")
+
+    def _run_tremd_prep_interactive(self, tremd_prep_path: str, gro_file: str) -> bool:
+        """
+        Run tremd_prep in interactive mode, handling user input properly.
+
+        Args:
+            tremd_prep_path: Path to the tremd_prep.py script
+            gro_file: Path to the GRO file to analyze
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        python_exe = sys.executable
+        cmd = [python_exe, tremd_prep_path, gro_file]
+
+        self._log_info(f"Starting interactive TREMD prep: {' '.join(cmd)}")
+
+        try:
+            # Start the process with proper I/O handling
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
+            )
+
+            # Read initial output (residue counts)
+            output_lines = []
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+
+                output_lines.append(line.strip())
+                print(line.strip())  # Show output to user
+
+                # Check if we've reached the input prompts
+                if "Enter initial temperature" in line:
+                    break
+
+            # Check if process is still running
+            if process.poll() is not None:
+                # Process has already exited
+                stderr_output = process.stderr.read()
+                if stderr_output:
+                    self._log_error(f"TREMD prep failed: {stderr_output}")
+                return False
+
+            # Handle interactive input
+            try:
+                # Get initial temperature
+                initial_temp = input("Enter initial temperature (K): ")
+                process.stdin.write(initial_temp + "\n")
+                process.stdin.flush()
+
+                # Read response and next prompt
+                response = process.stdout.readline().strip()
+                if response:
+                    print(response)
+
+                # Get final temperature
+                final_temp = input("Enter final temperature (K): ")
+                process.stdin.write(final_temp + "\n")
+                process.stdin.flush()
+
+                # Read response and next prompt
+                response = process.stdout.readline().strip()
+                if response:
+                    print(response)
+
+                # Get exchange probability
+                exchange_prob = input("Enter desired exchange probability (e.g. 0.2): ")
+                process.stdin.write(exchange_prob + "\n")
+                process.stdin.flush()
+
+                # Read remaining output
+                remaining_output = process.stdout.read()
+                if remaining_output:
+                    print(remaining_output)
+
+                # Wait for process to complete
+                return_code = process.wait()
+
+                if return_code == 0:
+                    self._log_success("TREMD temperature ladder calculation completed successfully.")
+                    return True
+                else:
+                    stderr_output = process.stderr.read()
+                    if stderr_output:
+                        self._log_error(f"TREMD prep failed: {stderr_output}")
+                    return False
+
+            except KeyboardInterrupt:
+                # Handle Ctrl+C gracefully
+                process.terminate()
+                self._log_info("TREMD prep interrupted by user.")
+                return False
+
+        except Exception as e:
+            self._log_error(f"Error running TREMD prep: {e}")
+            return False
 
     def _parse_tremd_prep(self, arg):
 
@@ -1832,13 +1961,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             description="Calculate Replicas Temperature Replica Exchange"
         )
         parser.add_argument(
-            "-i", type=float, required=True, help="Initial Temperature (K)"
+            "-i", type=float, help="Initial Temperature (K)"
         )
         parser.add_argument(
-            "-f", type=float, required=True, help="Final Temperature (K)"
+            "-f", type=float, help="Final Temperature (K)"
         )
         parser.add_argument(
-            "-p", type=float, required=True, help="Probability of Exchange (0-1)"
+            "-p", type=float, help="Probability of Exchange (0-1)"
         )
         # Use shlex.split to properly handle negative values and quoted strings
         return parser.parse_args(shlex.split(arg))
