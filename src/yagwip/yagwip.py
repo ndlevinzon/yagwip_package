@@ -1578,25 +1578,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
 
         def run_genions_and_capture(basename, custom_command=None):
-            error_message = ""
-            success = False
-            # Patch: capture stderr/stdout
-            with StringIO() as buf, contextlib.redirect_stdout(
-                buf
-            ), contextlib.redirect_stderr(buf):
-                try:
-                    self.builder.run_genions(basename, custom_command=custom_command)
-                    output = buf.getvalue()
-                    # Check for error pattern
-                    if re.search(r"ERROR 1 \[file topol\.top, line \d+\]", output):
-                        error_message = output
-                        success = False
-                    else:
-                        success = True
-                except Exception as e:
-                    error_message = str(e)
-                    success = False
-            return success, error_message
+            # The base class _run_gromacs_command_internal already handles the "No default Per. Imp. Dih. types" error
+            # automatically by commenting out the problematic line and rerunning. No need for redundant error handling here.
+            try:
+                self.builder.run_genions(basename, custom_command=custom_command)
+                return True, ""
+            except Exception as e:
+                return False, str(e)
 
         # Check for FEP directories first
         fep_dirs = [d for d in ["ligand_only", "protein_complex"] if os.path.isdir(d)]
@@ -1613,20 +1601,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         if not self._require_pdb():
             return
 
-        # First attempt
+        # Run genions - the base class handles "No default Per. Imp. Dih. types" errors automatically
         success, error_message = run_genions_and_capture(
             solvated_base, custom_command=self.custom_cmds.get("genions")
         )
         if success:
             self._log_success(f"Added ions to {solvated_base}.solv.gro")
-        elif "[file topol.top, line" in error_message:
-
-            def rerun():
-                return run_genions_and_capture(
-                    solvated_base, custom_command=self.custom_cmds.get("genions")
-                )
-
-            self.editor.comment_out_topol_line_and_rerun_genions(rerun, error_message)
         else:
             self._log_error(f"Failed to add ions: {error_message}")
 
@@ -1637,25 +1617,13 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info("Detected FEP directories: {}".format(", ".join(fep_dirs)))
 
         def run_genions_and_capture(basename, custom_command=None):
-            error_message = ""
-            success = False
-            # Patch: capture stderr/stdout
-            with StringIO() as buf, contextlib.redirect_stdout(
-                buf
-            ), contextlib.redirect_stderr(buf):
-                try:
-                    self.builder.run_genions(basename, custom_command=custom_command)
-                    output = buf.getvalue()
-                    # Check for error pattern
-                    if re.search(r"ERROR 1 \[file topol\\.top, line \\d+\]", output):
-                        error_message = output
-                        success = False
-                    else:
-                        success = True
-                except Exception as e:
-                    error_message = str(e)
-                    success = False
-            return success, error_message
+            # The base class _run_gromacs_command_internal already handles the "No default Per. Imp. Dih. types" error
+            # automatically by commenting out the problematic line and rerunning. No need for redundant error handling here.
+            try:
+                self.builder.run_genions(basename, custom_command=custom_command)
+                return True, ""
+            except Exception as e:
+                return False, str(e)
 
         # Process ligand_only directories
         ligand_only_dir = "ligand_only"
@@ -1679,16 +1647,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             self._log_success(
                                 f"Added ions to {base}.solv.gro in {a_to_b_dir}"
                             )
-                        elif "[file topol.top, line" in error_message:
 
-                            def rerun():
-                                return run_genions_and_capture(
-                                    base, custom_command=self.custom_cmds.get("genions")
-                                )
-
-                            self.editor.comment_out_topol_line_and_rerun_genions(
-                                rerun, error_message
-                            )
                         else:
                             self._log_error(
                                 f"Failed to add ions in {a_to_b_dir}: {error_message}"
@@ -1715,16 +1674,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             self._log_success(
                                 f"Added ions to {base}.solv.gro in {b_to_a_dir}"
                             )
-                        elif "[file topol.top, line" in error_message:
 
-                            def rerun():
-                                return run_genions_and_capture(
-                                    base, custom_command=self.custom_cmds.get("genions")
-                                )
-
-                            self.editor.comment_out_topol_line_and_rerun_genions(
-                                rerun, error_message
-                            )
                         else:
                             self._log_error(
                                 f"Failed to add ions in {b_to_a_dir}: {error_message}"
@@ -1756,16 +1706,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             self._log_success(
                                 f"Added ions to {base}.solv.gro in {a_to_b_dir}"
                             )
-                        elif "[file topol.top, line" in error_message:
 
-                            def rerun():
-                                return run_genions_and_capture(
-                                    base, custom_command=self.custom_cmds.get("genions")
-                                )
-
-                            self.editor.comment_out_topol_line_and_rerun_genions(
-                                rerun, error_message
-                            )
                         else:
                             self._log_error(
                                 f"Failed to add ions in {a_to_b_dir}: {error_message}"
@@ -1792,16 +1733,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
                             self._log_success(
                                 f"Added ions to {base}.solv.gro in {b_to_a_dir}"
                             )
-                        elif "[file topol.top, line" in error_message:
 
-                            def rerun():
-                                return run_genions_and_capture(
-                                    base, custom_command=self.custom_cmds.get("genions")
-                                )
-
-                            self.editor.comment_out_topol_line_and_rerun_genions(
-                                rerun, error_message
-                            )
                         else:
                             self._log_error(
                                 f"Failed to add ions in {b_to_a_dir}: {error_message}"
