@@ -184,6 +184,33 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return False
         return True
 
+    def onecmd(self, line: str) -> bool:
+        """
+        Override onecmd to log user input commands before execution.
+
+        This method intercepts all user commands and logs them before
+        passing them to the parent cmd.Cmd class for execution.
+
+        Args:
+            line: The command line input from the user
+
+        Returns:
+            bool: True if the command should exit the shell, False otherwise
+        """
+        # Log the user input command
+        if line.strip():  # Only log non-empty commands
+            self._log_info(f"[USER_COMMAND] {line}")
+
+            # Start command monitoring with the user input
+            from utils.log_utils import command_context
+            with command_context(f"user_command: {line}", self.logger, self.debug, user_input=line) as cmd_metrics:
+                # Execute the command using the parent class
+                result = super().onecmd(line)
+
+                return result
+
+        return super().onecmd(line)
+
     def default(self, line: str) -> None:
         """
         Handle unrecognized commands.

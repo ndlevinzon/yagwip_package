@@ -76,6 +76,7 @@ class CommandMetrics:
     success: bool = True
     error_message: Optional[str] = None
     sub_operations: List[RuntimeMetrics] = field(default_factory=list)
+    user_input: Optional[str] = None  # Store the actual user command input
 
 
 class RuntimeMonitor:
@@ -123,17 +124,20 @@ class RuntimeMonitor:
                 thread_id=threading.get_ident(),
             )
 
-    def start_command(self, command_name: str) -> CommandMetrics:
+    def start_command(self, command_name: str, user_input: Optional[str] = None) -> CommandMetrics:
         """Start monitoring a complete command."""
         with self._lock:
             self.current_command = CommandMetrics(
                 command_name=command_name,
                 start_time=datetime.now(),
                 system_info_start=self._get_system_info(),
+                user_input=user_input,
             )
 
             if self.logger and self.debug_mode:
                 self.logger.info(f"Starting command: {command_name}")
+                if user_input:
+                    self.logger.info(f"User input: {user_input}")
                 if self.current_command.system_info_start:
                     self._log_system_info(
                         "COMMAND_START", self.current_command.system_info_start
@@ -360,6 +364,8 @@ class RuntimeMonitor:
         )
 
         self.logger.info(f"[COMMAND_SUMMARY] Command: {metrics.command_name}")
+        if metrics.user_input:
+            self.logger.info(f"  User Input: {metrics.user_input}")
         self.logger.info(f"  Status: {status}")
         self.logger.info(f"  Total Duration: {duration_str}")
         self.logger.info(f"  Total Operations: {metrics.total_operations}")
@@ -697,19 +703,19 @@ def runtime_context(
 
 @contextmanager
 def command_context(
-        command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False
+        command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False, user_input: Optional[str] = None
 ):
     """
     Context manager for monitoring complete commands.
 
     Usage:
-        with command_context("loadpdb"):
+        with command_context("loadpdb", user_input="loadpdb protein.pdb"):
             # All operations within this block will be tracked
             # Only summary will be logged unless debug_mode=True
             pass
     """
     monitor = RuntimeMonitor(logger, debug_mode)
-    command_metrics = monitor.start_command(command_name)
+    command_metrics = monitor.start_command(command_name, user_input=user_input)
 
     try:
         yield command_metrics
