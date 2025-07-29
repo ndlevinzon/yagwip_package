@@ -110,7 +110,7 @@ class SlurmWriter(YagwipBase):
                 init_name=init_name
             )
 
-    def _handle_tremd_slurm(self, hardware, basename):
+    def _handle_tremd_slurm(self, hardware, basename, ligand_pdb_path=None):
         """
         Handle TREMD (Temperature Replica Exchange MD) SLURM script generation.
 
@@ -123,32 +123,35 @@ class SlurmWriter(YagwipBase):
         # Copy TREMD-specific MDP files (exclude regular production files and FEP-specific files)
         self._copy_mdp_files(exclude_files=["production.mdp"], exclude_patterns=["*_fep.mdp"])
 
+        # Determine initialization file name
+        init_name = "complex" if ligand_pdb_path else "protein"
+
         # Copy and customize SLURM scripts
         if hardware == "cpu":
             self._copy_and_customize_slurm_script(
                 template_name="run_gmx_tremd_min_cpu.slurm",
                 output_name="run_gmx_tremd_min_cpu.slurm",
                 basename=basename,
-                init_name="complex"  # TREMD typically uses complex
+                init_name=init_name
             )
             self._copy_and_customize_slurm_script(
                 template_name="run_gmx_tremd_cpu.slurm",
                 output_name="run_gmx_tremd_cpu.slurm",
                 basename=basename,
-                init_name="complex"
+                init_name=init_name
             )
         elif hardware == "gpu":
             self._copy_and_customize_slurm_script(
                 template_name="run_gmx_tremd_min_gpu.slurm",
                 output_name="run_gmx_tremd_min_gpu.slurm",
                 basename=basename,
-                init_name="complex"
+                init_name=init_name
             )
             self._copy_and_customize_slurm_script(
                 template_name="run_gmx_tremd_gpu.slurm",
                 output_name="run_gmx_tremd_gpu.slurm",
                 basename=basename,
-                init_name="complex"
+                init_name=init_name
             )
 
     def _handle_fep_slurm(self, hardware, basename):
