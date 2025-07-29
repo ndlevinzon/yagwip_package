@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=__BASE___gmx_remd
+#SBATCH --job-name=__BASE___gmx_tremd
 #SBATCH --output=slurm/remd_job_%j.out
 #SBATCH --error=slurm/remd_job_%j.err
 #SBATCH --nodes=8              # Nodes
