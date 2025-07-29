@@ -1868,89 +1868,59 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self._log_info(f"Starting interactive TREMD prep: {' '.join(cmd)}")
 
         try:
-            # Start the process with proper I/O handling
-            process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,  # Line buffered
-                universal_newlines=True
-            )
+            # Use a simpler approach - run the script with pre-defined input
+            # This avoids the complex I/O handling issues
 
-            # Read initial output (residue counts)
-            output_lines = []
-            while True:
-                line = process.stdout.readline()
-                if not line:
-                    break
+            # Get user input first
+            print("TREMD Temperature Ladder Generator")
+            print("=" * 40)
 
-                output_lines.append(line.strip())
-                print(line.strip())  # Show output to user
-
-                # Check if we've reached the input prompts
-                if "Enter initial temperature" in line:
-                    break
-
-            # Check if process is still running
-            if process.poll() is not None:
-                # Process has already exited
-                stderr_output = process.stderr.read()
-                if stderr_output:
-                    self._log_error(f"TREMD prep failed: {stderr_output}")
-                return False
-
-            # Handle interactive input
             try:
-                # Get initial temperature
                 initial_temp = input("Enter initial temperature (K): ")
-                process.stdin.write(initial_temp + "\n")
-                process.stdin.flush()
-
-                # Read response and next prompt
-                response = process.stdout.readline().strip()
-                if response:
-                    print(response)
-
-                # Get final temperature
                 final_temp = input("Enter final temperature (K): ")
-                process.stdin.write(final_temp + "\n")
-                process.stdin.flush()
-
-                # Read response and next prompt
-                response = process.stdout.readline().strip()
-                if response:
-                    print(response)
-
-                # Get exchange probability
                 exchange_prob = input("Enter desired exchange probability (e.g. 0.2): ")
-                process.stdin.write(exchange_prob + "\n")
-                process.stdin.flush()
-
-                # Read remaining output
-                remaining_output = process.stdout.read()
-                if remaining_output:
-                    print(remaining_output)
-
-                # Wait for process to complete
-                return_code = process.wait()
-
-                if return_code == 0:
-                    self._log_success("TREMD temperature ladder calculation completed successfully.")
-                    return True
-                else:
-                    stderr_output = process.stderr.read()
-                    if stderr_output:
-                        self._log_error(f"TREMD prep failed: {stderr_output}")
-                    return False
-
             except KeyboardInterrupt:
-                # Handle Ctrl+C gracefully
-                process.terminate()
                 self._log_info("TREMD prep interrupted by user.")
                 return False
 
+            # Validate input
+            try:
+                initial_temp = float(initial_temp)
+                final_temp = float(final_temp)
+                exchange_prob = float(exchange_prob)
+            except ValueError:
+                self._log_error("Invalid input: temperatures and probability must be numbers.")
+                return False
+
+            # Prepare input data for the script
+            input_data = f"{initial_temp}\n{final_temp}\n{exchange_prob}\n"
+
+            # Run the script with the input data
+            result = subprocess.run(
+                cmd,
+                input=input_data,
+                capture_output=True,
+                text=True,
+                timeout=60  # 60 second timeout
+            )
+
+            # Display the output
+            if result.stdout:
+                print(result.stdout)
+
+            if result.stderr:
+                print(f"Errors: {result.stderr}")
+
+            if result.returncode == 0:
+                self._log_success("TREMD temperature ladder calculation completed successfully.")
+                return True
+            else:
+                self._log_error(f"TREMD prep failed with return code {result.returncode}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            self._log_error("TREMD prep timed out after 60 seconds.")
+            return False
         except Exception as e:
             self._log_error(f"Error running TREMD prep: {e}")
             return False
