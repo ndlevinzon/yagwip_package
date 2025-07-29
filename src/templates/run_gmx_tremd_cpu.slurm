@@ -21,7 +21,7 @@ module load StdEnv/2023 gcc/12.3 openmpi/4.1.5 gromacs/2024.4
 # VARIABLES
 # ------------------------
 npt_prefix="npt"
-prod_prefix="remd_template"
+prod_prefix="production_remd"
 prod_step="step"
 
 # ------------------------
