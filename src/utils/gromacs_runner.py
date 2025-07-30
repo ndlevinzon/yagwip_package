@@ -11,7 +11,7 @@ from yagwip.base import YagwipBase
 from utils.log_utils import auto_monitor
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {"pdb2gmx": "1\n", "genion_prot": "13\n", "genion_complex": "15\n", "genion_lig": "4\n"}
+PIPE_INPUTS = {"pdb2gmx": "12\n", "genion_prot": "13\n", "genion_complex": "15\n", "genion_lig": "4\n"}
 
 
 class Builder(YagwipBase):
@@ -36,7 +36,7 @@ class Builder(YagwipBase):
         if base is None:
             return
         cmd = custom_command or (
-            f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water spce -ignh"
+            f"{self.gmx_path} pdb2gmx -f {base}.pdb -o {base}.gro -water tip3p -ignh"
         )
         if self.debug:
             print(f"[DEBUG] Command: {cmd}")
