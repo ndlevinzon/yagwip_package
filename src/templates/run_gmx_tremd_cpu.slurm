@@ -27,7 +27,7 @@ prod_step="step"
 # ------------------------
 # READ TEMPERATURES FROM TEMPERATURE LADDER FILE
 # ------------------------
-temperature_file="TREMD_temp_ranges.txt"
+temperature_file="TREMD_temp_ladder.txt"
 mapfile -t temperatures < <(awk '{print $3}' "$temperature_file")
 
 # ------------------------
