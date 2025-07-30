@@ -17,9 +17,9 @@ nstlist                 = 20
 vdwtype                 = Cut-off
 vdw-modifier            = None
 DispCorr                = EnerPres
-rvdw                    = 0.9
-rlist                   = 0.9
-rcoulomb                = 0.9
+rvdw                    = 1.2
+rlist                   = 1.2
+rcoulomb                = 1.2
 coulombtype             = PME
 ;
 constraints             = h-bonds
