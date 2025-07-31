@@ -22,8 +22,6 @@ rlist                   = 1.2
 rcoulomb                = 1.2
 coulombtype             = PME
 ;
-constraints             = h-bonds
-constraint_algorithm    = LINCS
 continuation            = yes
 ;
 

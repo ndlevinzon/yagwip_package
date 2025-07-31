@@ -43,4 +43,7 @@ refcoord_scaling        = com
 ; Periodic boundary conditions
 pbc                     = xyz       ; 3-D PBC
 ; Velocity generation
-gen_vel                 = no        ; Velocity generation is off 
+gen_vel                 = no        ; Velocity generation is off
+;
+comm-mode = Linear
+comm-grps = Protein
