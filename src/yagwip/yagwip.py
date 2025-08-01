@@ -1948,6 +1948,81 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Use shlex.split to properly handle negative values and quoted strings
         return parser.parse_args(shlex.split(arg))
 
+    def do_autoimage(self, arg):
+        """
+        Run autoimage workflow to process trajectory files.
+
+        This command executes a series of GROMACS trjconv commands to properly
+        image and center trajectory files, creating a clean PDB representation.
+
+        The workflow consists of three steps:
+        1. Apply periodic boundary conditions (whole molecules)
+        2. Center the system
+        3. Create a PDB file with proper imaging
+
+        Usage:
+            autoimage              # Use default 'production' basename
+            autoimage <basename>   # Use specified basename
+
+        Required Files:
+            - <basename>.tpr: GROMACS topology file
+            - <basename>.xtc: GROMACS trajectory file
+
+        Output Files:
+            - <basename>.pbc1.xtc: Trajectory with PBC applied
+            - <basename>.noPBC.xtc: Centered trajectory
+            - <basename>.pdb: Final PDB file with proper imaging
+
+        Examples:
+            autoimage              # Process production.tpr/xtc files
+            autoimage npt          # Process npt.tpr/xtc files
+        """
+        if not self._require_pdb():
+            return
+
+        # Parse basename from arguments, default to 'production'
+        basename = arg.strip() if arg.strip() else "production"
+
+        # Check if required files exist
+        tpr_file = f"{basename}.tpr"
+        xtc_file = f"{basename}.xtc"
+
+        if not os.path.isfile(tpr_file):
+            self._log_error(f"Required file not found: {tpr_file}")
+            return
+
+        if not os.path.isfile(xtc_file):
+            self._log_error(f"Required file not found: {xtc_file}")
+            return
+
+        self.sim.run_autoimage(basename, arg)
+
+    def complete_autoimage(self, text, line, begidx, endidx):
+        """
+        Tab completion for autoimage command.
+
+        Provides completion for common basename patterns based on existing .tpr files.
+
+        Args:
+            text: The current input text to match
+            line: The complete command line
+            begidx: Beginning index of the word being completed
+            endidx: Ending index of the word being completed
+
+        Returns:
+            List of matching basenames from existing .tpr files
+        """
+        # Look for .tpr files in current directory
+        tpr_files = [f for f in os.listdir() if f.endswith('.tpr')]
+
+        # Extract basenames (remove .tpr extension)
+        basenames = [os.path.splitext(f)[0] for f in tpr_files]
+
+        # Filter based on current input
+        if not text:
+            return basenames
+        return [b for b in basenames if b.startswith(text)]
+
     def do_source(self, arg):
         """Source additional .itp files into topology."""
         if not arg.strip():

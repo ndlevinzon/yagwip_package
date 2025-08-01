@@ -166,3 +166,35 @@ class Sim(YagwipBase):
 
         self._execute_command(grompp_cmd, f"grompp for {tprname}")
         self._execute_command(mdrun_cmd, f"mdrun for {tprname}")
+
+    def run_autoimage(self, basename, arg=""):
+        """
+        Run autoimage workflow to process trajectory files.
+
+        This method executes a series of trjconv commands to:
+        1. Apply periodic boundary conditions (whole molecules)
+        2. Center the system
+        3. Create a PDB file with proper imaging
+
+        Args:
+            basename: Base name for the files (defaults to 'production')
+            arg: Optional arguments (currently unused, for future expansion)
+        """
+        # Use production as default basename if none provided
+        base = basename if basename else "production"
+
+        self._log_info(f"Running autoimage workflow for {base}")
+
+        # Step 1: Apply periodic boundary conditions (whole molecules)
+        cmd1 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.xtc -o {base}.pbc1.xtc -pbc whole -ur compact"
+        self._execute_command(cmd1, "trjconv step 1: apply PBC whole")
+
+        # Step 2: Center the system
+        cmd2 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.pbc1.xtc -o {base}.noPBC.xtc -center -n"
+        self._execute_command(cmd2, "trjconv step 2: center system")
+
+        # Step 3: Create PDB file with proper imaging
+        cmd3 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.noPBC.xtc -o {base}.pdb -pbc mol -ur compact"
+        self._execute_command(cmd3, "trjconv step 3: create PDB with proper imaging")
+
+        self._log_success(f"Autoimage workflow completed for {base}")
