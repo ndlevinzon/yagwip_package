@@ -13,7 +13,13 @@ from yagwip.base import YagwipBase
 from utils.log_utils import auto_monitor
 
 # Constants for GROMACS command inputs
-PIPE_INPUTS = {"pdb2gmx": "12\n", "genion_prot": "13\n", "genion_complex": "15\n", "genion_lig": "4\n"}
+PIPE_INPUTS = {"pdb2gmx": "12\n",
+               "genion_prot": "13\n",
+               "genion_complex": "15\n",
+               "genion_lig": "4\n",
+               "system": "0\n",
+               "yes_ligand": "18\n",
+               "no_ligand": "14\n",}
 
 
 class Builder(YagwipBase):
@@ -187,17 +193,25 @@ class GromacsCommands(YagwipBase):
 
         self._log_info(f"Running autoimage workflow for {base}")
 
+        # Check if ligandA.pdb exists to determine if we need automatic piping
+        ligand_a_present = os.path.exists("ligandA.pdb")
+        if ligand_a_present:
+            self._log_info("ligandA.pdb detected - using automatic piping for trjconv commands")
+
         # Step 1: Apply periodic boundary conditions (whole molecules)
         cmd1 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.xtc -o {base}.pbc1.xtc -pbc whole -ur compact"
-        self._execute_command(cmd1, "trjconv step 1: apply PBC whole")
+        pipe_input1 = PIPE_INPUTS["system"]
+        self._execute_command(cmd1, "trjconv step 1: apply PBC whole", pipe_input=pipe_input1)
 
         # Step 2: Center the system
         cmd2 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.pbc1.xtc -o {base}.noPBC.xtc -center -n"
-        self._execute_command(cmd2, "trjconv step 2: center system")
+        pipe_input2 = (PIPE_INPUTS["system"], PIPE_INPUTS["system"])
+        self._execute_command(cmd2, "trjconv step 2: center system", pipe_input=pipe_input2)
 
         # Step 3: Create PDB file with proper imaging
         cmd3 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.noPBC.xtc -o {base}.pdb -pbc mol -ur compact"
-        self._execute_command(cmd3, "trjconv step 3: create PDB with proper imaging")
+        pipe_input3 = PIPE_INPUTS["yes_ligand"] if ligand_a_present else PIPE_INPUTS["no_ligand"]
+        self._execute_command(cmd3, "trjconv step 3: create PDB with proper imaging", pipe_input=pipe_input3)
 
         self._log_success(f"Autoimage workflow completed for {base}")
 
