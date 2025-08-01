@@ -1,10 +1,7 @@
-; ============================================================
-;  NVT EQUILIBRATION --  YAGWIP
-; ============================================================
 define                  = -DPOSRES  ; position restrain the protein
 ; Run parameters
 integrator              = md        ; leap-frog integrator
-nsteps                  = 2500000    ; 2 * 50000 = 100 ps
+nsteps                  = 2500000   ; 2 * 50000 = 100 ps
 dt                      = 0.002     ; 2 fs
 ; Output control
 nstxout                 = 500       ; save coordinates every 1.0 ps
@@ -41,6 +38,3 @@ pbc                     = xyz       ; 3-D PBC
 gen_vel                 = yes       ; assign velocities from Maxwell distribution
 gen_temp                = 300       ; temperature for Maxwell distribution
 gen_seed                = -1        ; generate a random seed
-;
-comm-mode = Linear
-comm-grps = Protein
