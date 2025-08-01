@@ -638,6 +638,7 @@ class ParallelBatchProcessor(YagwipBase):
             "npt",
             "production",
             "autoimage",
+            "demux",
             "tremd",
             "source",
             "slurm",
