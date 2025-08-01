@@ -1948,6 +1948,29 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Use shlex.split to properly handle negative values and quoted strings
         return parser.parse_args(shlex.split(arg))
 
+    def complete_demux(self, text, line, begidx, endidx):
+        """
+        Tab completion for demux command.
+
+        Provides completion for directory names that might contain replica data.
+
+        Args:
+            text: The current input text to match
+            line: The complete command line
+            begidx: Beginning index of the word being completed
+            endidx: Ending index of the word being completed
+
+        Returns:
+            List of matching directory names
+        """
+        # Look for directories in current directory
+        directories = [d for d in os.listdir() if os.path.isdir(d)]
+
+        # Filter based on current input
+        if not text:
+            return directories
+        return [d for d in directories if d.startswith(text)]
+
     def do_demux(self, arg):
         """
         Run demultiplexing workflow for replica exchange simulations.
@@ -2029,29 +2052,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return basenames
         return [b for b in basenames if b.startswith(text)]
 
-    def complete_demux(self, text, line, begidx, endidx):
-        """
-        Tab completion for demux command.
-
-        Provides completion for directory names that might contain replica data.
-
-        Args:
-            text: The current input text to match
-            line: The complete command line
-            begidx: Beginning index of the word being completed
-            endidx: Ending index of the word being completed
-
-        Returns:
-            List of matching directory names
-        """
-        # Look for directories in current directory
-        directories = [d for d in os.listdir() if os.path.isdir(d)]
-
-        # Filter based on current input
-        if not text:
-            return directories
-        return [d for d in directories if d.startswith(text)]
-
     def do_autoimage(self, arg):
         """
         Run autoimage workflow to process trajectory files.
@@ -2081,9 +2081,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             autoimage              # Process production.tpr/xtc files
             autoimage npt          # Process npt.tpr/xtc files
         """
-        if not self._require_pdb():
-            return
-
         # Parse basename from arguments, default to 'production'
         basename = arg.strip() if arg.strip() else "production"
 
