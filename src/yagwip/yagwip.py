@@ -56,7 +56,7 @@ from typing import Optional, List, Dict, Tuple
 import pandas as pd
 
 # === Local Imports ===
-from utils.gromacs_runner import Builder, Sim
+from utils.gromacs_runner import Builder, GromacsCommands
 from yagwip.ligand_builder import LigandPipeline
 from yagwip.base import YagwipBase
 from yagwip.config import validate_gromacs_installation
@@ -99,7 +99,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         user_itp_paths (List[str]): Stores user input paths for do_source
         editor (Editor): File editor instance for topology manipulation
         ligand_pipeline (LigandPipeline): Ligand processing pipeline
-        sim (Sim): Simulation execution handler
+        gmx (GromacsCommands): Simulation execution handler
         builder (Builder): System building handler
         custom_cmds (Dict[str, str]): Custom command overrides
         ligand_counter (int): Counter for FEP-style ligand naming
@@ -143,7 +143,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.user_itp_paths: List[str] = []
         self.editor = Editor()
         self.ligand_pipeline = LigandPipeline(logger=self.logger, debug=self.debug)
-        self.sim = Sim(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
+        self.gmx = GromacsCommands(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Validate GROMACS installation
@@ -1782,25 +1782,25 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """Run energy minimization."""
         if not self._require_pdb():
             return
-        self.sim.run_em(self.basename, arg)
+        self.gmx.run_em(self.basename, arg)
 
     def do_nvt(self, arg):
         """Run NVT equilibration."""
         if not self._require_pdb():
             return
-        self.sim.run_nvt(self.basename, arg)
+        self.gmx.run_nvt(self.basename, arg)
 
     def do_npt(self, arg):
         """Run NPT equilibration."""
         if not self._require_pdb():
             return
-        self.sim.run_npt(self.basename, arg)
+        self.gmx.run_npt(self.basename, arg)
 
     def do_production(self, arg):
         """Run production MD simulation."""
         if not self._require_pdb():
             return
-        self.sim.run_production(self.basename, arg)
+        self.gmx.run_production(self.basename, arg)
 
     def complete_tremd_prep(self, text, line, begidx, endidx):
         """Tab completion for tremd_prep command."""
@@ -1948,6 +1948,110 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         # Use shlex.split to properly handle negative values and quoted strings
         return parser.parse_args(shlex.split(arg))
 
+    def do_demux(self, arg):
+        """
+        Run demultiplexing workflow for replica exchange simulations.
+
+        This command processes replica exchange molecular dynamics (REMD) data
+        by demultiplexing trajectories and generating analysis files.
+
+        The workflow consists of several steps:
+        1. Detect replica directories (numbered subdirectories)
+        2. Aggregate log files from all replicas
+        3. Run demux script to generate index files
+        4. Demultiplex trajectories using the index files
+
+        Usage:
+            demux <input_directory>    # Process replicas in specified directory
+
+        Required Files:
+            - <input_directory>/<replica_number>/md.log: Log files from each replica
+            - <input_directory>/<replica_number>/md.xtc: Trajectory files from each replica
+            - demux.pl: Demux script (must be in PATH)
+
+        Output Files:
+            - <input_directory>/log_tmp/REMD.log: Combined log file
+            - <input_directory>/log_tmp/replica_index.xvg: Replica index file
+            - <input_directory>/log_tmp/replica_temp.xvg: Temperature index file
+            - demuxed trajectory files in current directory
+
+        Examples:
+            demux remd_simulation    # Process replicas in remd_simulation directory
+            demux .                  # Process replicas in current directory
+
+        Note:
+            This command requires the demux.pl script to be available in the system PATH.
+            The script is typically provided with GROMACS REMD installations.
+        """
+        if not arg.strip():
+            self._log_error("Usage: demux <input_directory>")
+            return
+
+        input_dir = arg.strip()
+
+        # Check if input directory exists
+        if not os.path.isdir(input_dir):
+            self._log_error(f"Input directory not found: {input_dir}")
+            return
+
+        # Check if demux script is available
+        demux_script = "demux.pl"
+        if not shutil.which(demux_script):
+            self._log_error(f"Demux script not found in PATH: {demux_script}")
+            self._log_info("Please ensure demux.pl is installed and available in your PATH")
+            return
+
+        self.gmx.run_demux(input_dir, arg)
+
+    def complete_autoimage(self, text, line, begidx, endidx):
+        """
+        Tab completion for autoimage command.
+
+        Provides completion for common basename patterns based on existing .tpr files.
+
+        Args:
+            text: The current input text to match
+            line: The complete command line
+            begidx: Beginning index of the word being completed
+            endidx: Ending index of the word being completed
+
+        Returns:
+            List of matching basenames from existing .tpr files
+        """
+        # Look for .tpr files in current directory
+        tpr_files = [f for f in os.listdir() if f.endswith('.tpr')]
+
+        # Extract basenames (remove .tpr extension)
+        basenames = [os.path.splitext(f)[0] for f in tpr_files]
+
+        # Filter based on current input
+        if not text:
+            return basenames
+        return [b for b in basenames if b.startswith(text)]
+
+    def complete_demux(self, text, line, begidx, endidx):
+        """
+        Tab completion for demux command.
+
+        Provides completion for directory names that might contain replica data.
+
+        Args:
+            text: The current input text to match
+            line: The complete command line
+            begidx: Beginning index of the word being completed
+            endidx: Ending index of the word being completed
+
+        Returns:
+            List of matching directory names
+        """
+        # Look for directories in current directory
+        directories = [d for d in os.listdir() if os.path.isdir(d)]
+
+        # Filter based on current input
+        if not text:
+            return directories
+        return [d for d in directories if d.startswith(text)]
+
     def do_autoimage(self, arg):
         """
         Run autoimage workflow to process trajectory files.
@@ -1995,7 +2099,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_error(f"Required file not found: {xtc_file}")
             return
 
-        self.sim.run_autoimage(basename, arg)
+        self.gmx.run_autoimage(basename, arg)
 
     def complete_autoimage(self, text, line, begidx, endidx):
         """

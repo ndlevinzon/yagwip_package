@@ -4,6 +4,8 @@ gromacs_runner.py: GROMACS and ligand building utilities for YAGWIP.
 
 # === Standard Library Imports ===
 import os
+import shutil
+from typing import List
 from importlib.resources import files
 
 # === Local Imports ===
@@ -108,7 +110,7 @@ class Builder(YagwipBase):
                 self._execute_command(cmd, f"genion step {i+1}", pipe_input=pipe_input)
 
 
-class Sim(YagwipBase):
+class GromacsCommands(YagwipBase):
     def __init__(self, gmx_path, debug=False, logger=None):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
@@ -198,3 +200,142 @@ class Sim(YagwipBase):
         self._execute_command(cmd3, "trjconv step 3: create PDB with proper imaging")
 
         self._log_success(f"Autoimage workflow completed for {base}")
+
+    def run_demux(self, input_dir: str, arg: str = ""):
+        """
+        Run demultiplexing workflow for replica exchange simulations.
+
+        This method performs the complete demultiplexing process:
+        1. Detects replica directories
+        2. Aggregates log files
+        3. Runs demux script to generate index files
+        4. Demultiplexes trajectories
+
+        Args:
+            input_dir: Directory containing replica subdirectories
+            arg: Optional arguments (currently unused, for future expansion)
+        """
+        self._log_info(f"Running demux workflow for directory: {input_dir}")
+
+        # Step 1: Detect replica directories
+        replicas = self._detect_replicas(input_dir)
+        if not replicas:
+            self._log_error(f"No replica directories found in {input_dir}")
+            return
+
+        self._log_info(f"Found {len(replicas)} replica directories: {replicas}")
+
+        # Step 2: Create temporary directory for logs
+        log_tmp = os.path.join(input_dir, "log_tmp")
+        os.makedirs(log_tmp, exist_ok=True)
+
+        # Step 3: Aggregate log files
+        self._aggregate_logs(replicas, input_dir, log_tmp)
+
+        # Step 4: Run demux script
+        log_file = os.path.join(log_tmp, "REMD.log")
+        if not os.path.exists(log_file):
+            self._log_error(f"REMD log file not found: {log_file}")
+            return
+
+        self._run_demux_script(log_file, log_tmp)
+
+        # Step 5: Demultiplex trajectories
+        self._demux_trajectories(input_dir, replicas, log_tmp)
+
+        self._log_success(f"Demux workflow completed for {len(replicas)} replicas")
+
+    def _detect_replicas(self, input_dir: str) -> List[str]:
+        """Detect replica directories named as integers."""
+        if not os.path.exists(input_dir):
+            self._log_error(f"Input directory does not exist: {input_dir}")
+            return []
+
+        replicas = []
+        for item in os.listdir(input_dir):
+            item_path = os.path.join(input_dir, item)
+            if item.isdigit() and os.path.isdir(item_path):
+                replicas.append(item)
+
+        return sorted(replicas, key=int)
+
+    def _aggregate_logs(self, replicas: List[str], input_dir: str, log_tmp: str):
+        """Aggregate log files from all replicas."""
+        self._log_info("Aggregating log files from replicas...")
+
+        for replica in replicas:
+            src = os.path.join(input_dir, replica, "md.log")
+            dst = os.path.join(log_tmp, f"remd_{replica}.log")
+
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                self._log_debug(f"Copied log from replica {replica}")
+            else:
+                self._log_warning(f"Log file not found for replica {replica}: {src}")
+
+        # Create combined REMD.log file
+        combined_log = os.path.join(log_tmp, "REMD.log")
+        with open(combined_log, "w") as outfile:
+            for replica in replicas:
+                log_path = os.path.join(log_tmp, f"remd_{replica}.log")
+                if os.path.exists(log_path):
+                    with open(log_path, "r") as infile:
+                        outfile.write(infile.read())
+
+        self._log_info(f"Created combined log file: {combined_log}")
+
+    def _run_demux_script(self, log_file: str, out_dir: str, demux_script: str = "demux.pl"):
+        """Run the demux script to generate index files."""
+        self._log_info(f"Running demux script: {demux_script}")
+
+        try:
+            # Check if demux script exists
+            if not shutil.which(demux_script):
+                self._log_error(f"Demux script not found in PATH: {demux_script}")
+                return
+
+            # Run demux script
+            cmd = [demux_script, log_file]
+            self._execute_command(" ".join(cmd), f"demux script execution")
+
+            # Move generated files to output directory
+            for fname in ["replica_index.xvg", "replica_temp.xvg"]:
+                if os.path.exists(fname):
+                    shutil.move(fname, out_dir)
+                    self._log_info(f"Moved {fname} to {out_dir}")
+                else:
+                    self._log_warning(f"Expected file not generated: {fname}")
+
+        except Exception as e:
+            self._log_error(f"Failed to run demux script: {e}")
+
+    def _demux_trajectories(self, input_dir: str, replicas: List[str], log_tmp: str):
+        """Demultiplex trajectories using the generated index file."""
+        self._log_info("Demultiplexing trajectories...")
+
+        # Find trajectory files
+        xtc_files = []
+        for replica in replicas:
+            xtc_path = os.path.join(input_dir, replica, "md.xtc")
+            if os.path.exists(xtc_path):
+                xtc_files.append(xtc_path)
+            else:
+                self._log_warning(f"Trajectory file not found for replica {replica}: {xtc_path}")
+
+        if not xtc_files:
+            self._log_error("No trajectory files found for demultiplexing")
+            return
+
+        # Check for index file
+        index_file = os.path.join(log_tmp, "replica_index.xvg")
+        if not os.path.exists(index_file):
+            self._log_error(f"Index file not found: {index_file}")
+            return
+
+        # Run trjcat with demux
+        try:
+            cmd = [self.gmx_path, "trjcat", "-f"] + xtc_files + ["-demux", index_file]
+            self._execute_command(" ".join(cmd), "trajectory demultiplexing")
+            self._log_success("Trajectory demultiplexing completed")
+        except Exception as e:
+            self._log_error(f"Failed to demultiplex trajectories: {e}")
