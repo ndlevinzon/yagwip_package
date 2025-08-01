@@ -887,20 +887,69 @@ def get_tool_checker() -> ToolChecker:
     return ToolChecker(config)
 
 
+def detect_gromacs_executable() -> str:
+    """
+    Detect the best available GROMACS executable.
+
+    Tests for both 'gmx' and 'gmx_mpi' executables, with 'gmx' taking precedence
+    if both are available.
+
+    Returns:
+        The path to the best available GROMACS executable
+
+    Raises:
+        RuntimeError: If no GROMACS executable is found
+    """
+    import shutil
+
+    # Test executables in order of preference
+    gromacs_executables = ["gmx", "gmx_mpi", ]
+
+    for executable in gromacs_executables:
+        if shutil.which(executable):
+            # Test if the executable actually works
+            try:
+                result = subprocess.run(
+                    [executable, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    return executable
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+                continue
+
+    # If we get here, no working GROMACS executable was found
+    raise RuntimeError(
+        "No GROMACS executable found. Please ensure either 'gmx' or 'gmx_mpi' "
+        "is installed and available in your PATH.\n"
+        "You can check this by running 'gmx --version' or 'gmx_mpi --version' in your terminal."
+    )
+
+
 def validate_gromacs_installation(gmx_path: str = None) -> None:
     """
     Validate GROMACS installation and raise an error if not available.
 
     Args:
-        gmx_path: GROMACS executable path
+        gmx_path: GROMACS executable path (if None, will auto-detect)
 
     Raises:
         RuntimeError: If GROMACS is not available or cannot be executed.
     """
+    # If no gmx_path provided, auto-detect the best available executable
+    if gmx_path is None:
+        try:
+            gmx_path = detect_gromacs_executable()
+        except RuntimeError as e:
+            raise RuntimeError(str(e))
+
     checker = get_tool_checker()
     if not checker.check_gromacs_available(gmx_path):
         raise RuntimeError(
-            f"GROMACS ({gmx_path or 'gmx'}) is not available or cannot be executed.\n"
+            f"GROMACS ({gmx_path}) is not available or cannot be executed.\n"
             f"Please ensure GROMACS is installed and available in your PATH.\n"
-            f"You can check this by running '{gmx_path or 'gmx'} --version' in your terminal."
+            f"You can check this by running '{gmx_path} --version' in your terminal."
         )

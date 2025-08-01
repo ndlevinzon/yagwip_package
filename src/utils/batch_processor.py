@@ -234,13 +234,25 @@ class ParallelBatchProcessor(YagwipBase):
     """
 
     def __init__(
-        self,
-        gmx_path: str = "gmx",
-        debug: bool = False,
-        logger=None,
-        ligand_builder: bool = False,
-        max_workers: Optional[int] = None,
+            self,
+            gmx_path: str = None,
+            debug: bool = False,
+            logger=None,
+            ligand_builder: bool = False,
+            max_workers: Optional[int] = None,
     ):
+        # Auto-detect GROMACS executable if not provided
+        if gmx_path is None:
+            try:
+                from yagwip.config import detect_gromacs_executable
+                gmx_path = detect_gromacs_executable()
+                if logger:
+                    logger.info(f"Auto-detected GROMACS executable: {gmx_path}")
+            except RuntimeError as e:
+                if logger:
+                    logger.error(f"GROMACS Detection Error: {e}")
+                raise
+
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
         self.jobs: List[BatchJob] = []
         self.batch_config: Dict[str, Any] = {}

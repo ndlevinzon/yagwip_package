@@ -59,7 +59,7 @@ import pandas as pd
 from utils.gromacs_runner import Builder, GromacsCommands
 from yagwip.ligand_builder import LigandPipeline
 from yagwip.base import YagwipBase
-from yagwip.config import validate_gromacs_installation
+from yagwip.config import validate_gromacs_installation, detect_gromacs_executable
 from utils.slurm_utils import SlurmWriter
 from utils.pipeline_utils import Editor
 from utils.log_utils import setup_logger
@@ -110,7 +110,7 @@ class YagwipShell(cmd.Cmd, YagwipBase):
     intro = f"Welcome to YAGWIP v{__version__}. Type help to list commands."
     prompt = "YAGWIP> "
 
-    def __init__(self, gmx_path: str) -> None:
+    def __init__(self, gmx_path: str = None) -> None:
         """
         Initialize the YAGWIP shell with GROMACS path.
 
@@ -119,12 +119,21 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         installation, and prepares the shell for command execution.
 
         Args:
-            gmx_path: Path to GROMACS executable
+            gmx_path: Path to GROMACS executable (if None, will auto-detect)
 
         Raises:
             RuntimeError: If GROMACS installation validation fails
             SystemExit: If critical initialization fails
         """
+        # Auto-detect GROMACS executable if not provided
+        if gmx_path is None:
+            try:
+                gmx_path = detect_gromacs_executable()
+                self._log_info(f"Auto-detected GROMACS executable: {gmx_path}")
+            except RuntimeError as e:
+                self._log_error(f"GROMACS Detection Error: {e}")
+                sys.exit(1)
+
         # Initialize cmd.Cmd first (no parameters)
         cmd.Cmd.__init__(self)
         # Initialize YagwipBase with our parameters
@@ -2311,8 +2320,8 @@ Examples:
 
     # Configuration arguments
     parser.add_argument(
-        "--gmx-path", type=str, default="gmx",
-        help="GROMACS executable path (default: gmx)"
+        "--gmx-path", type=str, default=None,
+        help="GROMACS executable path (default: auto-detect gmx_mpi or gmx)"
     )
     parser.add_argument(
         "--debug", action="store_true",
