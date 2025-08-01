@@ -205,7 +205,7 @@ class GromacsCommands(YagwipBase):
 
         # Step 2: Center the system
         cmd2 = f"{self.gmx_path} trjconv -s {base}.tpr -f {base}.pbc1.xtc -o {base}.noPBC.xtc -center -n"
-        pipe_input2 = (PIPE_INPUTS["system"], PIPE_INPUTS["system"])
+        pipe_input2 = PIPE_INPUTS["system"] + PIPE_INPUTS["system"]
         self._execute_command(cmd2, "trjconv step 2: center system", pipe_input=pipe_input2)
 
         # Step 3: Create PDB file with proper imaging
