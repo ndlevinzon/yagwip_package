@@ -477,6 +477,12 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             return
         hetatm_lines, atom_lines = self._split_pdb_lines(lines)
 
+        # Check if --ligand_builder was specified but no HETATM records found
+        if args.ligand_builder and not hetatm_lines:
+            self._log_info("No Ligand Detected")
+            self._handle_protein_only(lines)
+            return
+
         if hetatm_lines and not atom_lines:
             self._handle_ligand_only(hetatm_lines, args)
             return
