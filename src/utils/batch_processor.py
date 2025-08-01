@@ -96,7 +96,7 @@ def _execute_single_job_worker_standalone(
 
             try:
                 # Create temporary YAGWIP shell for this job
-                from .yagwip import YagwipShell
+                from yagwip import YagwipShell
 
                 yagwip_shell = YagwipShell(gmx_path)
                 yagwip_shell.logger = job_logger
@@ -637,6 +637,7 @@ class ParallelBatchProcessor(YagwipBase):
             "nvt",
             "npt",
             "production",
+            "autoimage",
             "tremd",
             "source",
             "slurm",
