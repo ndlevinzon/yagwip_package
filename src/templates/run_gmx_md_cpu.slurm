@@ -2,6 +2,7 @@
 #SBATCH --job-name=__BASE___gmx_md
 #SBATCH --output=slurm/md_job_%j.out
 #SBATCH --error=slurm/md_job_%j.err
+#SBATCH --account=rrg-mailhoto
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=8
