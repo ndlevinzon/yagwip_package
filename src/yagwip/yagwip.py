@@ -155,6 +155,10 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.gmx = GromacsCommands(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
+        # Initialize runtime monitor
+        from utils.log_utils import RuntimeMonitor
+        self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
+
         # Validate GROMACS installation
         try:
             validate_gromacs_installation(gmx_path)
@@ -213,6 +217,32 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             with command_context(f"user_command: {line}", self.logger, self.debug, user_input=line) as cmd_metrics:
                 # Execute the command using the parent class
                 result = super().onecmd(line)
+
+                # Collect operations from all components
+                all_operations = []
+
+                # Collect from main shell runtime monitor
+                if hasattr(self, 'runtime_monitor') and self.runtime_monitor.metrics_history:
+                    all_operations.extend(self.runtime_monitor.metrics_history)
+
+                # Collect from builder
+                if hasattr(self, 'builder') and hasattr(self.builder, 'runtime_monitor') and self.builder.runtime_monitor.metrics_history:
+                    all_operations.extend(self.builder.runtime_monitor.metrics_history)
+
+                # Collect from gmx
+                if hasattr(self, 'gmx') and hasattr(self.gmx, 'runtime_monitor') and self.gmx.runtime_monitor.metrics_history:
+                    all_operations.extend(self.gmx.runtime_monitor.metrics_history)
+
+                # Update command metrics with all operations
+                if cmd_metrics and all_operations:
+                    cmd_metrics.sub_operations = all_operations
+                    cmd_metrics.total_operations = len(all_operations)
+                    cmd_metrics.successful_operations = sum(1 for op in all_operations if op.success)
+                    cmd_metrics.failed_operations = cmd_metrics.total_operations - cmd_metrics.successful_operations
+
+                # Store command metrics for runtime display
+                if hasattr(self, 'runtime_monitor') and cmd_metrics:
+                    self.runtime_monitor = cmd_metrics
 
                 return result
 
@@ -322,25 +352,33 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         and debugging long-running workflows.
 
         Usage:
-            runtime
+            runtime          # Show runtime statistics
+            runtime clear    # Clear runtime history
 
         Args:
-            arg: Command argument (unused)
+            arg: Command argument (unused or "clear")
         """
-        if hasattr(self, "runtime_monitor"):
-            summary = self.runtime_monitor.get_summary()
-            if summary:
-                self._log_info("=== Runtime Statistics ===")
-                self._log_info(f"Total Operations: {summary['total_operations']}")
-                self._log_info(f"Successful: {summary['successful_operations']}")
-                self._log_info(f"Failed: {summary['failed_operations']}")
-                self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
-                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
-                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
-            else:
-                self._log_info("No runtime data available yet.")
+        if arg.strip().lower() == "clear":
+            # Clear runtime history
+            self.runtime_monitor.metrics_history.clear()
+            if hasattr(self, 'builder') and hasattr(self.builder, 'runtime_monitor'):
+                self.builder.runtime_monitor.metrics_history.clear()
+            if hasattr(self, 'gmx') and hasattr(self.gmx, 'runtime_monitor'):
+                self.gmx.runtime_monitor.metrics_history.clear()
+            self._log_info("Runtime history cleared.")
+            return
+
+        summary = self.runtime_monitor.get_summary()
+        if summary:
+            self._log_info("=== Runtime Statistics ===")
+            self._log_info(f"Total Operations: {summary['total_operations']}")
+            self._log_info(f"Successful: {summary['successful_operations']}")
+            self._log_info(f"Failed: {summary['failed_operations']}")
+            self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
+            self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
+            self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
         else:
-            self._log_info("Runtime monitoring not available.")
+            self._log_info("No runtime data available yet.")
 
     def do_set(self, arg: str) -> None:
         """
@@ -479,28 +517,53 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             The --ligand_builder option requires ORCA to be installed and available
             in the system PATH for quantum chemistry calculations.
         """
-        args = self._parse_loadpdb_args(arg)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("loadpdb_command")
+
         try:
-            lines = self._read_pdb_file(args.pdb_file)
-        except FileNotFoundError:
-            return
-        hetatm_lines, atom_lines = self._split_pdb_lines(lines)
+            # Parse arguments
+            args_op = self.runtime_monitor.start_operation("parse_loadpdb_args")
+            args = self._parse_loadpdb_args(arg)
+            self.runtime_monitor.end_operation(success=True)
 
-        # Check if --ligand_builder was specified but no HETATM records found
-        if args.ligand_builder and not hetatm_lines:
-            self._log_info("No Ligand Detected")
-            self._handle_protein_only(lines)
-            return
+            # Read PDB file
+            read_op = self.runtime_monitor.start_operation("read_pdb_file")
+            try:
+                lines = self._read_pdb_file(args.pdb_file)
+                self.runtime_monitor.end_operation(success=True)
+            except FileNotFoundError:
+                self.runtime_monitor.end_operation(success=False, error_message="PDB file not found")
+                return
 
-        if hetatm_lines and not atom_lines:
-            self._handle_ligand_only(hetatm_lines, args)
-            return
+            # Split PDB lines
+            split_op = self.runtime_monitor.start_operation("split_pdb_lines")
+            hetatm_lines, atom_lines = self._split_pdb_lines(lines)
+            self.runtime_monitor.end_operation(success=True)
 
-        if hetatm_lines:
-            self._handle_protein_ligand(lines, hetatm_lines, args)
-            return
+            # Determine system type and handle accordingly
+            if args.ligand_builder and not hetatm_lines:
+                self._log_info("No Ligand Detected")
+                handle_op = self.runtime_monitor.start_operation("handle_protein_only")
+                self._handle_protein_only(lines)
+                self.runtime_monitor.end_operation(success=True)
+            elif hetatm_lines and not atom_lines:
+                handle_op = self.runtime_monitor.start_operation("handle_ligand_only")
+                self._handle_ligand_only(hetatm_lines, args)
+                self.runtime_monitor.end_operation(success=True)
+            elif hetatm_lines:
+                handle_op = self.runtime_monitor.start_operation("handle_protein_ligand")
+                self._handle_protein_ligand(lines, hetatm_lines, args)
+                self.runtime_monitor.end_operation(success=True)
+            else:
+                handle_op = self.runtime_monitor.start_operation("handle_protein_only")
+                self._handle_protein_only(lines)
+                self.runtime_monitor.end_operation(success=True)
 
-        self._handle_protein_only(lines)
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def _parse_loadpdb_args(self, arg: str) -> argparse.Namespace:
         """
@@ -653,31 +716,51 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             This is a warning system - gaps don't prevent simulation setup
             but may indicate structural issues that should be addressed.
         """
-        self._log_info(f"Checking for missing residues in {protein_pdb}")
-        residue_map = {}  # {chain_id: sorted list of residue IDs}
-        with open(protein_pdb, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith(("ATOM", "HETATM")):
-                    chain_id = line[21].strip() or "A"
-                    try:
-                        res_id = int(line[22:26].strip())
-                    except ValueError:
-                        continue
-                    if chain_id not in residue_map:
-                        residue_map[chain_id] = set()
-                    residue_map[chain_id].add(res_id)
-        gaps = []
-        for chain_id, residues in residue_map.items():
-            sorted_residues = sorted(residues)
-            for i in range(len(sorted_residues) - 1):
-                current = sorted_residues[i]
-                next_expected = current + 1
-                if sorted_residues[i + 1] != next_expected:
-                    gaps.append((chain_id, current, sorted_residues[i + 1]))
-        if gaps:
-            self._log_warning(f"Found missing residue ranges: {gaps}")
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("warn_if_missing_residues")
+
+        try:
+            self._log_info(f"Checking for missing residues in {protein_pdb}")
+            residue_map = {}  # {chain_id: sorted list of residue IDs}
+
+            # Read PDB file
+            read_op = self.runtime_monitor.start_operation("read_pdb_for_residue_check")
+            with open(protein_pdb, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith(("ATOM", "HETATM")):
+                        chain_id = line[21].strip() or "A"
+                        try:
+                            res_id = int(line[22:26].strip())
+                        except ValueError:
+                            continue
+                        if chain_id not in residue_map:
+                            residue_map[chain_id] = set()
+                        residue_map[chain_id].add(res_id)
+            self.runtime_monitor.end_operation(success=True)
+
+            # Analyze gaps
+            analyze_op = self.runtime_monitor.start_operation("analyze_residue_gaps")
+            gaps = []
+            for chain_id, residues in residue_map.items():
+                sorted_residues = sorted(residues)
+                for i in range(len(sorted_residues) - 1):
+                    current = sorted_residues[i]
+                    next_expected = current + 1
+                    if sorted_residues[i + 1] != next_expected:
+                        gaps.append((chain_id, current, sorted_residues[i + 1]))
+            self.runtime_monitor.end_operation(success=True)
+
+            if gaps:
+                self._log_warning(f"Found missing residue ranges: {gaps}")
+            else:
+                self._log_info("No gaps found.")
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
         else:
-            self._log_info("No gaps found.")
+            self.runtime_monitor.end_operation(success=True)
+
         return gaps
 
     def _handle_protein_only(self, lines: List[str]) -> None:
@@ -690,16 +773,35 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Args:
             lines: List of lines from the PDB file
         """
-        self.ligand_pdb_path = None
-        with open("protein.pdb", "w", encoding="utf-8") as prot_out:
-            for line in lines:
-                if line[17:20] in ("HSP", "HSD"):
-                    line = line[:17] + "HIS" + line[20:]
-                prot_out.write(line)
-        self._log_info(
-            "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
-        )
-        self._warn_if_missing_residues(protein_pdb="protein.pdb")
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("handle_protein_only")
+
+        try:
+            self.ligand_pdb_path = None
+
+            # Write protein PDB
+            write_op = self.runtime_monitor.start_operation("write_protein_pdb")
+            with open("protein.pdb", "w", encoding="utf-8") as prot_out:
+                for line in lines:
+                    if line[17:20] in ("HSP", "HSD"):
+                        line = line[:17] + "HIS" + line[20:]
+                    prot_out.write(line)
+            self.runtime_monitor.end_operation(success=True)
+
+            self._log_info(
+                "No HETATM entries found. Wrote corrected PDB to protein.pdb and using it as apo protein."
+            )
+
+            # Check for missing residues
+            check_op = self.runtime_monitor.start_operation("check_missing_residues")
+            self._warn_if_missing_residues(protein_pdb="protein.pdb")
+            self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def _assign_ligand_name(self) -> str:
         """
@@ -1068,50 +1170,85 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         """
         Run pdb2gmx. Handles protein-only, protein-ligand, and FEP (A/B) cases.
         """
-        if not os.path.isfile("protein.pdb"):
-            self._log_info("protein.pdb not found. Switching to ligand-only workflow.")
-            # Call _pdb2gmx_ligand with dummy args (lambda_dirs=None, output_gro=None) for now
-            self._pdb2gmx_ligand()
-            return
-        amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
-        amber_ff_dest = os.path.abspath("amber14sb.ff")
-        if not os.path.exists(amber_ff_dest):
-            os.makedirs(amber_ff_dest)
-            self._log_info(f"Created directory: {amber_ff_dest}")
-            try:
-                for item in Path(amber_ff_source).iterdir():
-                    if item.is_file():
-                        content = item.read_text(encoding="utf-8")
-                        dest_file = os.path.join(amber_ff_dest, item.name)
-                        with open(dest_file, "w", encoding="utf-8") as f:
-                            f.write(content)
-                        self._log_debug(f"Copied {item.name}")
-                self._log_success("Copied all amber14sb.ff files.")
-            except Exception as e:
-                self._log_error(f"Failed to copy amber14sb.ff files: {e}")
-        else:
-            self._log_info(f"amber14sb.ff already exists, not overwriting.")
-        # First, run pdb2gmx on the protein component
-        protein_pdb = "protein"
-        output_gro = f"{protein_pdb}.gro"
-        self.builder.run_pdb2gmx(
-            protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
-        )
-        if not os.path.isfile(output_gro):
-            self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
-            return
-        # FEP: Check for A/B complex/water directories
-        fep_dirs = ["ligand_only", "protein_complex"]
-        fep_present = all(os.path.isdir(d) for d in fep_dirs)
-        if fep_present:
-            self._pdb2gmx_fep(fep_dirs)
-        else:
-            # Check for ligand presence
-            ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile(
-                "ligand.pdb"
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("pdb2gmx_command")
+
+        try:
+            # Check for protein.pdb
+            check_op = self.runtime_monitor.start_operation("check_protein_pdb")
+            if not os.path.isfile("protein.pdb"):
+                self._log_info("protein.pdb not found. Switching to ligand-only workflow.")
+                self.runtime_monitor.end_operation(success=True)
+                # Call _pdb2gmx_ligand with dummy args (lambda_dirs=None, output_gro=None) for now
+                ligand_op = self.runtime_monitor.start_operation("pdb2gmx_ligand_only")
+                self._pdb2gmx_ligand()
+                self.runtime_monitor.end_operation(success=True)
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            # Setup amber14sb.ff
+            amber_op = self.runtime_monitor.start_operation("setup_amber_forcefield")
+            amber_ff_source = str(files("templates").joinpath("amber14sb.ff/"))
+            amber_ff_dest = os.path.abspath("amber14sb.ff")
+            if not os.path.exists(amber_ff_dest):
+                os.makedirs(amber_ff_dest)
+                self._log_info(f"Created directory: {amber_ff_dest}")
+                try:
+                    for item in Path(amber_ff_source).iterdir():
+                        if item.is_file():
+                            content = item.read_text(encoding="utf-8")
+                            dest_file = os.path.join(amber_ff_dest, item.name)
+                            with open(dest_file, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            self._log_debug(f"Copied {item.name}")
+                    self._log_success("Copied all amber14sb.ff files.")
+                except Exception as e:
+                    self._log_error(f"Failed to copy amber14sb.ff files: {e}")
+                    self.runtime_monitor.end_operation(success=False, error_message=str(e))
+                    return
+            else:
+                self._log_info(f"amber14sb.ff already exists, not overwriting.")
+            self.runtime_monitor.end_operation(success=True)
+
+            # Run pdb2gmx on protein
+            pdb2gmx_op = self.runtime_monitor.start_operation("run_pdb2gmx_protein")
+            protein_pdb = "protein"
+            output_gro = f"{protein_pdb}.gro"
+            self.builder.run_pdb2gmx(
+                protein_pdb, custom_command=self.custom_cmds.get("pdb2gmx")
             )
-            if ligand_present:
-                self._pdb2gmx_protein_ligand(output_gro)
+            if not os.path.isfile(output_gro):
+                self._log_error(f"Expected {output_gro} was not created by pdb2gmx.")
+                self.runtime_monitor.end_operation(success=False, error_message=f"Expected {output_gro} was not created")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            # Check for FEP directories
+            fep_check_op = self.runtime_monitor.start_operation("check_fep_directories")
+            fep_dirs = ["ligand_only", "protein_complex"]
+            fep_present = all(os.path.isdir(d) for d in fep_dirs)
+            self.runtime_monitor.end_operation(success=True)
+
+            if fep_present:
+                fep_op = self.runtime_monitor.start_operation("pdb2gmx_fep_workflow")
+                self._pdb2gmx_fep(fep_dirs)
+                self.runtime_monitor.end_operation(success=True)
+            else:
+                # Check for ligand presence
+                ligand_check_op = self.runtime_monitor.start_operation("check_ligand_presence")
+                ligand_present = os.path.isfile("ligandA.pdb") or os.path.isfile("ligand.pdb")
+                self.runtime_monitor.end_operation(success=True)
+
+                if ligand_present:
+                    protein_ligand_op = self.runtime_monitor.start_operation("pdb2gmx_protein_ligand")
+                    self._pdb2gmx_protein_ligand(output_gro)
+                    self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def _pdb2gmx_fep(self, fep_dirs):
         """
@@ -1447,21 +1584,47 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "solvate"
         Other Options: use "set solvate" to override defaults
         """
-        # FEP: Check for A/B complex/water directories
-        fep_dirs = ["ligand_only", "protein_complex"]
-        fep_present = all(os.path.isdir(d) for d in fep_dirs)
-        if fep_present:
-            self._do_solvate_fep(fep_dirs)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("solvate_command")
+
+        try:
+            # Check for FEP directories
+            fep_check_op = self.runtime_monitor.start_operation("check_fep_directories_solvate")
+            fep_dirs = ["ligand_only", "protein_complex"]
+            fep_present = all(os.path.isdir(d) for d in fep_dirs)
+            self.runtime_monitor.end_operation(success=True)
+
+            if fep_present:
+                fep_op = self.runtime_monitor.start_operation("solvate_fep_workflow")
+                self._do_solvate_fep(fep_dirs)
+                self.runtime_monitor.end_operation(success=True)
+            else:
+                # Regular workflow
+                base_check_op = self.runtime_monitor.start_operation("determine_solvate_base")
+                base = self._determine_solvate_base()
+                self.runtime_monitor.end_operation(success=True)
+
+                if base is None:
+                    self.runtime_monitor.end_operation(success=False, error_message="No suitable base found for solvation")
+                    return
+
+                pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check")
+                if not self._require_pdb():
+                    self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                    return
+                self.runtime_monitor.end_operation(success=True)
+
+                solvate_op = self.runtime_monitor.start_operation("run_solvate")
+                self.builder.run_solvate(
+                    base, custom_command=self.custom_cmds.get("solvate")
+                )
+                self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
         else:
-            # Regular workflow
-            base = self._determine_solvate_base()
-            if base is None:
-                return
-            if not self._require_pdb():
-                return
-            self.builder.run_solvate(
-                base, custom_command=self.custom_cmds.get("solvate")
-            )
+            self.runtime_monitor.end_operation(success=True)
 
     def _determine_solvate_base(self):
         """
@@ -1616,6 +1779,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         Usage: "genions"
         Other Options: use "set genions" to override defaults
         """
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("genions_command")
 
         def run_genions_and_capture(basename, custom_command=None):
             # The base class _run_gromacs_command_internal already handles the "No default Per. Imp. Dih. types" error
@@ -1626,29 +1791,51 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             except Exception as e:
                 return False, str(e)
 
-        # Check for FEP directories first
-        fep_dirs = [d for d in ["ligand_only", "protein_complex"] if os.path.isdir(d)]
-        if fep_dirs:
-            self._do_genions_fep(fep_dirs)
-            return
+        try:
+            # Check for FEP directories first
+            fep_check_op = self.runtime_monitor.start_operation("check_fep_directories_genions")
+            fep_dirs = [d for d in ["ligand_only", "protein_complex"] if os.path.isdir(d)]
+            self.runtime_monitor.end_operation(success=True)
 
-        # Regular workflow
-        solvated_base = self._determine_genions_base()
-        if solvated_base is None:
-            self._log_error("No suitable files found for genions.")
-            return
+            if fep_dirs:
+                fep_op = self.runtime_monitor.start_operation("genions_fep_workflow")
+                self._do_genions_fep(fep_dirs)
+                self.runtime_monitor.end_operation(success=True)
+                return
 
-        if not self._require_pdb():
-            return
+            # Regular workflow
+            base_check_op = self.runtime_monitor.start_operation("determine_genions_base")
+            solvated_base = self._determine_genions_base()
+            self.runtime_monitor.end_operation(success=True)
 
-        # Run genions - the base class handles "No default Per. Imp. Dih. types" errors automatically
-        success, error_message = run_genions_and_capture(
-            solvated_base, custom_command=self.custom_cmds.get("genions")
-        )
-        if success:
-            self._log_success(f"Added ions to {solvated_base}.solv.gro")
+            if solvated_base is None:
+                self._log_error("No suitable files found for genions.")
+                self.runtime_monitor.end_operation(success=False, error_message="No suitable files found for genions")
+                return
+
+            pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check_genions")
+            if not self._require_pdb():
+                self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            # Run genions - the base class handles "No default Per. Imp. Dih. types" errors automatically
+            genions_op = self.runtime_monitor.start_operation("run_genions")
+            success, error_message = run_genions_and_capture(
+                solvated_base, custom_command=self.custom_cmds.get("genions")
+            )
+            if success:
+                self._log_success(f"Added ions to {solvated_base}.solv.gro")
+                self.runtime_monitor.end_operation(success=True)
+            else:
+                self._log_error(f"Failed to add ions: {error_message}")
+                self.runtime_monitor.end_operation(success=False, error_message=error_message)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
         else:
-            self._log_error(f"Failed to add ions: {error_message}")
+            self.runtime_monitor.end_operation(success=True)
 
     def _do_genions_fep(self, fep_dirs):
         """
@@ -1789,27 +1976,91 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
     def do_em(self, arg):
         """Run energy minimization."""
-        if not self._require_pdb():
-            return
-        self.gmx.run_em(self.basename, arg)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("em_command")
+
+        try:
+            pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check_em")
+            if not self._require_pdb():
+                self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            em_op = self.runtime_monitor.start_operation("run_energy_minimization")
+            self.gmx.run_em(self.basename, arg)
+            self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def do_nvt(self, arg):
         """Run NVT equilibration."""
-        if not self._require_pdb():
-            return
-        self.gmx.run_nvt(self.basename, arg)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("nvt_command")
+
+        try:
+            pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check_nvt")
+            if not self._require_pdb():
+                self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            nvt_op = self.runtime_monitor.start_operation("run_nvt_equilibration")
+            self.gmx.run_nvt(self.basename, arg)
+            self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def do_npt(self, arg):
         """Run NPT equilibration."""
-        if not self._require_pdb():
-            return
-        self.gmx.run_npt(self.basename, arg)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("npt_command")
+
+        try:
+            pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check_npt")
+            if not self._require_pdb():
+                self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            npt_op = self.runtime_monitor.start_operation("run_npt_equilibration")
+            self.gmx.run_npt(self.basename, arg)
+            self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def do_production(self, arg):
         """Run production MD simulation."""
-        if not self._require_pdb():
-            return
-        self.gmx.run_production(self.basename, arg)
+        # Start operation monitoring
+        op_metrics = self.runtime_monitor.start_operation("production_command")
+
+        try:
+            pdb_check_op = self.runtime_monitor.start_operation("require_pdb_check_production")
+            if not self._require_pdb():
+                self.runtime_monitor.end_operation(success=False, error_message="PDB requirement not met")
+                return
+            self.runtime_monitor.end_operation(success=True)
+
+            production_op = self.runtime_monitor.start_operation("run_production_simulation")
+            self.gmx.run_production(self.basename, arg)
+            self.runtime_monitor.end_operation(success=True)
+
+        except Exception as e:
+            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            raise
+        else:
+            self.runtime_monitor.end_operation(success=True)
 
     def complete_tremd_prep(self, text, line, begidx, endidx):
         """Tab completion for tremd_prep command."""

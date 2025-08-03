@@ -507,14 +507,20 @@ class LoggingMixin:
 
     def _log_with_runtime(self, operation_name: str, func: Callable, *args, **kwargs):
         """Execute a function with runtime monitoring."""
-        metrics = self.runtime_monitor.start_operation(operation_name)
+        # Use instance runtime monitor if available, otherwise use global
+        if hasattr(self, 'runtime_monitor'):
+            monitor = self.runtime_monitor
+        else:
+            monitor = _global_runtime_monitor
+
+        metrics = monitor.start_operation(operation_name)
 
         try:
             result = func(*args, **kwargs)
-            self.runtime_monitor.end_operation(success=True)
+            monitor.end_operation(success=True)
             return result
         except Exception as e:
-            self.runtime_monitor.end_operation(success=False, error_message=str(e))
+            monitor.end_operation(success=False, error_message=str(e))
             raise
 
     def runtime_monitored(self, operation_name: Optional[str] = None):
@@ -703,7 +709,8 @@ def runtime_context(
 
 @contextmanager
 def command_context(
-        command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False, user_input: Optional[str] = None
+        command_name: str, logger: Optional[logging.Logger] = None, debug_mode: bool = False,
+        user_input: Optional[str] = None
 ):
     """
     Context manager for monitoring complete commands.

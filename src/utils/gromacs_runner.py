@@ -29,6 +29,10 @@ class Builder(YagwipBase):
         """Initialize Builder."""
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
+        # Initialize runtime monitor
+        from utils.log_utils import RuntimeMonitor
+        self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
+
     @auto_monitor
     def _resolve_basename(self, basename):
         """Resolve the basename for file operations."""
@@ -119,6 +123,10 @@ class Builder(YagwipBase):
 class GromacsCommands(YagwipBase):
     def __init__(self, gmx_path, debug=False, logger=None):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
+
+        # Initialize runtime monitor
+        from utils.log_utils import RuntimeMonitor
+        self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
 
     def run_em(self, basename, arg=""):
         self._run_stage(
