@@ -242,7 +242,8 @@ class YagwipShell(cmd.Cmd, YagwipBase):
 
                 # Store command metrics for runtime display
                 if hasattr(self, 'runtime_monitor') and cmd_metrics:
-                    self.runtime_monitor = cmd_metrics
+                    # Store the command metrics separately, don't overwrite the runtime monitor
+                    self.last_command_metrics = cmd_metrics
 
                 return result
 
@@ -368,17 +369,43 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_info("Runtime history cleared.")
             return
 
-        summary = self.runtime_monitor.get_summary()
-        if summary:
-            self._log_info("=== Runtime Statistics ===")
-            self._log_info(f"Total Operations: {summary['total_operations']}")
-            self._log_info(f"Successful: {summary['successful_operations']}")
-            self._log_info(f"Failed: {summary['failed_operations']}")
-            self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
-            self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
-            self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
+        # Show last command metrics if available
+        if hasattr(self, 'last_command_metrics') and self.last_command_metrics:
+            cmd_metrics = self.last_command_metrics
+            self._log_info("=== Last Command Statistics ===")
+            self._log_info(f"Command: {cmd_metrics.command_name}")
+            if cmd_metrics.user_input:
+                self._log_info(f"User Input: {cmd_metrics.user_input}")
+            self._log_info(f"Status: {'SUCCESS' if cmd_metrics.success else 'FAILED'}")
+            self._log_info(f"Total Duration: {cmd_metrics.duration_seconds:.2f}s" if cmd_metrics.duration_seconds else "unknown")
+            self._log_info(f"Total Operations: {cmd_metrics.total_operations}")
+            self._log_info(f"Successful Operations: {cmd_metrics.successful_operations}")
+            self._log_info(f"Failed Operations: {cmd_metrics.failed_operations}")
+            if cmd_metrics.error_message:
+                self._log_info(f"Error: {cmd_metrics.error_message}")
+
+            # Show sub-operations if available
+            if cmd_metrics.sub_operations:
+                self._log_info("\nSub-operations:")
+                for op in cmd_metrics.sub_operations:
+                    duration = f"{op.duration_seconds:.2f}s" if op.duration_seconds else "unknown"
+                    status = "SUCCESS" if op.success else "FAILED"
+                    self._log_info(f"  - {op.operation_name}: {duration} ({status})")
+                    if op.error_message:
+                        self._log_info(f"    Error: {op.error_message}")
         else:
-            self._log_info("No runtime data available yet.")
+            # Fall back to runtime monitor summary
+            summary = self.runtime_monitor.get_summary()
+            if summary:
+                self._log_info("=== Runtime Statistics ===")
+                self._log_info(f"Total Operations: {summary['total_operations']}")
+                self._log_info(f"Successful: {summary['successful_operations']}")
+                self._log_info(f"Failed: {summary['failed_operations']}")
+                self._log_info(f"Success Rate: {summary['success_rate']:.1%}")
+                self._log_info(f"Total Duration: {summary['total_duration_seconds']:.2f}s")
+                self._log_info(f"Average Duration: {summary['average_duration_seconds']:.2f}s")
+            else:
+                self._log_info("No runtime data available yet.")
 
     def do_set(self, arg: str) -> None:
         """
