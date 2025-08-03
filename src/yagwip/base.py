@@ -8,6 +8,9 @@ import shutil
 from abc import ABC
 from typing import Optional, Dict, Any, List
 from enum import Enum
+import psutil
+import subprocess
+import re
 
 # === Local Imports ===
 from utils.log_utils import (
@@ -168,7 +171,6 @@ class YagwipBase(LoggingMixin, ABC):
 
             # Show current system resources
             try:
-                import psutil
 
                 memory = psutil.virtual_memory()
                 cpu_percent = psutil.cpu_percent()
@@ -207,8 +209,6 @@ class YagwipBase(LoggingMixin, ABC):
         self, command: str, pipe_input: Optional[str] = None
     ) -> bool:
         """Internal method to run GROMACS command with runtime monitoring."""
-        import subprocess
-        import re
 
         # Log the command about to be executed
         self._log_info(f"[RUNNING] {command}")

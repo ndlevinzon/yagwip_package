@@ -21,8 +21,10 @@ from queue import Queue
 import time
 
 # === Local Imports ===
+from yagwip import YagwipShell
 from yagwip.base import YagwipBase
 from utils.log_utils import auto_monitor
+from yagwip.config import detect_gromacs_executable
 
 
 def _setup_job_logger_worker(log_file: str) -> logging.Logger:
@@ -96,8 +98,6 @@ def _execute_single_job_worker_standalone(
 
             try:
                 # Create temporary YAGWIP shell for this job
-                from yagwip import YagwipShell
-
                 yagwip_shell = YagwipShell(gmx_path)
                 yagwip_shell.logger = job_logger
                 yagwip_shell.debug = debug
@@ -244,7 +244,6 @@ class ParallelBatchProcessor(YagwipBase):
         # Auto-detect GROMACS executable if not provided
         if gmx_path is None:
             try:
-                from yagwip.config import detect_gromacs_executable
                 gmx_path = detect_gromacs_executable()
                 if logger:
                     logger.info(f"Auto-detected GROMACS executable: {gmx_path}")

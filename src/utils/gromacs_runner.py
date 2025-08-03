@@ -10,7 +10,7 @@ from importlib.resources import files
 
 # === Local Imports ===
 from yagwip.base import YagwipBase
-from utils.log_utils import auto_monitor
+from utils.log_utils import auto_monitor, RuntimeMonitor
 
 # Constants for GROMACS command inputs
 PIPE_INPUTS = {"pdb2gmx": "12\n",
@@ -30,7 +30,6 @@ class Builder(YagwipBase):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
         # Initialize runtime monitor
-        from utils.log_utils import RuntimeMonitor
         self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
 
     @auto_monitor
@@ -125,7 +124,6 @@ class GromacsCommands(YagwipBase):
         super().__init__(gmx_path=gmx_path, debug=debug, logger=logger)
 
         # Initialize runtime monitor
-        from utils.log_utils import RuntimeMonitor
         self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
 
     def run_em(self, basename, arg=""):

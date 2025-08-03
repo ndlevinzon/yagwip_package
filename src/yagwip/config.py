@@ -900,8 +900,6 @@ def detect_gromacs_executable() -> str:
     Raises:
         RuntimeError: If no GROMACS executable is found
     """
-    import shutil
-
     # Test executables in order of preference
     gromacs_executables = ["gmx", "gmx_mpi", ]
 

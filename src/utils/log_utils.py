@@ -800,8 +800,6 @@ def setup_logger(debug_mode=False, log_file: Optional[str] = None):
 
     # Log initial system information
     try:
-        import psutil
-
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage(".")
         logger.info("=== YAGWIP Runtime Monitoring Started ===")

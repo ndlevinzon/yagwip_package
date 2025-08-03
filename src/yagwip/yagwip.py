@@ -62,7 +62,7 @@ from yagwip.base import YagwipBase
 from yagwip.config import validate_gromacs_installation, detect_gromacs_executable
 from utils.slurm_utils import SlurmWriter
 from utils.pipeline_utils import Editor
-from utils.log_utils import setup_logger
+from utils.log_utils import setup_logger, RuntimeMonitor, command_context
 from utils.batch_processor import ParallelBatchProcessor
 
 # === Metadata ===
@@ -156,7 +156,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
         self.builder = Builder(gmx_path=self.gmx_path, debug=self.debug, logger=self.logger)
 
         # Initialize runtime monitor
-        from utils.log_utils import RuntimeMonitor
         self.runtime_monitor = RuntimeMonitor(logger=self.logger, debug_mode=self.debug)
 
         # Validate GROMACS installation
@@ -213,7 +212,6 @@ class YagwipShell(cmd.Cmd, YagwipBase):
             self._log_info(f"[USER_COMMAND] {line}")
 
             # Start command monitoring with the user input
-            from utils.log_utils import command_context
             with command_context(f"user_command: {line}", self.logger, self.debug, user_input=line) as cmd_metrics:
                 # Execute the command using the parent class
                 result = super().onecmd(line)
