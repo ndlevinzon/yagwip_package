@@ -21,7 +21,6 @@ from queue import Queue
 import time
 
 # === Local Imports ===
-from yagwip import YagwipShell
 from yagwip.base import YagwipBase
 from utils.log_utils import auto_monitor
 from yagwip.config import detect_gromacs_executable
@@ -97,6 +96,8 @@ def _execute_single_job_worker_standalone(
             job_logger.info(f"Executing command {i}/{len(commands)}: {command}")
 
             try:
+                from yagwip import YagwipShell
+
                 # Create temporary YAGWIP shell for this job
                 yagwip_shell = YagwipShell(gmx_path)
                 yagwip_shell.logger = job_logger
