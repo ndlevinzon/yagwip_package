@@ -14,7 +14,7 @@ This work was inspired by the original library of Dr. Olivier Mailhot (aka Grego
 </p>
 
 
-[YAGWIP building and simulation pipeline]
+# YAGWIP building and simulation pipeline
 
 ## Features
 
