@@ -9,8 +9,12 @@
 This work was inspired by the original library of Dr. Olivier Mailhot (aka Gregor Patof) and has been rewritten and optimized by Nate Levinzon (aka NDL).
 
 ---
+<p align="center">
+  <img src="docs/md_frenchie.png" width="300" alt="Project Hero">
+</p>
 
-![YAGWIP building and simulation pipeline](docs/yagwipv1.0.png)
+
+[YAGWIP building and simulation pipeline]
 
 ## Features
 
